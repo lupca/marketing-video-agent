@@ -1,7 +1,7 @@
 import { useEffect, useState } from "react"
 import api from "../lib/api"
 import { format } from "date-fns"
-import { AlertCircle, Clock, CheckCircle2, LayoutDashboard, RefreshCw, Download, ChevronDown, ChevronUp, Timer, ExternalLink } from "lucide-react"
+import { AlertCircle, Clock, CheckCircle2, LayoutDashboard, RefreshCw, Download, ChevronDown, ChevronUp, Timer, ExternalLink, Trash2, Eye, Terminal, Code2 } from "lucide-react"
 import { cn } from "../lib/utils"
 
 interface VideoJob {
@@ -10,10 +10,19 @@ interface VideoJob {
   status: "PENDING" | "PROCESSING" | "SUCCESS" | "FAILED"
   priority: number
   progress_percent: number
+  config_data: any
   result_url: string | null
   error_message: string | null
   started_at: string | null
   completed_at: string | null
+  created_at: string
+}
+
+interface JobLog {
+  id: number
+  job_id: number
+  log_level: string
+  message: string
   created_at: string
 }
 
@@ -41,6 +50,13 @@ export default function Dashboard() {
   const [loading, setLoading] = useState(true)
   const [refreshing, setRefreshing] = useState(false)
   const [expandedError, setExpandedError] = useState<number | null>(null)
+  
+  // Job Actions State
+  const [deletingId, setDeletingId] = useState<number | null>(null)
+  const [selectedJob, setSelectedJob] = useState<VideoJob | null>(null)
+  const [jobLogs, setJobLogs] = useState<JobLog[]>([])
+  const [loadingLogs, setLoadingLogs] = useState(false)
+  const [activeTab, setActiveTab] = useState<"logs" | "config">("logs")
 
   const fetchJobs = async () => {
     try {
@@ -58,6 +74,49 @@ export default function Dashboard() {
     setRefreshing(true)
     fetchJobs()
   }
+
+  const handleDeleteJob = async (id: number) => {
+    if (!confirm("Permanently delete this job and its resources?")) return
+    setDeletingId(id)
+    try {
+      await api.delete(`/api/jobs/${id}`)
+      setJobs(jobs.filter(j => j.id !== id))
+    } catch (e) {
+      console.error(e)
+      alert("Failed to delete job")
+    } finally {
+      setDeletingId(null)
+    }
+  }
+
+  const handleViewDetails = async (job: VideoJob) => {
+    setSelectedJob(job)
+    setActiveTab("logs")
+    setLoadingLogs(true)
+    setJobLogs([])
+    try {
+      const res = await api.get(`/api/jobs/${job.id}/logs`)
+      setJobLogs(res.data)
+    } catch (e) {
+      console.error(e)
+    } finally {
+      setLoadingLogs(false)
+    }
+  }
+
+  // Effect to auto-refresh logs if viewing a processing job
+  useEffect(() => {
+    let interval: any;
+    if (selectedJob && selectedJob.status === "PROCESSING" && activeTab === "logs") {
+      interval = setInterval(async () => {
+        try {
+          const res = await api.get(`/api/jobs/${selectedJob.id}/logs`)
+          setJobLogs(res.data)
+        } catch (e) {}
+      }, 3000)
+    }
+    return () => clearInterval(interval)
+  }, [selectedJob, activeTab])
 
   useEffect(() => {
     fetchJobs()
@@ -233,30 +292,46 @@ export default function Dashboard() {
                         {format(new Date(job.created_at), "MMM dd, HH:mm")}
                       </td>
                       <td className="px-6 py-4 whitespace-nowrap text-right">
-                        {job.result_url ? (
-                          <div className="flex items-center justify-end gap-2">
-                            <a
-                              href={getMinioDownloadUrl(job.result_url)}
-                              target="_blank"
-                              rel="noreferrer"
-                              className="inline-flex items-center justify-center rounded-full bg-emerald-500/10 hover:bg-emerald-500/20 text-emerald-400 border border-emerald-500/30 transition-all h-9 w-9 shadow-[0_0_15px_rgba(16,185,129,0.2)] hover:shadow-[0_0_20px_rgba(16,185,129,0.4)] group-hover:scale-110"
-                              title="Download video"
-                            >
-                              <Download className="h-4 w-4" />
-                            </a>
-                            <a
-                              href={getMinioBrowserUrl(job.result_url)}
-                              target="_blank"
-                              rel="noreferrer"
-                              className="inline-flex items-center justify-center rounded-full bg-white/5 hover:bg-white/10 text-white/60 hover:text-white border border-white/10 transition-all h-9 w-9"
-                              title="Open in MinIO Console"
-                            >
-                              <ExternalLink className="h-4 w-4" />
-                            </a>
-                          </div>
-                        ) : (
-                          <span className="text-muted-foreground/50 pr-4">—</span>
-                        )}
+                        <div className="flex items-center justify-end gap-2 text-muted-foreground">
+                          {job.result_url && (
+                            <>
+                              <a
+                                href={getMinioDownloadUrl(job.result_url)}
+                                target="_blank"
+                                rel="noreferrer"
+                                className="inline-flex items-center justify-center rounded-lg bg-emerald-500/10 hover:bg-emerald-500/20 text-emerald-400 border border-emerald-500/30 transition-all h-8 w-8 hover:shadow-[0_0_15px_rgba(16,185,129,0.3)]"
+                                title="Download video"
+                              >
+                                <Download className="h-4 w-4" />
+                              </a>
+                              <a
+                                href={getMinioBrowserUrl(job.result_url)}
+                                target="_blank"
+                                rel="noreferrer"
+                                className="inline-flex items-center justify-center rounded-lg bg-white/5 hover:bg-white/10 text-white/60 hover:text-white border border-white/10 transition-all h-8 w-8"
+                                title="Open in MinIO"
+                              >
+                                <ExternalLink className="h-4 w-4" />
+                              </a>
+                            </>
+                          )}
+                          <div className="w-px h-4 bg-white/10 mx-1"></div>
+                          <button
+                            onClick={() => handleViewDetails(job)}
+                            className="p-1.5 rounded-lg hover:bg-indigo-500/10 hover:text-indigo-400 transition-colors"
+                            title="View Terminal Logs & Config"
+                          >
+                            <Eye className="h-4 w-4" />
+                          </button>
+                          <button
+                            onClick={() => handleDeleteJob(job.id)}
+                            disabled={deletingId === job.id}
+                            className="p-1.5 rounded-lg hover:bg-rose-500/10 hover:text-rose-400 transition-colors disabled:opacity-50"
+                            title="Delete Job"
+                          >
+                            <Trash2 className="h-4 w-4" />
+                          </button>
+                        </div>
                       </td>
                     </tr>
                     {/* Error detail row */}
@@ -274,6 +349,69 @@ export default function Dashboard() {
           </table>
         </div>
       </div>
+
+      {/* Details Modal */}
+      {selectedJob && (
+        <div className="fixed inset-0 z-50 flex items-center justify-center p-4 bg-black/60 backdrop-blur-sm animate-in fade-in duration-200">
+          <div className="glass-panel p-1 max-w-4xl w-full h-[80vh] flex flex-col animate-in zoom-in-95 duration-200 overflow-hidden border border-white/10 shadow-[0_0_40px_rgba(0,0,0,0.5)] rounded-2xl">
+            <div className="flex items-center justify-between p-4 border-b border-white/10 bg-black/20">
+              <div className="flex items-center gap-3">
+                <div className="px-3 py-1 rounded bg-white/5 border border-white/10 font-mono text-sm font-semibold text-primary">
+                  JOB #{selectedJob.id}
+                </div>
+                <div className="flex gap-1">
+                  <button 
+                    onClick={() => setActiveTab("logs")}
+                    className={cn("px-4 py-1.5 rounded-lg text-sm font-medium transition-colors flex items-center gap-2", activeTab === "logs" ? "bg-white/10 text-white" : "text-muted-foreground hover:text-white hover:bg-white/5")}
+                  >
+                    <Terminal className="w-4 h-4" /> Terminal Logs
+                  </button>
+                  <button 
+                    onClick={() => setActiveTab("config")}
+                    className={cn("px-4 py-1.5 rounded-lg text-sm font-medium transition-colors flex items-center gap-2", activeTab === "config" ? "bg-white/10 text-white" : "text-muted-foreground hover:text-white hover:bg-white/5")}
+                  >
+                    <Code2 className="w-4 h-4" /> JSON Config
+                  </button>
+                </div>
+              </div>
+              <button onClick={() => setSelectedJob(null)} className="text-muted-foreground hover:text-white p-2 rounded-lg hover:bg-white/5 transition-colors">
+                ✕
+              </button>
+            </div>
+            
+            <div className="flex-1 overflow-hidden relative">
+              {activeTab === "logs" ? (
+                <div className="absolute inset-0 bg-[#0D0D12] overflow-y-auto p-4 custom-scrollbar font-mono text-xs">
+                  {loadingLogs && jobLogs.length === 0 ? (
+                    <div className="text-muted-foreground flex items-center gap-2">Scanning terminal logs... <RefreshCw className="w-3 h-3 animate-spin" /></div>
+                  ) : jobLogs.length === 0 ? (
+                    <div className="text-muted-foreground/50 italic">No logs generated for this operation yet.</div>
+                  ) : (
+                    <div className="space-y-1.5">
+                      {jobLogs.map((log, i) => (
+                        <div key={i} className="flex gap-3 hover:bg-white/5 px-2 py-0.5 rounded transition-colors group">
+                          <span className="text-emerald-500/50 shrink-0 select-none">[{format(new Date(log.created_at), "HH:mm:ss")}]</span>
+                          <span className={cn(
+                            "shrink-0 font-bold select-none",
+                            log.log_level === "INFO" ? "text-blue-400" : log.log_level === "ERROR" ? "text-rose-400" : "text-amber-400"
+                          )}>[{log.log_level}]</span>
+                          <span className={cn("text-white/80 whitespace-pre-wrap break-all", log.log_level === "ERROR" && "text-rose-300 font-semibold")}>{log.message}</span>
+                        </div>
+                      ))}
+                    </div>
+                  )}
+                </div>
+              ) : (
+                <div className="absolute inset-0 bg-[#1E1E2E] overflow-y-auto p-6 custom-scrollbar text-sm">
+                  <pre className="text-[#a6accd] font-mono whitespace-pre-wrap">
+                    <code dangerouslySetInnerHTML={{ __html: JSON.stringify(selectedJob.config_data, null, 2).replace(/"(.*?)"/g, '<span class="text-[#addb67]">"$1"</span>').replace(/(\d+)/g, '<span class="text-[#f78c6c]">$1</span>').replace(/(true|false|null)/g, '<span class="text-[#ff5874]">$1</span>') }} />
+                  </pre>
+                </div>
+              )}
+            </div>
+          </div>
+        </div>
+      )}
     </div>
   )
 }

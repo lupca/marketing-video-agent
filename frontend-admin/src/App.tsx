@@ -1,10 +1,11 @@
 import { BrowserRouter as Router, Routes, Route, Link, useLocation, Navigate } from "react-router-dom";
-import { LayoutDashboard, Video, PlusSquare, Zap, LogOut, User as UserIcon, FolderHeart, Database } from "lucide-react";
+import { LayoutDashboard, Video, PlusSquare, Zap, LogOut, User as UserIcon, FolderHeart, Database, Activity, Wand2 } from "lucide-react";
 import Dashboard from "./pages/Dashboard";
 import CreateUnboxJob from "./pages/CreateUnboxJob";
 import CreateReviewJob from "./pages/CreateReviewJob";
 import Projects from "./pages/Projects";
 import Assets from "./pages/Assets";
+import SystemHealth from "./pages/SystemHealth";
 import Login from "./pages/Login";
 import Register from "./pages/Register";
 import { AuthProvider, useAuth } from "./context/AuthContext";
@@ -29,11 +30,12 @@ function Sidebar() {
   const { user, logout } = useAuth();
 
   const links = [
-    { name: "Command Center", href: "/", icon: LayoutDashboard },
-    { name: "Review Studio", href: "/create-review", icon: PlusSquare },
-    { name: "Projects", href: "/projects", icon: FolderHeart },
-    { name: "Assets", href: "/assets", icon: Database },
-    { name: "Unbox Factory", href: "/create-unbox", icon: Video },
+    { name: "Command Center", path: "/", icon: LayoutDashboard },
+    { name: "Review Studio", path: "/create-review", icon: Wand2 },
+    { name: "Projects", path: "/projects", icon: FolderHeart },
+    { name: "Assets", path: "/assets", icon: Database },
+    { name: "Unbox Factory", path: "/create-unbox", icon: Video },
+    { name: "System Health", path: "/health", icon: Activity },
   ];
 
   return (
@@ -50,11 +52,11 @@ function Sidebar() {
       <nav className="flex-1 p-6 space-y-3">
         {links.map((link) => {
           const Icon = link.icon;
-          const isActive = location.pathname === link.href;
+          const isActive = location.pathname === link.path;
           return (
             <Link
               key={link.name}
-              to={link.href}
+              to={link.path}
               className={cn(
                 "flex items-center gap-3 rounded-xl px-4 py-3 text-sm font-medium transition-all duration-300",
                 isActive 
@@ -110,6 +112,7 @@ function MainLayout() {
           <Route path="/create-review" element={<CreateReviewJob />} />
           <Route path="/projects" element={<Projects />} />
           <Route path="/assets" element={<Assets />} />
+          <Route path="/health" element={<SystemHealth />} />
         </Routes>
       </main>
     </div>

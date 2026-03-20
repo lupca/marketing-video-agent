@@ -77,3 +77,33 @@ class AssetResponse(BaseModel):
     class Config:
         from_attributes = True
 
+class JobLogResponse(BaseModel):
+    id: int
+    job_id: int
+    log_level: str
+    message: str
+    created_at: datetime
+
+    class Config:
+        from_attributes = True
+
+class TemplateResponse(BaseModel):
+    id: str
+    name: str
+    job_type: str
+    default_config_data: dict
+    is_active: bool
+
+    class Config:
+        from_attributes = True
+
+class WorkerNodeResponse(BaseModel):
+    id: str
+    hostname: str
+    ip_address: Optional[str] = None
+    status: str
+    current_job_id: Optional[int] = None
+    last_heartbeat: datetime
+
+    class Config:
+        from_attributes = True

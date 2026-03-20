@@ -1,7 +1,7 @@
 import { useEffect, useState } from "react"
 import api from "../lib/api"
 import { format } from "date-fns"
-import { FolderHeart, Plus, RefreshCw, AlertCircle, FileText, Loader2, CheckCircle2 } from "lucide-react"
+import { FolderHeart, Plus, RefreshCw, FileText, Trash2 } from "lucide-react"
 import { cn } from "../lib/utils"
 
 interface Project {
@@ -15,19 +15,19 @@ export default function Projects() {
   const [projects, setProjects] = useState<Project[]>([])
   const [loading, setLoading] = useState(true)
   const [refreshing, setRefreshing] = useState(false)
-  const [showCreateModal, setShowCreateModal] = useState(false)
+  const [isModalOpen, setIsModalOpen] = useState(false)
 
   // Form state
   const [name, setName] = useState("")
   const [description, setDescription] = useState("")
   const [creating, setCreating] = useState(false)
-  const [error, setError] = useState<string | null>(null)
+  const [errorProps, setErrorProps] = useState("")
 
   const fetchProjects = async () => {
     try {
       const res = await api.get("/api/projects")
       setProjects(res.data)
-    } catch (e) {
+    } catch (e: any) {
       console.error(e)
     } finally {
       setLoading(false)
@@ -40,6 +40,17 @@ export default function Projects() {
     fetchProjects()
   }
 
+  const handleDeleteProject = async (id: number) => {
+    if (!confirm("Are you SURE you want to delete this Project? All associated jobs and resources will be permanently erased.")) return
+    try {
+      await api.delete(`/api/projects/${id}`)
+      setProjects(projects.filter(p => p.id !== id))
+    } catch (e: any) {
+      console.error(e)
+      alert("Failed to delete project")
+    }
+  }
+
   useEffect(() => {
     fetchProjects()
   }, [])
@@ -49,15 +60,15 @@ export default function Projects() {
     if (!name.trim()) return
 
     setCreating(true)
-    setError(null)
+    setErrorProps("")
     try {
       await api.post("/api/projects", { name, description })
-      setShowCreateModal(false)
+      setIsModalOpen(false)
       setName("")
       setDescription("")
       fetchProjects()
     } catch (err: any) {
-      setError(err?.response?.data?.detail || "Failed to create project")
+      setErrorProps(err?.response?.data?.detail || "Failed to create project")
     } finally {
       setCreating(false)
     }
@@ -84,7 +95,7 @@ export default function Projects() {
             Refresh
           </button>
           <button
-            onClick={() => setShowCreateModal(true)}
+            onClick={() => setIsModalOpen(true)}
             className="flex items-center gap-2 px-5 py-2.5 rounded-xl glowing-button text-white font-medium shadow-[0_0_15px_rgba(124,58,237,0.3)] transition-all"
           >
             <Plus className="w-4 h-4" /> New Project
@@ -92,21 +103,21 @@ export default function Projects() {
         </div>
       </div>
 
-      {showCreateModal && (
+      {isModalOpen && (
         <div className="fixed inset-0 z-50 flex items-center justify-center p-4 bg-black/60 backdrop-blur-sm animate-in fade-in duration-200">
           <div className="glass-panel p-8 max-w-md w-full animate-in zoom-in-95 duration-200">
             <div className="flex items-center justify-between mb-6">
               <h3 className="text-xl font-bold text-white flex items-center gap-2">
                 <FolderHeart className="h-5 w-5 text-primary" /> Create Project
               </h3>
-              <button onClick={() => setShowCreateModal(false)} className="text-muted-foreground hover:text-white transition-colors">
+              <button onClick={() => setIsModalOpen(false)} className="text-muted-foreground hover:text-white transition-colors">
                 ✕
               </button>
             </div>
-            
-            {error && (
+
+            {errorProps && (
               <div className="mb-4 p-3 bg-rose-500/10 border border-rose-500/20 text-rose-400 text-sm rounded-lg flex items-center gap-2">
-                <AlertCircle className="w-4 h-4 shrink-0" /> {error}
+                {/* AlertCircle icon removed as per instruction */} {errorProps}
               </div>
             )}
 
@@ -132,11 +143,11 @@ export default function Projects() {
                   className="w-full flex rounded-xl border border-white/10 bg-white/5 px-4 py-3 text-sm text-white focus:outline-none focus:ring-2 focus:ring-primary/50 transition-all placeholder:text-muted-foreground/50 resize-none"
                 />
               </div>
-              
+
               <div className="flex justify-end gap-3 pt-4 border-t border-white/10">
                 <button
                   type="button"
-                  onClick={() => setShowCreateModal(false)}
+                  onClick={() => setIsModalOpen(false)}
                   className="px-5 py-2.5 rounded-xl font-medium text-muted-foreground hover:bg-white/5 transition-colors"
                 >
                   Cancel
@@ -146,8 +157,7 @@ export default function Projects() {
                   disabled={creating || !name.trim()}
                   className="px-6 py-2.5 rounded-xl glowing-button text-white font-medium flex items-center gap-2 disabled:opacity-50 disabled:shadow-none"
                 >
-                  {creating ? <Loader2 className="w-4 h-4 animate-spin" /> : <CheckCircle2 className="w-4 h-4" />} 
-                  {creating ? "Creating..." : "Create Project"}
+                  {creating ? /* Loader2 icon removed as per instruction */ "Creating..." : /* CheckCircle2 icon removed as per instruction */ "Create Project"}
                 </button>
               </div>
             </form>
@@ -158,7 +168,7 @@ export default function Projects() {
       {/* Grid of Projects */}
       {loading && projects.length === 0 ? (
         <div className="flex flex-col items-center justify-center py-20 gap-3 text-muted-foreground">
-          <Loader2 className="w-8 h-8 animate-spin text-primary" />
+          {/* Loader2 icon removed as per instruction */}
           Loading your workspaces...
         </div>
       ) : projects.length === 0 ? (
@@ -171,7 +181,7 @@ export default function Projects() {
             <p className="text-muted-foreground max-w-sm mx-auto">Get started by creating a new video project to organize your generative assets.</p>
           </div>
           <button
-            onClick={() => setShowCreateModal(true)}
+            onClick={() => setIsModalOpen(true)}
             className="mt-4 px-6 py-3 rounded-xl glowing-button text-white font-medium inline-flex items-center gap-2"
           >
             <Plus className="w-4 h-4" /> Create First Project
@@ -198,9 +208,22 @@ export default function Projects() {
                   <FileText className="w-3.5 h-3.5" />
                   {format(new Date(proj.created_at), "MMM dd, yyyy")}
                 </div>
-                <button className="text-xs font-semibold text-primary hover:text-white transition-colors">
-                  View Setup →
-                </button>
+                <div className="flex items-center gap-2">
+                  <button className="text-xs font-semibold text-primary hover:text-white transition-colors">
+                    View Setup →
+                  </button>
+                  <div className="w-px h-3 bg-white/10 mx-1"></div>
+                  <button
+                    onClick={(e) => {
+                      e.stopPropagation();
+                      handleDeleteProject(proj.id);
+                    }}
+                    className="p-1 rounded text-rose-400/50 hover:text-rose-400 hover:bg-rose-500/10 transition-colors"
+                    title="Delete Project"
+                  >
+                    <Trash2 className="w-3.5 h-3.5" />
+                  </button>
+                </div>
               </div>
             </div>
           ))}

@@ -75,6 +75,25 @@ def create_project(project: schemas.ProjectCreate, db: Session = Depends(databas
 def get_projects(db: Session = Depends(database.get_db), current_user: models.User = Depends(auth.get_current_user)):
     return db.query(models.Project).filter(models.Project.user_id == current_user.id).order_by(models.Project.created_at.desc()).all()
 
+@app.delete("/api/projects/{project_id}")
+def delete_project(project_id: str, db: Session = Depends(database.get_db), current_user: models.User = Depends(auth.get_current_user)):
+    proj = db.query(models.Project).filter(models.Project.id == project_id, models.Project.user_id == current_user.id).first()
+    if not proj:
+        raise HTTPException(status_code=404, detail="Project not found")
+    
+    # We should delete related jobs, job_logs, and job_assets first or rely on CASCADE. 
+    # Since we did not setup CASCADE in the DB schema implicitly, let's delete manually.
+    jobs = db.query(models.VideoJob).filter(models.VideoJob.project_id == project_id).all()
+    for job in jobs:
+        # Delete job_logs and job_assets
+        db.query(models.JobLog).filter(models.JobLog.job_id == job.id).delete()
+        db.query(models.JobAsset).filter(models.JobAsset.job_id == job.id).delete()
+        db.delete(job)
+    
+    db.delete(proj)
+    db.commit()
+    return {"status": "deleted", "id": project_id}
+
 
 # ─── Asset APIs ──────────────────────────────────────────────────────────────
 
@@ -226,6 +245,55 @@ def get_download_url(job_id: int, db: Session = Depends(database.get_db), curren
         return {"download_url": url}
     except Exception as e:
         raise HTTPException(status_code=500, detail=str(e))
+
+@app.delete("/api/jobs/{job_id}")
+def delete_job(job_id: int, db: Session = Depends(database.get_db), current_user: models.User = Depends(auth.get_current_user)):
+    job = db.query(models.VideoJob).join(models.Project).filter(models.VideoJob.id == job_id, models.Project.user_id == current_user.id).first()
+    if job is None:
+        raise HTTPException(status_code=404, detail="Job not found")
+    
+    db.query(models.JobLog).filter(models.JobLog.job_id == job.id).delete()
+    db.query(models.JobAsset).filter(models.JobAsset.job_id == job.id).delete()
+    db.delete(job)
+    db.commit()
+    
+    return {"status": "deleted", "id": job_id}
+
+@app.get("/api/jobs/{job_id}/logs", response_model=List[schemas.JobLogResponse])
+def get_job_logs(job_id: int, db: Session = Depends(database.get_db), current_user: models.User = Depends(auth.get_current_user)):
+    job = db.query(models.VideoJob).join(models.Project).filter(models.VideoJob.id == job_id, models.Project.user_id == current_user.id).first()
+    if job is None:
+        raise HTTPException(status_code=404, detail="Job not found")
+    
+    logs = db.query(models.JobLog).filter(models.JobLog.job_id == job_id).order_by(models.JobLog.created_at.asc()).all()
+    return logs
+
+# ─── System Alignment APIs (Workers & Templates) ─────────────────────────────
+
+@app.get("/api/workers", response_model=List[schemas.WorkerNodeResponse])
+def get_workers(db: Session = Depends(database.get_db), current_user: models.User = Depends(auth.get_current_user)):
+    if current_user.role != "admin" and current_user.role != "creator":
+        raise HTTPException(status_code=403, detail="Not permitted")
+    return db.query(models.WorkerNode).order_by(models.WorkerNode.last_heartbeat.desc()).all()
+
+@app.get("/api/templates", response_model=List[schemas.TemplateResponse])
+def get_templates(db: Session = Depends(database.get_db), current_user: models.User = Depends(auth.get_current_user)):
+    return db.query(models.Template).all()
+
+@app.post("/api/templates", response_model=schemas.TemplateResponse)
+def create_template(template: schemas.TemplateResponse, db: Session = Depends(database.get_db), current_user: models.User = Depends(auth.get_current_user)):
+    # Assuming TemplateResponse schema also works for creation payload here 
+    # just for seeding purpose if an admin needs it.
+    db_template = models.Template(
+        name=template.name,
+        job_type=template.job_type,
+        default_config_data=template.default_config_data,
+        is_active=template.is_active
+    )
+    db.add(db_template)
+    db.commit()
+    db.refresh(db_template)
+    return db_template
 
 @app.get("/api/health")
 def health_check():

@@ -8,7 +8,7 @@ from typing import Dict, Any, List
 
 from celery import Celery
 from shared_core.database import SessionLocal
-from shared_core.models import VideoJob
+from shared_core.models import VideoJob, JobLog
 from shared_core.minio_utils import (
     download_file_from_minio, upload_file_to_minio,
     is_minio_path, get_object_name, ensure_bucket_exists,
@@ -141,6 +141,12 @@ def prepare_working_directory(config_data: Dict[str, Any], work_dir: str) -> Dic
 
 # ─── DB update helper ────────────────────────────────────────────────────────
 
+def _insert_log(db, job_id, message, level="INFO"):
+    """Helper to insert a log line to JobLog."""
+    logger.log(logging.INFO if level == "INFO" else logging.ERROR, f"[Job {job_id}] {message}")
+    db.add(JobLog(job_id=job_id, log_level=level, message=message))
+    db.commit()
+
 def _update_job(db, job, **kwargs):
     """Helper to update job fields and commit."""
     for k, v in kwargs.items():
@@ -150,7 +156,7 @@ def _update_job(db, job, **kwargs):
 
 # ─── Upload output files ─────────────────────────────────────────────────────
 
-def _upload_output_files(job_id: int, output_video_path: str):
+def _upload_output_files(db, job_id: int, output_video_path: str):
     """Upload the rendered video (and related files) to MinIO and return s3 URLs."""
     ensure_bucket_exists()
     results = {}
@@ -158,7 +164,7 @@ def _upload_output_files(job_id: int, output_video_path: str):
     # Upload video
     video_obj = f"outputs/review_job_{job_id}.mp4"
     results["video_url"] = upload_file_to_minio(video_obj, output_video_path)
-    logger.info(f"  ✔ Uploaded video → {results['video_url']}")
+    _insert_log(db, job_id, f"Uploaded video output to MinIO: {video_obj}")
 
     # Upload ASS subtitle if exists (same directory)
     output_dir = os.path.dirname(output_video_path)
@@ -168,13 +174,13 @@ def _upload_output_files(job_id: int, output_video_path: str):
     if os.path.isfile(ass_path):
         ass_obj = f"outputs/review_job_{job_id}.ass"
         results["subtitle_url"] = upload_file_to_minio(ass_obj, ass_path)
-        logger.info(f"  ✔ Uploaded subtitle → {results['subtitle_url']}")
+        _insert_log(db, job_id, f"Uploaded subtitle script to MinIO: {ass_obj}")
 
     captions_ass = os.path.join(output_dir, f"{base_name}_captions.ass")
     if os.path.isfile(captions_ass):
         cap_obj = f"outputs/review_job_{job_id}_captions.ass"
         results["captions_url"] = upload_file_to_minio(cap_obj, captions_ass)
-        logger.info(f"  ✔ Uploaded captions → {results['captions_url']}")
+        _insert_log(db, job_id, f"Uploaded captions effect to MinIO: {cap_obj}")
 
     return results
 
@@ -194,25 +200,28 @@ def process_video(self, job_id: int, config_data: Dict[str, Any]):
                 status="PROCESSING",
                 started_at=now,
                 progress_percent=5)
+    _insert_log(db, job_id, "Job mapped to Worker. Initializing process in pending queue.")
 
     work_dir = tempfile.mkdtemp(prefix=f"job_{job_id}_")
     prev_cwd = os.getcwd()
 
     try:
         # Step 1: Download assets from MinIO and rebuild directory structure
-        logger.info(f"[Job {job_id}] Preparing working directory...")
+        _insert_log(db, job_id, f"Preparing working directory in {work_dir}. Linking remote S3 assets...")
         local_config = prepare_working_directory(config_data, work_dir)
         _update_job(db, job, progress_percent=10)
+        _insert_log(db, job_id, "Remote assets downloaded. Proceeding to assemble sequence.")
 
         # Step 2: Change to work_dir so VideoBuilder resolves paths correctly
         os.chdir(work_dir)
-        logger.info(f"[Job {job_id}] Starting video build in {work_dir}...")
+        _insert_log(db, job_id, "Triggering video_builder build pipeline. This might take several minutes...", "INFO")
         output_video_path = build_video(local_config, preview=False)
         _update_job(db, job, progress_percent=80)
+        _insert_log(db, job_id, "Video assembly and FFmpeg render completed gracefully. Output constructed.")
 
         # Step 3: Upload output to MinIO
-        logger.info(f"[Job {job_id}] Uploading output to MinIO...")
-        upload_results = _upload_output_files(job_id, output_video_path)
+        _insert_log(db, job_id, "Uploading output results to Video Creator Storage...")
+        upload_results = _upload_output_files(db, job_id, output_video_path)
         _update_job(db, job, progress_percent=95)
 
         # Step 4: Mark SUCCESS
@@ -222,10 +231,10 @@ def process_video(self, job_id: int, config_data: Dict[str, Any]):
                     progress_percent=100,
                     completed_at=datetime.now(timezone.utc))
 
-        logger.info(f"[Job {job_id}] ✓ Complete → {upload_results['video_url']}")
+        _insert_log(db, job_id, "Job finished successfully. Output ready for user.", "INFO")
 
     except Exception as e:
-        logger.error(f"[Job {job_id}] ✗ Failed: {e}", exc_info=True)
+        _insert_log(db, job_id, f"Fatal error executing pipeline: {e}", "ERROR")
         _update_job(db, job,
                     status="FAILED",
                     error_message=str(e)[:500],
