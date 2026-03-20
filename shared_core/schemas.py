@@ -1,5 +1,5 @@
 from pydantic import BaseModel
-from typing import Optional, Dict, Any
+from typing import Optional, Dict, Any, List
 from datetime import datetime
 
 class JobCreate(BaseModel):
@@ -25,6 +25,18 @@ class JobResponse(BaseModel):
     completed_at: Optional[datetime] = None
     created_at: datetime
     updated_at: Optional[datetime] = None
+
+    class Config:
+        from_attributes = True
+
+class AssetResponse(BaseModel):
+    id: str
+    asset_type: Optional[str] = None
+    file_name: str
+    file_size_bytes: int
+    s3_url: str
+    mime_type: Optional[str] = None
+    created_at: datetime
 
     class Config:
         from_attributes = True

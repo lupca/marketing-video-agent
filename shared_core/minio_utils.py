@@ -1,4 +1,5 @@
 import os
+import io
 from minio import Minio
 from minio.error import S3Error
 
@@ -44,6 +45,8 @@ def upload_bytes_to_minio(object_name: str, file_data, length: int, content_type
     """
     try:
         ensure_bucket_exists()
+        if isinstance(file_data, bytes):
+            file_data = io.BytesIO(file_data)
         minio_client.put_object(MINIO_BUCKET_NAME, object_name, file_data, length, content_type=content_type)
         return f"s3://{MINIO_BUCKET_NAME}/{object_name}"
     except Exception as e:
@@ -55,10 +58,28 @@ def download_file_from_minio(object_name: str, file_path: str):
     Download a file from MinIO to the local filesystem.
     """
     try:
+        os.makedirs(os.path.dirname(file_path), exist_ok=True)
         minio_client.fget_object(MINIO_BUCKET_NAME, object_name, file_path)
         return file_path
     except Exception as e:
         print(f"Failed to download {object_name} to {file_path}: {e}")
+        raise e
+
+def delete_object_from_minio(object_name: str):
+    """Delete an object from MinIO."""
+    try:
+        minio_client.remove_object(MINIO_BUCKET_NAME, object_name)
+    except Exception as e:
+        print(f"Failed to delete {object_name}: {e}")
+        raise e
+
+def list_objects_from_minio(prefix: str = ""):
+    """List objects in the bucket with optional prefix filter."""
+    try:
+        objects = minio_client.list_objects(MINIO_BUCKET_NAME, prefix=prefix, recursive=True)
+        return [{"name": obj.object_name, "size": obj.size} for obj in objects]
+    except Exception as e:
+        print(f"Failed to list objects: {e}")
         raise e
 
 def is_minio_path(path: str) -> bool:
