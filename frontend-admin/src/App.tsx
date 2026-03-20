@@ -1,8 +1,10 @@
 import { BrowserRouter as Router, Routes, Route, Link, useLocation, Navigate } from "react-router-dom";
-import { LayoutDashboard, Video, PlusSquare, Zap, LogOut, User as UserIcon } from "lucide-react";
+import { LayoutDashboard, Video, PlusSquare, Zap, LogOut, User as UserIcon, FolderHeart, Database } from "lucide-react";
 import Dashboard from "./pages/Dashboard";
 import CreateUnboxJob from "./pages/CreateUnboxJob";
 import CreateReviewJob from "./pages/CreateReviewJob";
+import Projects from "./pages/Projects";
+import Assets from "./pages/Assets";
 import Login from "./pages/Login";
 import Register from "./pages/Register";
 import { AuthProvider, useAuth } from "./context/AuthContext";
@@ -28,8 +30,10 @@ function Sidebar() {
 
   const links = [
     { name: "Command Center", href: "/", icon: LayoutDashboard },
-    { name: "Unbox Factory", href: "/create-unbox", icon: Video },
     { name: "Review Studio", href: "/create-review", icon: PlusSquare },
+    { name: "Projects", href: "/projects", icon: FolderHeart },
+    { name: "Assets", href: "/assets", icon: Database },
+    { name: "Unbox Factory", href: "/create-unbox", icon: Video },
   ];
 
   return (
@@ -104,6 +108,8 @@ function MainLayout() {
           <Route path="/" element={<Dashboard />} />
           <Route path="/create-unbox" element={<CreateUnboxJob />} />
           <Route path="/create-review" element={<CreateReviewJob />} />
+          <Route path="/projects" element={<Projects />} />
+          <Route path="/assets" element={<Assets />} />
         </Routes>
       </main>
     </div>
