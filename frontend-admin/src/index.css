@@ -1,0 +1,66 @@
+@tailwind base;
+@tailwind components;
+@tailwind utilities;
+
+@layer base {
+  :root {
+    /* Base background: deep dark blue */
+    --background: 230 40% 8%;
+    --foreground: 0 0% 100%;
+
+    /* Glassy cards */
+    --card: 230 35% 12%;
+    --card-foreground: 0 0% 100%;
+
+    --popover: 230 35% 12%;
+    --popover-foreground: 0 0% 100%;
+
+    /* Neon Purple/Blue Primary */
+    --primary: 265 80% 65%;
+    --primary-foreground: 0 0% 100%;
+
+    /* Deeper secondary elements */
+    --secondary: 230 40% 20%;
+    --secondary-foreground: 0 0% 100%;
+
+    /* Muted elements */
+    --muted: 230 30% 15%;
+    --muted-foreground: 220 20% 65%;
+
+    /* Accents (Hover states) */
+    --accent: 265 80% 65%;
+    --accent-foreground: 0 0% 100%;
+
+    --destructive: 0 84.2% 60.2%;
+    --destructive-foreground: 0 0% 100%;
+
+    /* Borders and rings */
+    --border: 230 35% 22%;
+    --input: 230 35% 22%;
+    --ring: 265 80% 65%;
+
+    --radius: 1rem;
+  }
+}
+
+@layer base {
+  * {
+    @apply border-border;
+  }
+  body {
+    @apply bg-background text-foreground;
+    /* Soft cosmic gradient background */
+    background-image: radial-gradient(circle at 15% 50%, rgba(98, 30, 201, 0.15), transparent 45%), 
+                      radial-gradient(circle at 85% 30%, rgba(30, 80, 201, 0.15), transparent 45%);
+    background-attachment: fixed;
+  }
+}
+
+/* Custom premium classes */
+.glass-panel {
+  @apply bg-black/40 backdrop-blur-xl border border-white/10 rounded-2xl shadow-[0_8px_32px_rgba(0,0,0,0.3)];
+}
+
+.glowing-button {
+  @apply relative overflow-hidden bg-gradient-to-r from-violet-600 to-indigo-600 hover:from-violet-500 hover:to-indigo-500 border border-white/20 shadow-[0_0_20px_rgba(124,58,237,0.3)] hover:shadow-[0_0_30px_rgba(124,58,237,0.5)] transition-all duration-300;
+}

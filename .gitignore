@@ -1,0 +1,10 @@
+.venv
+.venv-api
+venv
+raw
+output
+input
+__pycache__
+logo
+models/
+node_modules

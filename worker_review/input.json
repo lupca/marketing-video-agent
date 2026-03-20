@@ -1,0 +1,98 @@
+{
+  "metadata": {
+    "project_id": "yonex_astrox_lite_45i_review"
+  },
+  "assets": {
+    "logo": {
+      "width": 160,
+      "x": 48,
+      "y": 160,
+      "opacity": 0.90
+    },
+    "audio": {
+      "voiceover_path": "raw/voice.mp3",
+      "voiceover_script": "raw/voice.txt",
+      "voiceover_lang": "vi",
+      "whisper_device": "cpu",
+      "bgm_path": "raw/bgm_trending.mp3"
+    },
+    "video_folders": {
+      "01_hook": "raw/1/",
+      "02_pain_point": "raw/2/",
+      "03_reveal": "raw/3/",
+      "04_educate": "raw/4/",
+      "05_proof": "raw/5/",
+      "07_cta": "raw/6/"
+    }
+  },
+  "timeline_script": [
+    {
+      "segment": "01_hook",
+      "time_range": [0.0, 6.5],
+      "video_source": "01_hook",
+      "text_overlay": "SAI LẦM CHẾT NGƯỜI!",
+      "highlight_words": ["MƯỜI MỘT KÝ", "MƯỜI HAI KÝ", "SAI LẦM"],
+      "visual_effects": ["camera_shake", "snap_zoom"],
+      "pacing": { "min_clip_duration": 0.5, "max_clip_duration": 1.2 }
+    },
+    {
+    "segment": "02_pain_point",
+      "time_range": [6.5, 16.5],
+      "video_source": "02_pain_point",
+      "text_overlay": "ĐỪNG ĐÚ THEO IDOL!",
+      "highlight_words": ["IDOL", "NỔ ĐÙNG ĐÙNG", "CỔ TAY", "CHƯA ĐỦ"],
+      "visual_effects": ["snap_zoom"],
+      "pacing": { "min_clip_duration": 0.8, "max_clip_duration": 1.5 }
+    },
+    {
+      "segment": "03_reveal",
+      "time_range": [16.5, 29.5],
+      "video_source": "03_reveal",
+      "text_overlay": "HỦY HOẠI XƯƠNG KHỚP",
+      "highlight_words": ["ĐIỂM NGỌT", "DỘI NGƯỢC", "CHẤN ĐỘNG", "ĐAU RÁT", "Ê BUỐT"],
+      "visual_effects": ["slow_motion_0.5x", "camera_shake"],
+      "pacing": { "min_clip_duration": 1.0, "max_clip_duration": 2.0 }
+    },
+    {
+      "segment": "04_educate",
+      "time_range": [29.5, 46.0],
+      "video_source": "04_educate",
+      "text_overlay": "CON SỐ VÀNG: 9.5 - 10.5 KG",
+      "highlight_words": ["9.5 - 10.5 KÝ", "LÒ XO", "ĐÀN HỒI", "TRỢ LỰC"],
+      "visual_effects": [],
+      "pacing": { "min_clip_duration": 1.2, "max_clip_duration": 2.2 }
+    },
+    {
+      "segment": "05_proof",
+      "time_range": [46.0, 52.5],
+      "video_source": "05_proof",
+      "text_overlay": "THỬ GIẢM 1 KÝ ĐI!",
+      "highlight_words": ["GIẢM 1 KÝ", "CẢM ƠN"],
+      "visual_effects": ["camera_shake"],
+      "pacing": { "min_clip_duration": 0.5, "max_clip_duration": 1.5 }
+    },
+    {
+      "segment": "07_cta",
+      "time_range": [52.5, 56.0],
+      "video_source": "07_cta",
+      "text_overlay": "BẠN ĐAN BAO NHIÊU KÝ?",
+      "highlight_words": ["BAO NHIÊU KÝ", "COMMENT"],
+      "visual_effects": ["snap_zoom"],
+      "pacing": { "min_clip_duration": 1.5, "max_clip_duration": 3.0 }
+    }
+  ],
+  "render_settings": {
+    "resolution": [1080, 1920],
+    "auto_subtitle": true,
+    "pacing": {
+      "min_clip_duration": 1.2,
+      "max_clip_duration": 1.8
+    },
+    "text_style": {
+      "position": "center",
+      "font_size": 80,
+      "color": "yellow",
+      "high_contrast_outline": true
+    }
+  }
+}

@@ -1,0 +1,114 @@
+services:
+  db:
+    image: postgres:15-alpine
+    container_name: video_db
+    environment:
+      POSTGRES_USER: admin
+      POSTGRES_PASSWORD: password123
+      POSTGRES_DB: video_creator
+    ports:
+      - "5432:5432"
+    volumes:
+      - postgres_data:/var/lib/postgresql/data
+    restart: always
+
+  redis:
+    image: redis:7-alpine
+    container_name: video_redis
+    ports:
+      - "6379:6379"
+    restart: always
+
+  minio:
+    image: minio/minio:latest
+    container_name: video_minio
+    ports:
+      - "9000:9000"
+      - "9001:9001"
+    environment:
+      MINIO_ROOT_USER: minioadmin
+      MINIO_ROOT_PASSWORD: minioadmin
+    command: server /data --console-address ":9001"
+    volumes:
+      - minio_data:/data
+    restart: always
+
+  api:
+    build:
+      context: .
+      dockerfile: admin-api/Dockerfile
+    container_name: video_api
+    ports:
+      - "8000:8000"
+    environment:
+      - DATABASE_URL=postgresql://admin:password123@db:5432/video_creator
+      - REDIS_URL=redis://redis:6379/0
+      - MINIO_ENDPOINT=minio:9000
+      - MINIO_ACCESS_KEY=minioadmin
+      - MINIO_SECRET_KEY=minioadmin
+      - MINIO_BUCKET_NAME=videos
+      - MINIO_SECURE=false
+    depends_on:
+      - db
+      - redis
+      - minio
+    restart: always
+
+  worker_review:
+    build:
+      context: .
+      dockerfile: worker_review/Dockerfile
+    container_name: worker_review
+    environment:
+      - DATABASE_URL=postgresql://admin:password123@db:5432/video_creator
+      - REDIS_URL=redis://redis:6379/0
+      - MINIO_ENDPOINT=minio:9000
+      - MINIO_ACCESS_KEY=minioadmin
+      - MINIO_SECRET_KEY=minioadmin
+      - MINIO_BUCKET_NAME=videos
+      - HF_HOME=/models/huggingface
+      - TORCH_HOME=/models/torch
+      - XDG_CACHE_HOME=/models/cache
+    volumes:
+      - ./models:/models
+    depends_on:
+      - db
+      - redis
+      - minio
+    restart: always
+
+  worker_unbox:
+    build:
+      context: .
+      dockerfile: worker_unbox/Dockerfile
+    container_name: worker_unbox
+    environment:
+      - DATABASE_URL=postgresql://admin:password123@db:5432/video_creator
+      - REDIS_URL=redis://redis:6379/0
+      - MINIO_ENDPOINT=minio:9000
+      - MINIO_ACCESS_KEY=minioadmin
+      - MINIO_SECRET_KEY=minioadmin
+      - MINIO_BUCKET_NAME=videos
+      - XDG_CACHE_HOME=/models/cache
+    volumes:
+      - ./models:/models
+    depends_on:
+      - db
+      - redis
+      - minio
+    restart: always
+
+  frontend:
+    build:
+      context: ./frontend-admin
+      dockerfile: Dockerfile
+    container_name: video_frontend
+    ports:
+      - "3000:80"
+    depends_on:
+      - api
+    restart: always
+
+volumes:
+  postgres_data:
+  minio_data:
