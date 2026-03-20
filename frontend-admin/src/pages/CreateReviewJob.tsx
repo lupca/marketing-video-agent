@@ -1,21 +1,26 @@
 import { useState, useRef } from "react"
 import axios from "axios"
 import { useNavigate } from "react-router-dom"
+import api from "../lib/api"
 import {
   Loader2, ChevronRight, CheckCircle2, Upload, Music, FileText,
-  Video, Plus, Trash2, Send, Sparkles, AlertCircle, Mic, Film, Zap
+  Video, Plus, Trash2, Send, Sparkles, AlertCircle, Mic, Film, Zap, Folder
 } from "lucide-react"
 import { cn } from "../lib/utils"
-
-const API = "http://localhost:8000"
 
 /* ─── Types ──────────────────────────────────────────────────── */
 
 interface UploadedFile {
   file: File
+  id: string | null
   s3_url: string | null
   uploading: boolean
   progress: number
+}
+
+interface Project {
+  id: string
+  name: string
 }
 
 interface Segment {
@@ -62,11 +67,25 @@ export default function CreateReviewJob() {
   const [step, setStep] = useState(1)
 
   // Step 1: Project & Audio
-  const [projectName, setProjectName] = useState("")
+  const [projects, setProjects] = useState<Project[]>([])
+  const [selectedProjectId, setSelectedProjectId] = useState("")
+  const [newProjectName, setNewProjectName] = useState("")
+  const [isCreatingProject, setIsCreatingProject] = useState(false)
   const [voiceover, setVoiceover] = useState<UploadedFile | null>(null)
   const [script, setScript] = useState<UploadedFile | null>(null)
   const [bgm, setBgm] = useState<UploadedFile | null>(null)
   const [language, setLanguage] = useState("vi")
+
+  // Load projects on mount
+  import("react").then(({ useEffect }) => {
+    useEffect(() => {
+      api.get("/api/projects").then(res => {
+        setProjects(res.data)
+        if (res.data.length > 0) setSelectedProjectId(res.data[0].id)
+        else setIsCreatingProject(true)
+      }).catch(console.error)
+    }, [])
+  })
 
   // Step 2: Segments
   const [segments, setSegments] = useState<Segment[]>([
@@ -94,14 +113,14 @@ export default function CreateReviewJob() {
     file: File,
     assetType: string,
     segmentName?: string
-  ): Promise<string> => {
+  ): Promise<{s3_url: string, id: string}> => {
     const formData = new FormData()
     formData.append("file", file)
     formData.append("asset_type", assetType)
     if (segmentName) formData.append("segment_name", segmentName)
 
-    const res = await axios.post(`${API}/api/assets/upload`, formData)
-    return res.data.s3_url
+    const res = await api.post(`/api/assets/upload`, formData)
+    return { s3_url: res.data.s3_url, id: res.data.id }
   }
 
   /* ─── Handle file selection for audio ──────────────────────── */
@@ -111,7 +130,7 @@ export default function CreateReviewJob() {
     setter: (f: UploadedFile | null) => void
   ) => {
     if (!file) return
-    setter({ file, s3_url: null, uploading: false, progress: 0 })
+    setter({ file, id: null, s3_url: null, uploading: false, progress: 0 })
   }
 
   /* ─── Handle clip files for a segment ──────────────────────── */
@@ -120,7 +139,7 @@ export default function CreateReviewJob() {
     if (!files) return
     const newSegments = [...segments]
     const newClips: UploadedFile[] = Array.from(files).map(f => ({
-      file: f, s3_url: null, uploading: false, progress: 0
+      file: f, id: null, s3_url: null, uploading: false, progress: 0
     }))
     newSegments[index].clips = [...newSegments[index].clips, ...newClips]
     setSegments(newSegments)
@@ -173,7 +192,8 @@ export default function CreateReviewJob() {
   /* ─── Submit: Upload all files then create job ─────────────── */
 
   const handleSubmit = async () => {
-    if (!projectName.trim()) return setError("Vui lòng nhập tên dự án")
+    if (!isCreatingProject && !selectedProjectId) return setError("Vui lòng chọn dự án")
+    if (isCreatingProject && !newProjectName.trim()) return setError("Vui lòng nhập tên dự án mới")
     if (!voiceover) return setError("Vui lòng chọn file voiceover")
     if (!script) return setError("Vui lòng chọn file kịch bản")
 
@@ -181,16 +201,31 @@ export default function CreateReviewJob() {
     setError(null)
 
     try {
-      // 1. Upload audio files
+      // 0. Create Project if needed
+      let targetProjectId = selectedProjectId;
+      if (isCreatingProject && newProjectName.trim()) {
+        setUploadStatus("Đang tạo dự án...")
+        const projRes = await api.post("/api/projects", { name: newProjectName.trim() })
+        targetProjectId = projRes.data.id;
+      }
+
       setUploadStatus("Đang upload voiceover...")
-      const voUrl = await uploadFile(voiceover.file, "voiceover")
+      const { s3_url: voUrl, id: voId } = await uploadFile(voiceover.file, "voiceover")
+      
       setUploadStatus("Đang upload kịch bản...")
-      const scriptUrl = await uploadFile(script.file, "script")
+      const { s3_url: scriptUrl, id: scriptId } = await uploadFile(script.file, "script")
+      
       let bgmUrl = ""
+      let bgmId = ""
       if (bgm) {
         setUploadStatus("Đang upload nhạc nền...")
-        bgmUrl = await uploadFile(bgm.file, "bgm")
+        const res = await uploadFile(bgm.file, "bgm")
+        bgmUrl = res.s3_url
+        bgmId = res.id
       }
+
+      const allAssetIds = [voId, scriptId]
+      if (bgmId) allAssetIds.push(bgmId)
 
       // 2. Upload segment clips
       const videoFolders: Record<string, string> = {}
@@ -203,8 +238,9 @@ export default function CreateReviewJob() {
         // Upload each clip
         const clipUrls: string[] = []
         for (const clip of seg.clips) {
-          const url = await uploadFile(clip.file, "segment_clip", seg.name)
-          clipUrls.push(url)
+          const res = await uploadFile(clip.file, "segment_clip", seg.name)
+          clipUrls.push(res.s3_url)
+          allAssetIds.push(res.id)
         }
 
         // The s3 folder prefix for this segment
@@ -231,7 +267,7 @@ export default function CreateReviewJob() {
       // 3. Build config_data
       setUploadStatus("Đang tạo job...")
       const configData = {
-        metadata: { project_id: projectName.trim().replace(/\s+/g, "_").toLowerCase() },
+        metadata: { project_id: targetProjectId },
         assets: {
           logo: { width: 160, x: 48, y: 160, opacity: 0.9 },
           audio: {
@@ -258,10 +294,12 @@ export default function CreateReviewJob() {
       }
 
       // 4. Create job
-      await axios.post(`${API}/api/jobs`, {
+      await api.post(`/api/jobs`, {
         job_type: "review",
+        project_id: targetProjectId,
         priority,
         config_data: configData,
+        asset_ids: allAssetIds
       })
 
       navigate("/")
@@ -276,7 +314,7 @@ export default function CreateReviewJob() {
 
   /* ─── Validation helpers ───────────────────────────────────── */
 
-  const canGoStep2 = projectName.trim() && voiceover && script
+  const canGoStep2 = (isCreatingProject ? newProjectName.trim() : selectedProjectId) && voiceover && script
   const canGoStep3 = segments.length > 0 && segments.every(s => s.clips.length > 0)
 
   /* ─── Render ───────────────────────────────────────────────── */
@@ -325,18 +363,56 @@ export default function CreateReviewJob() {
         {/* ═══ STEP 1: Audio & Project ═══ */}
         {step === 1 && (
           <div className="space-y-8 animate-in fade-in slide-in-from-right-8 duration-500">
-            {/* Project Name */}
-            <div className="space-y-2">
+            {/* Project Selection / Creation */}
+            <div className="space-y-4">
               <label className="text-sm font-semibold text-white/90 uppercase tracking-wider flex items-center gap-2">
-                <Sparkles className="w-4 h-4 text-primary" /> Tên dự án
+                <Folder className="w-4 h-4 text-primary" /> Dự án
               </label>
-              <input
-                type="text"
-                value={projectName}
-                onChange={e => setProjectName(e.target.value)}
-                placeholder="Ví dụ: review_vot_yonex_astrox"
-                className="flex h-12 w-full rounded-xl border border-white/10 bg-white/5 px-4 py-2 text-base text-white focus:outline-none focus:ring-2 focus:ring-primary/50 transition-all placeholder:text-muted-foreground/50"
-              />
+
+              <div className="flex flex-col sm:flex-row gap-4">
+                <button
+                  type="button"
+                  onClick={() => setIsCreatingProject(false)}
+                  className={cn("flex-1 px-4 py-3 rounded-xl border flex items-center gap-2 justify-center transition-all", !isCreatingProject ? "bg-primary/20 border-primary text-white shadow-[0_0_15px_rgba(124,58,237,0.3)]" : "bg-white/5 border-white/10 text-muted-foreground hover:bg-white/10")}
+                >
+                  <Folder className="w-4 h-4" /> Chọn dự án có sẵn
+                </button>
+                <button
+                  type="button"
+                  onClick={() => setIsCreatingProject(true)}
+                  className={cn("flex-1 px-4 py-3 rounded-xl border flex items-center gap-2 justify-center transition-all", isCreatingProject ? "bg-primary/20 border-primary text-white shadow-[0_0_15px_rgba(124,58,237,0.3)]" : "bg-white/5 border-white/10 text-muted-foreground hover:bg-white/10")}
+                >
+                  <Plus className="w-4 h-4" /> Tạo dự án mới
+                </button>
+              </div>
+
+              {isCreatingProject ? (
+                <div className="space-y-2 animate-in fade-in slide-in-from-top-2">
+                  <input
+                    type="text"
+                    value={newProjectName}
+                    onChange={e => setNewProjectName(e.target.value)}
+                    placeholder="Tên dự án mới..."
+                    className="flex h-12 w-full rounded-xl border border-white/10 bg-white/5 px-4 py-2 text-base text-white focus:outline-none focus:ring-2 focus:ring-primary/50 transition-all placeholder:text-muted-foreground/50"
+                  />
+                </div>
+              ) : (
+                <div className="space-y-2 animate-in fade-in slide-in-from-top-2">
+                  <select
+                    value={selectedProjectId}
+                    onChange={e => setSelectedProjectId(e.target.value)}
+                    className="flex h-12 w-full rounded-xl border border-white/10 bg-white/5 px-4 py-2 text-base text-white focus:outline-none focus:ring-2 focus:ring-primary/50 transition-all appearance-none"
+                  >
+                    {projects.length === 0 ? (
+                      <option disabled value="" className="bg-[#1A1A24]">Bạn chưa có dự án nào</option>
+                    ) : (
+                      projects.map(p => (
+                        <option key={p.id} value={p.id} className="bg-[#1A1A24]">{p.name}</option>
+                      ))
+                    )}
+                  </select>
+                </div>
+              )}
             </div>
 
             {/* Audio Uploads */}
@@ -657,7 +733,7 @@ export default function CreateReviewJob() {
                 <div className="space-y-3">
                   <p className="text-muted-foreground font-semibold uppercase text-xs tracking-wider">Dự án & Âm thanh</p>
                   <div className="space-y-2">
-                    <p className="text-white flex justify-between border-b border-white/10 pb-2"><span>Tên dự án:</span> <span className="font-medium">{projectName}</span></p>
+                    <p className="text-white flex justify-between border-b border-white/10 pb-2"><span>Dự án:</span> <span className="font-medium">{isCreatingProject ? newProjectName : projects.find(p => p.id === selectedProjectId)?.name || "Chưa chọn"}</span></p>
                     <p className="text-white flex justify-between border-b border-white/10 pb-2"><span>Voiceover:</span> <span className="font-medium text-green-400">{voiceover?.file.name || "—"}</span></p>
                     <p className="text-white flex justify-between border-b border-white/10 pb-2"><span>Kịch bản:</span> <span className="font-medium text-green-400">{script?.file.name || "—"}</span></p>
                     <p className="text-white flex justify-between border-b border-white/10 pb-2"><span>Nhạc nền:</span> <span className="font-medium">{bgm?.file.name || "Không có"}</span></p>

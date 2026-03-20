@@ -1,5 +1,5 @@
 import { useState } from "react"
-import axios from "axios"
+import api from "../lib/api"
 import { useNavigate } from "react-router-dom"
 import { UploadCloud, Plus, Trash2, Loader2, ChevronRight, CheckCircle2, Video, FileText, Send } from "lucide-react"
 import { cn } from "../lib/utils"
@@ -29,8 +29,8 @@ export default function CreateUnboxJob() {
   const uploadFile = async (file: File) => {
     const formData = new FormData()
     formData.append("file", file)
-    const res = await axios.post("http://localhost:8000/api/upload", formData)
-    return res.data.url
+    const res = await api.post("/api/assets/upload", formData)
+    return res.data.s3_url
   }
 
   const handleSubmit = async () => {
@@ -61,7 +61,7 @@ export default function CreateUnboxJob() {
         }
       }
 
-      await axios.post("http://localhost:8000/api/jobs", payload)
+      await api.post("/api/jobs", payload)
       navigate("/")
     } catch (err: any) {
       console.error(err)

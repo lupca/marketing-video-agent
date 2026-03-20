@@ -1,5 +1,5 @@
 import { useEffect, useState } from "react"
-import axios from "axios"
+import api from "../lib/api"
 import { format } from "date-fns"
 import { AlertCircle, Clock, CheckCircle2, LayoutDashboard, RefreshCw, Download, ChevronDown, ChevronUp, Timer, ExternalLink } from "lucide-react"
 import { cn } from "../lib/utils"
@@ -44,7 +44,7 @@ export default function Dashboard() {
 
   const fetchJobs = async () => {
     try {
-      const res = await axios.get("http://localhost:8000/api/jobs")
+      const res = await api.get("/api/jobs")
       setJobs(res.data)
     } catch (e) {
       console.error(e)

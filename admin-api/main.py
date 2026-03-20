@@ -1,8 +1,9 @@
 import os
 import uuid
-from fastapi import FastAPI, Depends, HTTPException, UploadFile, File, Form, Query
+from fastapi import FastAPI, Depends, HTTPException, UploadFile, File, Form, Query, status
 from fastapi.middleware.cors import CORSMiddleware
 from sqlalchemy.orm import Session
+from sqlalchemy import or_
 from typing import List, Optional
 from datetime import timedelta
 
@@ -12,6 +13,9 @@ from shared_core.minio_utils import (
     delete_object_from_minio, get_object_name
 )
 import celery_client
+
+# Import Auth logic
+import auth
 
 # Create DB Tables
 models.Base.metadata.create_all(bind=database.engine)
@@ -27,6 +31,51 @@ app.add_middleware(
     allow_headers=["*"],
 )
 
+
+# ─── Auth APIs ───────────────────────────────────────────────────────────────
+
+@app.post("/api/auth/register", response_model=schemas.UserResponse)
+def register(user: schemas.UserCreate, db: Session = Depends(database.get_db)):
+    db_user = db.query(models.User).filter(models.User.email == user.email).first()
+    if db_user:
+        raise HTTPException(status_code=400, detail="Email already registered")
+    
+    hashed_password = auth.get_password_hash(user.password)
+    new_user = models.User(email=user.email, password_hash=hashed_password)
+    db.add(new_user)
+    db.commit()
+    db.refresh(new_user)
+    return new_user
+
+@app.post("/api/auth/login", response_model=schemas.Token)
+def login(user: schemas.UserCreate, db: Session = Depends(database.get_db)):
+    db_user = db.query(models.User).filter(models.User.email == user.email).first()
+    if not db_user or not auth.verify_password(user.password, db_user.password_hash):
+        raise HTTPException(status_code=401, detail="Incorrect email or password")
+    
+    access_token = auth.create_access_token(data={"sub": db_user.id})
+    return {"access_token": access_token, "token_type": "bearer", "user_id": db_user.id, "email": db_user.email}
+
+@app.get("/api/auth/me", response_model=schemas.UserResponse)
+def get_me(current_user: models.User = Depends(auth.get_current_user)):
+    return current_user
+
+
+# ─── Project APIs ─────────────────────────────────────────────────────────────
+
+@app.post("/api/projects", response_model=schemas.ProjectResponse)
+def create_project(project: schemas.ProjectCreate, db: Session = Depends(database.get_db), current_user: models.User = Depends(auth.get_current_user)):
+    db_proj = models.Project(name=project.name, description=project.description, user_id=current_user.id)
+    db.add(db_proj)
+    db.commit()
+    db.refresh(db_proj)
+    return db_proj
+
+@app.get("/api/projects", response_model=List[schemas.ProjectResponse])
+def get_projects(db: Session = Depends(database.get_db), current_user: models.User = Depends(auth.get_current_user)):
+    return db.query(models.Project).filter(models.Project.user_id == current_user.id).order_by(models.Project.created_at.desc()).all()
+
+
 # ─── Asset APIs ──────────────────────────────────────────────────────────────
 
 @app.post("/api/assets/upload", response_model=schemas.AssetResponse)
@@ -34,20 +83,14 @@ async def upload_asset(
     file: UploadFile = File(...),
     asset_type: str = Form("video"),
     segment_name: Optional[str] = Form(None),
-    db: Session = Depends(database.get_db)
+    db: Session = Depends(database.get_db),
+    current_user: models.User = Depends(auth.get_current_user)
 ):
-    """
-    Upload an asset file to MinIO and save metadata in the Asset table.
-
-    asset_type: voiceover, script, bgm, segment_clip
-    segment_name: e.g. '01_hook', '02_pain_point' (only for segment_clip)
-    """
     try:
         file_bytes = await file.read()
         file_size = len(file_bytes)
         uid = str(uuid.uuid4())[:8]
 
-        # Organize files in MinIO by type
         if segment_name:
             object_name = f"assets/segments/{segment_name}/{uid}_{file.filename}"
         else:
@@ -55,8 +98,8 @@ async def upload_asset(
 
         s3_url = upload_bytes_to_minio(object_name, file_bytes, file_size, file.content_type)
 
-        # Save to Asset table
         asset = models.Asset(
+            user_id=current_user.id,
             asset_type=asset_type,
             file_name=file.filename,
             file_size_bytes=file_size,
@@ -66,29 +109,24 @@ async def upload_asset(
         db.add(asset)
         db.commit()
         db.refresh(asset)
-
         return asset
-
     except Exception as e:
         raise HTTPException(status_code=500, detail=str(e))
-
 
 @app.get("/api/assets", response_model=List[schemas.AssetResponse])
 def list_assets(
     asset_type: Optional[str] = Query(None),
-    db: Session = Depends(database.get_db)
+    db: Session = Depends(database.get_db),
+    current_user: models.User = Depends(auth.get_current_user)
 ):
-    """List assets with optional type filter."""
-    query = db.query(models.Asset).order_by(models.Asset.created_at.desc())
+    query = db.query(models.Asset).filter(models.Asset.user_id == current_user.id).order_by(models.Asset.created_at.desc())
     if asset_type:
         query = query.filter(models.Asset.asset_type == asset_type)
     return query.limit(200).all()
 
-
 @app.delete("/api/assets/{asset_id}")
-def delete_asset(asset_id: str, db: Session = Depends(database.get_db)):
-    """Delete an asset from DB and MinIO."""
-    asset = db.query(models.Asset).filter(models.Asset.id == asset_id).first()
+def delete_asset(asset_id: str, db: Session = Depends(database.get_db), current_user: models.User = Depends(auth.get_current_user)):
+    asset = db.query(models.Asset).filter(models.Asset.id == asset_id, models.Asset.user_id == current_user.id).first()
     if not asset:
         raise HTTPException(status_code=404, detail="Asset not found")
 
@@ -96,31 +134,22 @@ def delete_asset(asset_id: str, db: Session = Depends(database.get_db)):
         obj_name = get_object_name(asset.s3_url)
         delete_object_from_minio(obj_name)
     except Exception:
-        pass  # File might already be gone from MinIO
+        pass
 
     db.delete(asset)
     db.commit()
     return {"status": "deleted", "id": asset_id}
 
 
-# ─── Legacy Upload (backwards compat) ────────────────────────────────────────
-
-@app.post("/api/upload")
-async def upload_file_legacy(file: UploadFile = File(...)):
-    """Upload an asset to MinIO and return the s3:// URL (legacy endpoint)."""
-    try:
-        file_bytes = await file.read()
-        object_name = f"uploads/{file.filename}"
-        s3_url = upload_bytes_to_minio(object_name, file_bytes, len(file_bytes), file.content_type)
-        return {"status": "success", "url": s3_url}
-    except Exception as e:
-        raise HTTPException(status_code=500, detail=str(e))
-
-
 # ─── Job APIs ────────────────────────────────────────────────────────────────
 
 @app.post("/api/jobs", response_model=schemas.JobResponse)
-def create_job(job: schemas.JobCreate, db: Session = Depends(database.get_db)):
+def create_job(job: schemas.JobCreate, db: Session = Depends(database.get_db), current_user: models.User = Depends(auth.get_current_user)):
+    # Verify project ownership
+    proj = db.query(models.Project).filter(models.Project.id == job.project_id, models.Project.user_id == current_user.id).first()
+    if not proj:
+        raise HTTPException(status_code=403, detail="Project not found or access denied")
+
     db_job = models.VideoJob(
         job_type=job.job_type,
         config_data=job.config_data,
@@ -134,6 +163,17 @@ def create_job(job: schemas.JobCreate, db: Session = Depends(database.get_db)):
     db.commit()
     db.refresh(db_job)
 
+    # Link assets
+    if job.asset_ids:
+        # Verify assets belong to user
+        valid_assets = db.query(models.Asset.id).filter(models.Asset.id.in_(job.asset_ids), models.Asset.user_id == current_user.id).all()
+        valid_asset_ids = [a.id for a in valid_assets]
+        for aid in valid_asset_ids:
+            job_asset = models.JobAsset(job_id=db_job.id, asset_id=aid)
+            db.add(job_asset)
+        db.commit()
+
+    # Queue worker task
     queue_name = f"{job.job_type}_queue"
     try:
         celery_client.celery_app.send_task(
@@ -151,21 +191,21 @@ def create_job(job: schemas.JobCreate, db: Session = Depends(database.get_db)):
     return db_job
 
 @app.get("/api/jobs", response_model=List[schemas.JobResponse])
-def get_jobs(skip: int = 0, limit: int = 100, db: Session = Depends(database.get_db)):
-    jobs = db.query(models.VideoJob).order_by(models.VideoJob.id.desc()).offset(skip).limit(limit).all()
+def get_jobs(skip: int = 0, limit: int = 100, db: Session = Depends(database.get_db), current_user: models.User = Depends(auth.get_current_user)):
+    # Jobs are joined via Project to User
+    jobs = db.query(models.VideoJob).join(models.Project).filter(models.Project.user_id == current_user.id).order_by(models.VideoJob.id.desc()).offset(skip).limit(limit).all()
     return jobs
 
 @app.get("/api/jobs/{job_id}", response_model=schemas.JobResponse)
-def get_job(job_id: int, db: Session = Depends(database.get_db)):
-    job = db.query(models.VideoJob).filter(models.VideoJob.id == job_id).first()
+def get_job(job_id: int, db: Session = Depends(database.get_db), current_user: models.User = Depends(auth.get_current_user)):
+    job = db.query(models.VideoJob).join(models.Project).filter(models.VideoJob.id == job_id, models.Project.user_id == current_user.id).first()
     if job is None:
         raise HTTPException(status_code=404, detail="Job not found")
     return job
 
 @app.get("/api/jobs/{job_id}/download")
-def get_download_url(job_id: int, db: Session = Depends(database.get_db)):
-    """Generate a presigned download URL for the job's output video."""
-    job = db.query(models.VideoJob).filter(models.VideoJob.id == job_id).first()
+def get_download_url(job_id: int, db: Session = Depends(database.get_db), current_user: models.User = Depends(auth.get_current_user)):
+    job = db.query(models.VideoJob).join(models.Project).filter(models.VideoJob.id == job_id, models.Project.user_id == current_user.id).first()
     if job is None:
         raise HTTPException(status_code=404, detail="Job not found")
     if not job.result_url:
@@ -186,7 +226,6 @@ def get_download_url(job_id: int, db: Session = Depends(database.get_db)):
         return {"download_url": url}
     except Exception as e:
         raise HTTPException(status_code=500, detail=str(e))
-
 
 @app.get("/api/health")
 def health_check():
