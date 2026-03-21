@@ -765,14 +765,9 @@ class Renderer:
         # Audio filter for speed ramp
         af_args = []
         if segment.speed_factor > 1.0:
-            # Chain atempo filters (each max 2.0x)
-            remaining = segment.speed_factor
-            atempo_chain = []
-            while remaining > 2.0:
-                atempo_chain.append("atempo=2.0")
-                remaining /= 2.0
-            atempo_chain.append(f"atempo={remaining:.4f}")
-            af_args = ["-af", ",".join(atempo_chain)]
+            # Pitch-shifted chipmunk effect
+            new_rate = int(44100 * segment.speed_factor)
+            af_args = ["-af", f"asetrate={new_rate},aresample=44100"]
 
         # Encoder args
         enc_args = self._get_encoder_args()
@@ -785,6 +780,7 @@ class Renderer:
             "-vf", vf,
             *af_args,
             *enc_args,
+            "-c:a", "aac",
             "-pix_fmt", "yuv420p",
             "-movflags", "+faststart",
             str(out),
@@ -836,14 +832,14 @@ class Renderer:
                     f":d=1:s={self.width}x{self.height}"
                     f":fps={self.fps}[v{i}]"
                 )
-                concat_inputs.append(f"[v{i}]")
+                concat_inputs.append(f"[v{i}][{i}:a]")
             else:
-                concat_inputs.append(f"[{i}:v]")
+                concat_inputs.append(f"[{i}:v][{i}:a]")
 
         # Concat all video streams
         concat_input_str = "".join(concat_inputs)
         filter_parts.append(
-            f"{concat_input_str}concat=n={n}:v=1:a=0[vout]"
+            f"{concat_input_str}concat=n={n}:v=1:a=1[vout][aout]"
         )
 
         filter_complex = ";".join(filter_parts)
@@ -854,12 +850,12 @@ class Renderer:
             self._ffmpeg, "-y", "-hide_banner", "-loglevel", "error",
             *inputs,
             "-filter_complex", filter_complex,
-            "-map", "[vout]",
+            "-map", "[vout]", "-map", "[aout]",
             *enc_args,
+            "-c:a", "aac",
             "-pix_fmt", "yuv420p",
             "-r", str(self.fps),
             "-movflags", "+faststart",
-            "-an",
             str(out),
         ]
 
@@ -1356,7 +1352,17 @@ def make_unbox_viral(
     src_fps = _probe_fps(primary_video)
     segment_files: List[Path] = []
 
+    actual_beat_time_in_video = 0.0
+    accumulated_video_duration = 0.0
+    beat_found = False
+
     for i, seg in enumerate(processed_segments):
+        actual_duration = (seg.end - seg.start) / seg.speed_factor
+        if not beat_found and seg.is_beat_cut:
+            actual_beat_time_in_video = accumulated_video_duration
+            beat_found = True
+        accumulated_video_duration += actual_duration
+
         seg_out = tmp_dir / f"segment_{i:04d}.mp4"
         logger.info(
             f"  Rendering segment {i}: {seg.start:.1f}-{seg.end:.1f}s "
@@ -1395,10 +1401,16 @@ def make_unbox_viral(
     logger.info("[6/6] Mixing audio + final render...")
     logger.info("=" * 60)
 
+    # Extract synced audio from the concatenated video
+    synced_audio = tmp_dir / "synced_audio.wav"
+    audio_analyzer.extract_original_audio(concat_out, synced_audio)
+
     video_duration = renderer._probe_duration(video_for_mux)
     mixed_audio = tmp_dir / "mixed_audio.wav"
+    
+    mix_beat_time = actual_beat_time_in_video if beat_found else first_beat
     audio_analyzer.mix_audio(
-        original_audio, audio_path, first_beat,
+        synced_audio, audio_path, mix_beat_time,
         video_duration, mixed_audio,
     )
 
