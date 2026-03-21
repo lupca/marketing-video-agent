@@ -70,7 +70,12 @@ export function useJobs(autoRefresh: boolean = false, refreshIntervalMs: number 
     return res.data;
   };
 
+  const getJob = async (id: number): Promise<VideoJob> => {
+    const res = await api.get(`/api/jobs/${id}`);
+    return res.data;
+  };
+
   const hasProcessing = jobs.some(j => j.status === "PROCESSING");
 
-  return { jobs, loading, refreshing, error, fetchJobs, deleteJob, getDownloadUrl, getJobLogs, hasProcessing };
+  return { jobs, loading, refreshing, error, fetchJobs, deleteJob, getDownloadUrl, getJobLogs, getJob, hasProcessing };
 }

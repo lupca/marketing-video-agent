@@ -1,6 +1,6 @@
 import { useEffect, useState } from "react"
-import { useNavigate } from "react-router-dom"
-import { UploadCloud, Plus, Folder, Trash2, ChevronRight, CheckCircle2, Video, FileText, Send } from "lucide-react"
+import { useNavigate, useSearchParams } from "react-router-dom"
+import { UploadCloud, Plus, Folder, Trash2, ChevronRight, CheckCircle2, Video, FileText, Send, Copy } from "lucide-react"
 import api from "../lib/api"
 import { cn } from "../lib/utils"
 import { useAssets } from "../hooks/useAssets"
@@ -18,9 +18,13 @@ interface TextEvent {
 
 export default function CreateUnboxJob() {
   const navigate = useNavigate()
+  const [searchParams] = useSearchParams()
+  const cloneJobId = searchParams.get("clone")
   const { uploadAsset } = useAssets()
   const { projects, createProject } = useProjects()
   const [step, setStep] = useState(1)
+  const [cloneLoading, setCloneLoading] = useState(!!cloneJobId)
+  const clonedFromId = cloneJobId
 
   // Data State
   const [selectedProjectId, setSelectedProjectId] = useState("")
@@ -44,6 +48,63 @@ export default function CreateUnboxJob() {
   const [loading, setLoading] = useState(false)
   const [error, setError] = useState<string | null>(null)
   const [uploadStatus, setUploadStatus] = useState("")
+
+  // Clone pre-fill: fetch original job data and populate form
+  useEffect(() => {
+    if (!cloneJobId) return
+    let cancelled = false
+    const loadClone = async () => {
+      try {
+        setCloneLoading(true)
+        const res = await api.get(`/api/jobs/${cloneJobId}`)
+        const job = res.data
+        if (cancelled) return
+
+        // Pre-fill project
+        if (job.project_id) setSelectedProjectId(job.project_id)
+        if (job.priority !== undefined) setPriority(job.priority)
+
+        const cfg = job.config_data || {}
+
+        // Pre-fill clips as asset references (s3_url only, no File object)
+        if (cfg.clips && Array.isArray(cfg.clips)) {
+          const clonedClips: UploadedFile[] = cfg.clips.map((url: string) => ({
+            file: undefined,
+            id: null,
+            s3_url: url,
+            asset: { id: "", s3_url: url, file_name: url.split("/").pop() || "clip", file_size_bytes: 0, asset_type: "clip", mime_type: "video/mp4", created_at: "" },
+            uploading: false,
+            progress: 0,
+          }))
+          setClips(clonedClips)
+        }
+
+        // Pre-fill audio
+        if (cfg.audio) {
+          const audioUrl = cfg.audio as string
+          setAudio({
+            file: undefined,
+            id: null,
+            s3_url: audioUrl,
+            asset: { id: "", s3_url: audioUrl, file_name: audioUrl.split("/").pop() || "audio", file_size_bytes: 0, asset_type: "audio", mime_type: "audio/mpeg", created_at: "" },
+            uploading: false,
+            progress: 0,
+          })
+        }
+
+        // Pre-fill text events
+        if (cfg.text_events && Array.isArray(cfg.text_events)) {
+          setTextEvents(cfg.text_events)
+        }
+      } catch (err) {
+        console.error("Failed to load cloned job:", err)
+      } finally {
+        if (!cancelled) setCloneLoading(false)
+      }
+    }
+    loadClone()
+    return () => { cancelled = true }
+  }, [cloneJobId])
 
   const handleSubmit = async () => {
     if (!clips || clips.length === 0) return setError("Please select at least 1 video clip")
@@ -123,10 +184,27 @@ export default function CreateUnboxJob() {
         <h2 className="text-4xl font-extrabold tracking-tight bg-clip-text text-transparent bg-gradient-to-r from-white to-white/60">
           Create Viral Unbox
         </h2>
-        <p className="text-muted-foreground text-lg">
+      <p className="text-muted-foreground text-lg">
           Upload raw vertical clips and sync them with trending audio.
         </p>
       </div>
+
+      {clonedFromId && (
+        <div className="glass-panel p-4 flex items-center gap-3 bg-amber-500/10 border border-amber-500/20 rounded-xl animate-in fade-in">
+          <Copy className="w-5 h-5 text-amber-400 shrink-0" />
+          <div>
+            <p className="text-sm font-medium text-amber-300">Bản sao từ Job #{clonedFromId}</p>
+            <p className="text-xs text-amber-400/70">Chỉnh sửa nội dung bên dưới rồi gửi để tạo video mới.</p>
+          </div>
+        </div>
+      )}
+
+      {cloneLoading ? (
+        <div className="glass-panel p-16 flex flex-col items-center justify-center gap-4 text-muted-foreground">
+          <div className="w-8 h-8 border-2 border-primary border-t-transparent rounded-full animate-spin"></div>
+          <p>Đang tải dữ liệu từ Job #{cloneJobId}...</p>
+        </div>
+      ) : (
 
       <div className="glass-panel p-6 lg:p-10 flex flex-col space-y-10">
         <div className="flex items-center justify-between w-full border-b border-white/10 pb-8">
@@ -468,6 +546,7 @@ export default function CreateUnboxJob() {
           </div>
         )}
       </div>
+      )}
     </div>
   )
 }

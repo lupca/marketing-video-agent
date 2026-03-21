@@ -1,6 +1,6 @@
 import { useState, useEffect } from "react";
-import { useNavigate } from "react-router-dom";
-import { CheckCircle2, Music, Film, Zap, Send, AlertCircle } from "lucide-react";
+import { useNavigate, useSearchParams } from "react-router-dom";
+import { CheckCircle2, Music, Film, Zap, Send, AlertCircle, Copy } from "lucide-react";
 import api from "../lib/api";
 import { cn } from "../lib/utils";
 import { useProjects } from "../hooks/useProjects";
@@ -20,7 +20,10 @@ const STEPS = [
 
 export default function CreateReviewJob() {
   const navigate = useNavigate();
+  const [searchParams] = useSearchParams();
+  const cloneJobId = searchParams.get("clone");
   const [step, setStep] = useState(1);
+  const [cloneLoading, setCloneLoading] = useState(!!cloneJobId);
 
   // Custom Hooks
   const { projects, createProject } = useProjects();
@@ -59,6 +62,84 @@ export default function CreateReviewJob() {
   const [loading, setLoading] = useState(false);
   const [error, setError] = useState<string | null>(null);
   const [uploadStatus, setUploadStatus] = useState("");
+
+  // Clone pre-fill: fetch original job data and populate form
+  useEffect(() => {
+    if (!cloneJobId) return;
+    let cancelled = false;
+    const loadClone = async () => {
+      try {
+        setCloneLoading(true);
+        const res = await api.get(`/api/jobs/${cloneJobId}`);
+        const job = res.data;
+        if (cancelled) return;
+
+        // Pre-fill project
+        if (job.project_id) {
+          setSelectedProjectId(job.project_id);
+          setIsCreatingProject(false);
+        }
+        if (job.priority !== undefined) setPriority(job.priority);
+
+        const cfg = job.config_data || {};
+
+        // Pre-fill audio assets
+        if (cfg.assets?.audio) {
+          const audio = cfg.assets.audio;
+          if (audio.voiceover_path) {
+            setVoiceover({
+              id: null, s3_url: audio.voiceover_path, uploading: false, progress: 0,
+              asset: { id: "", s3_url: audio.voiceover_path, file_name: audio.voiceover_path.split("/").pop() || "voiceover", file_size_bytes: 0, asset_type: "voiceover", mime_type: "audio/mpeg", created_at: "" },
+            });
+          }
+          if (audio.voiceover_script) {
+            setScript({
+              id: null, s3_url: audio.voiceover_script, uploading: false, progress: 0,
+              asset: { id: "", s3_url: audio.voiceover_script, file_name: audio.voiceover_script.split("/").pop() || "script", file_size_bytes: 0, asset_type: "script", mime_type: "text/plain", created_at: "" },
+            });
+          }
+          if (audio.voiceover_lang) setLanguage(audio.voiceover_lang);
+          if (audio.bgm_path) {
+            setBgm({
+              id: null, s3_url: audio.bgm_path, uploading: false, progress: 0,
+              asset: { id: "", s3_url: audio.bgm_path, file_name: audio.bgm_path.split("/").pop() || "bgm", file_size_bytes: 0, asset_type: "bgm", mime_type: "audio/mpeg", created_at: "" },
+            });
+          }
+        }
+
+        // Pre-fill segments from timeline_script
+        if (cfg.timeline_script && Array.isArray(cfg.timeline_script)) {
+          const clonedSegments: Segment[] = cfg.timeline_script.map((ts: any) => ({
+            name: ts.segment || ts.video_source || "segment",
+            label: ts.segment || "Segment",
+            timeStart: ts.time_range?.[0] || 0,
+            timeEnd: ts.time_range?.[1] || 5,
+            clips: [], // Clips need to be re-selected
+            textOverlay: ts.text_overlay || "",
+            highlightWords: (ts.highlight_words || []).join(", "),
+            effects: ts.visual_effects || [],
+            pacingMin: ts.pacing?.min_clip_duration || 0.5,
+            pacingMax: ts.pacing?.max_clip_duration || 1.2,
+          }));
+          setSegments(clonedSegments);
+        }
+
+        // Pre-fill render settings
+        if (cfg.render_settings) {
+          const rs = cfg.render_settings;
+          if (rs.auto_subtitle !== undefined) setAutoSubtitle(rs.auto_subtitle);
+          if (rs.text_style?.font_size) setFontSize(rs.text_style.font_size);
+          if (rs.text_style?.color) setTextColor(rs.text_style.color);
+        }
+      } catch (err) {
+        console.error("Failed to load cloned job:", err);
+      } finally {
+        if (!cancelled) setCloneLoading(false);
+      }
+    };
+    loadClone();
+    return () => { cancelled = true; };
+  }, [cloneJobId]);
 
   const handleSubmit = async () => {
     if (!isCreatingProject && !selectedProjectId) return setError("Vui lòng chọn dự án");
@@ -181,6 +262,23 @@ export default function CreateReviewJob() {
         </p>
       </div>
 
+      {cloneJobId && (
+        <div className="glass-panel p-4 flex items-center gap-3 bg-amber-500/10 border border-amber-500/20 rounded-xl animate-in fade-in">
+          <Copy className="w-5 h-5 text-amber-400 shrink-0" />
+          <div>
+            <p className="text-sm font-medium text-amber-300">Bản sao từ Job #{cloneJobId}</p>
+            <p className="text-xs text-amber-400/70">Chỉnh sửa nội dung bên dưới rồi gửi để tạo video mới.</p>
+          </div>
+        </div>
+      )}
+
+      {cloneLoading ? (
+        <div className="glass-panel p-16 flex flex-col items-center justify-center gap-4 text-muted-foreground">
+          <div className="w-8 h-8 border-2 border-primary border-t-transparent rounded-full animate-spin"></div>
+          <p>Đang tải dữ liệu từ Job #{cloneJobId}...</p>
+        </div>
+      ) : (
+
       <div className="glass-panel p-6 lg:p-10 flex flex-col space-y-10">
         <div className="flex items-center justify-between w-full border-b border-white/10 pb-8">
           {STEPS.map((s, idx) => (
@@ -256,6 +354,7 @@ export default function CreateReviewJob() {
           />
         )}
       </div>
+      )}
     </div>
   );
 }

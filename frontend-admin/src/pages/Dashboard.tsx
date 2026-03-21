@@ -1,4 +1,5 @@
 import { useState, useEffect } from "react";
+import { useNavigate } from "react-router-dom";
 import { LayoutDashboard, RefreshCw } from "lucide-react";
 import { cn } from "../lib/utils";
 import { useJobs } from "../hooks/useJobs";
@@ -10,6 +11,7 @@ import { Button } from "../components/ui/Button";
 import { Card } from "../components/ui/Card";
 
 export default function Dashboard() {
+  const navigate = useNavigate();
   const { jobs, loading, refreshing, fetchJobs, deleteJob, getDownloadUrl, getJobLogs, hasProcessing } = useJobs(true, 5000);
   
   const [selectedJob, setSelectedJob] = useState<VideoJob | null>(null);
@@ -80,6 +82,10 @@ export default function Dashboard() {
     }
   };
 
+  const handleCopyJob = (job: VideoJob) => {
+    navigate(`/create-${job.job_type}?clone=${job.id}`);
+  };
+
   const stats = [
     { label: "Total Jobs", value: jobs.length, color: "text-white" },
     { label: "Success", value: jobs.filter(j => j.status === "SUCCESS").length, color: "text-emerald-400" },
@@ -136,6 +142,7 @@ export default function Dashboard() {
             onDeleteJob={handleDeleteJob}
             onDownloadJob={handleDownloadJob}
             onWatchJob={handleWatchJob}
+            onCopyJob={handleCopyJob}
           />
         )}
       </Card>

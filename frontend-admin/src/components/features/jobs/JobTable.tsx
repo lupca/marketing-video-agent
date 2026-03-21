@@ -1,5 +1,5 @@
 import React, { useState } from "react";
-import { CheckCircle2, Clock, AlertCircle, ChevronDown, ChevronUp, Timer, Download, ExternalLink, Eye, Trash2, Play } from "lucide-react";
+import { CheckCircle2, Clock, AlertCircle, ChevronDown, ChevronUp, Timer, Download, ExternalLink, Eye, Trash2, Play, Copy } from "lucide-react";
 import { cn } from "../../../lib/utils";
 import { formatDuration, formatDate } from "../../../lib/format";
 import type { VideoJob } from "../../../hooks/useJobs";
@@ -16,10 +16,11 @@ interface JobTableProps {
   onDeleteJob: (id: number) => void;
   onDownloadJob: (id: number) => void;
   onWatchJob?: (id: number) => void;
+  onCopyJob?: (job: VideoJob) => void;
   deletingId: number | null;
 }
 
-export function JobTable({ jobs, onViewDetails, onDeleteJob, onDownloadJob, onWatchJob, deletingId }: JobTableProps) {
+export function JobTable({ jobs, onViewDetails, onDeleteJob, onDownloadJob, onWatchJob, onCopyJob, deletingId }: JobTableProps) {
   const [expandedError, setExpandedError] = useState<number | null>(null);
 
   if (jobs.length === 0) {
@@ -166,6 +167,15 @@ export function JobTable({ jobs, onViewDetails, onDeleteJob, onDownloadJob, onWa
                       </>
                     )}
                     <div className="w-px h-4 bg-white/10 mx-1"></div>
+                    {onCopyJob && (
+                      <button
+                        onClick={() => onCopyJob(job)}
+                        className="p-1.5 rounded-lg hover:bg-amber-500/10 hover:text-amber-400 transition-colors"
+                        title="Sao chép & Chỉnh sửa"
+                      >
+                        <Copy className="h-4 w-4" />
+                      </button>
+                    )}
                     <button
                       onClick={() => onViewDetails(job)}
                       className="p-1.5 rounded-lg hover:bg-indigo-500/10 hover:text-indigo-400 transition-colors"

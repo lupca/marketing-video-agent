@@ -1,5 +1,5 @@
 import { useState, useEffect } from "react";
-import { useParams, Link } from "react-router-dom";
+import { useParams, Link, useNavigate } from "react-router-dom";
 import { FolderHeart, ChevronLeft, RefreshCw, Plus, Activity, AlertCircle, Video } from "lucide-react";
 import { useProjects } from "../hooks/useProjects";
 import type { Project } from "../hooks/useProjects";
@@ -13,6 +13,7 @@ import { Card } from "../components/ui/Card";
 
 export default function ProjectDetails() {
   const { id } = useParams<{ id: string }>();
+  const navigate = useNavigate();
   const { getProject } = useProjects();
   const { jobs, loading: jobsLoading, refreshing, fetchJobs, deleteJob, getDownloadUrl, getJobLogs, hasProcessing } = useJobs(true, 5000, id);
   
@@ -104,6 +105,10 @@ export default function ProjectDetails() {
       console.error(e);
       alert(e?.response?.data?.detail || "Error getting watch URL");
     }
+  };
+
+  const handleCopyJob = (job: VideoJob) => {
+    navigate(`/create-${job.job_type}?clone=${job.id}`);
   };
 
   if (loadingProj) {
@@ -258,6 +263,7 @@ export default function ProjectDetails() {
               onDeleteJob={handleDeleteJob}
               onDownloadJob={handleDownloadJob}
               onWatchJob={handleWatchJob}
+              onCopyJob={handleCopyJob}
             />
           )}
         </Card>
