@@ -821,18 +821,42 @@ class Renderer:
         filter_parts = []
         concat_inputs = []
 
+        main_drop_applied = False
+
         for i in range(n):
             seg = segments[i] if i < len(segments) else None
+            next_seg = segments[i+1] if i + 1 < len(segments) else None
+            is_pre_beat = next_seg and next_seg.is_beat_cut
 
-            if seg and seg.is_beat_cut:
-                # Zoom-in 115% effect for beat-synced segments
+            if is_pre_beat and not main_drop_applied:
+                # 1. Main Drop anticipation (Blackout)
+                # Apply 0.15s fade out to black at the end of the segment
+                dur = (seg.end - seg.start) / seg.speed_factor if seg else 0.0
+                fade_start = max(0.0, dur - 0.15)
                 filter_parts.append(
-                    f"[{i}:v]zoompan=z='min(zoom+0.003,1.15)'"
-                    f":x='iw/2-(iw/zoom)/2':y='ih/2-(ih/zoom)/2'"
-                    f":d=1:s={self.width}x{self.height}"
-                    f":fps={self.fps}[v{i}]"
+                    f"[{i}:v]fade=t=out:st={fade_start:.3f}:d=0.15:color=black[v{i}]"
                 )
                 concat_inputs.append(f"[v{i}][{i}:a]")
+
+            elif seg and seg.is_beat_cut:
+                if not main_drop_applied:
+                    # 2 & 3. Main Drop (Flash Cut + Impact Punch)
+                    filter_parts.append(
+                        f"[{i}:v]fade=t=in:st=0:d=0.15:color=white,"
+                        f"zoompan=z='if(lt(time,0.25), 1.3 - (time/0.25)*0.2, 1.1)'"
+                        f":d=1:x='iw/2-(iw/zoom)/2':y='ih/2-(ih/zoom)/2'"
+                        f":s={self.width}x{self.height}:fps={self.fps}[v{i}]"
+                    )
+                    concat_inputs.append(f"[v{i}][{i}:a]")
+                    main_drop_applied = True
+                else:
+                    # Minor Beat Drop (Subtle 105% static zoom)
+                    filter_parts.append(
+                        f"[{i}:v]zoompan=z='1.05'"
+                        f":d=1:x='iw/2-(iw/zoom)/2':y='ih/2-(ih/zoom)/2'"
+                        f":s={self.width}x{self.height}:fps={self.fps}[v{i}]"
+                    )
+                    concat_inputs.append(f"[v{i}][{i}:a]")
             else:
                 concat_inputs.append(f"[{i}:v][{i}:a]")
 

@@ -11,7 +11,7 @@ import { AssetSelectModal } from "../components/ui/AssetSelectModal"
 import type { UploadedFile } from "../components/features/review/types"
 
 interface TextEvent {
-  time: number
+  time?: number | null
   text: string
   effect: "hook" | "feature"
 }
@@ -390,7 +390,7 @@ export default function CreateUnboxViralJob() {
               </div>
               <button
                 type="button"
-                onClick={() => setTextEvents([...textEvents, { time: 0, text: "", effect: "feature" }])}
+                onClick={() => setTextEvents([...textEvents, { time: null, text: "", effect: "feature" }])}
                 className="inline-flex items-center bg-white/5 hover:bg-white/10 border border-white/10 rounded-xl text-sm font-medium transition-colors h-10 px-4 text-white"
               >
                 <Plus className="mr-2 h-4 w-4 text-primary" /> Add Overlay
@@ -405,35 +405,20 @@ export default function CreateUnboxViralJob() {
                   </div>
 
                   <div className="flex-1 space-y-4">
-                    <div className="grid grid-cols-2 gap-4">
-                      <div className="space-y-1.5">
-                        <label className="text-xs font-semibold text-muted-foreground uppercase tracking-wider">Timestamp (sec)</label>
-                        <input
-                          type="number" step="0.1" min="0" required
-                          className="flex h-11 w-full rounded-xl border border-white/10 bg-white/5 px-4 py-2 text-sm text-white focus:outline-none focus:ring-2 focus:ring-primary/50 transition-all"
-                          value={ev.time}
-                          onChange={(e) => {
-                            const newEvents = [...textEvents];
-                            newEvents[idx].time = parseFloat(e.target.value);
-                            setTextEvents(newEvents);
-                          }}
-                        />
-                      </div>
-                      <div className="space-y-1.5">
-                        <label className="text-xs font-semibold text-muted-foreground uppercase tracking-wider">Effect Style</label>
-                        <select
-                          className="flex h-11 w-full rounded-xl border border-white/10 bg-white/5 px-4 py-2 text-sm text-white focus:outline-none focus:ring-2 focus:ring-primary/50 transition-all appearance-none"
-                          value={ev.effect}
-                          onChange={(e) => {
-                            const newEvents = [...textEvents];
-                            newEvents[idx].effect = e.target.value as "hook" | "feature";
-                            setTextEvents(newEvents);
-                          }}
-                        >
+                    <div className="space-y-1.5">
+                      <label className="text-xs font-semibold text-muted-foreground uppercase tracking-wider">Effect Style</label>
+                      <select
+                        className="flex h-11 w-full rounded-xl border border-white/10 bg-white/5 px-4 py-2 text-sm text-white focus:outline-none focus:ring-2 focus:ring-primary/50 transition-all appearance-none"
+                        value={ev.effect}
+                        onChange={(e) => {
+                          const newEvents = [...textEvents];
+                          newEvents[idx].effect = e.target.value as "hook" | "feature";
+                          setTextEvents(newEvents);
+                        }}
+                      >
                           <option value="hook" className="bg-[#1A1A24]">🎯 Hook (Center Large)</option>
                           <option value="feature" className="bg-[#1A1A24]">✨ Feature (Slide-in)</option>
                         </select>
-                      </div>
                     </div>
                     <div className="space-y-1.5">
                       <label className="text-xs font-semibold text-muted-foreground uppercase tracking-wider">Overlay Text</label>
