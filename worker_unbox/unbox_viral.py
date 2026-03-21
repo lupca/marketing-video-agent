@@ -31,6 +31,8 @@ import librosa
 import numpy as np
 from PIL import Image, ImageDraw, ImageFont
 
+from shared_core.audio_utils import enforce_early_beat_drop
+
 logger = logging.getLogger(__name__)
 
 # ╔══════════════════════════════════════════════════════════════════════════════╗
@@ -1324,31 +1326,17 @@ def make_unbox_viral(
     first_beat = beat_times[0] if beat_times else 3.0
 
     # ── Pacing Constraint: Trim long intro if beat drop arrives too late ──
-    #   On TikTok, viewers scroll away if the first 3-5s have no action.
-    #   If the first beat drop is past BEAT_DROP_DEADLINE_SEC, we trim the
-    #   MP3 intro so the beat drop lands in the 3.0-4.5s sweet spot.
-    if first_beat > BEAT_DROP_DEADLINE_SEC:
-        target_beat_time = (BEAT_DROP_TARGET_MIN + BEAT_DROP_TARGET_MAX) / 2
-        trim_amount = first_beat - target_beat_time
-        logger.warning(
-            f"  ⚠ First beat drop at {first_beat:.2f}s is too late "
-            f"(deadline: {BEAT_DROP_DEADLINE_SEC}s). "
-            f"Trimming {trim_amount:.2f}s from MP3 intro."
-        )
-
-        trimmed_audio = tmp_dir / f"trimmed_{audio_path.name}"
-        audio_path = audio_analyzer.trim_audio_intro(
-            audio_path, trim_amount, trimmed_audio,
-        )
-
-        # Re-detect beats on the trimmed audio
-        beat_infos = audio_analyzer.detect_beats(audio_path)
-        beat_times = [b.time for b in beat_infos]
-        first_beat = beat_times[0] if beat_times else target_beat_time
-
-        logger.info(
-            f"  → After trim: first beat now at {first_beat:.2f}s"
-        )
+    audio_path, beat_times, was_trimmed = enforce_early_beat_drop(
+        audio_path=audio_path,
+        beat_times=beat_times,
+        temp_dir=tmp_dir,
+        ffmpeg_bin=audio_analyzer._ffmpeg,
+        detect_beat_func=lambda p: [b.time for b in audio_analyzer.detect_beats(p)],
+    )
+    
+    if was_trimmed:
+        first_beat = beat_times[0] if beat_times else 3.75
+        logger.info(f"  → After trim: first beat now at {first_beat:.2f}s")
         logger.info(f"  → Re-detected {len(beat_times)} beats: {beat_times[:10]}")
 
     # ── Step 2: Extract Original Audio ──────────────────────────────────

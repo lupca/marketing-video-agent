@@ -31,6 +31,8 @@ import numpy as np
 from moviepy.editor import CompositeVideoClip, ImageClip, VideoFileClip
 from PIL import Image, ImageDraw, ImageFont
 
+from shared_core.audio_utils import enforce_early_beat_drop
+
 # rembg is optional – fallback to plain xfade when unavailable
 try:
     from rembg import remove as rembg_remove
@@ -1322,6 +1324,17 @@ def make_viral(work_dir: str = ".", config: dict = None, preview: bool = False) 
     drops = detect_beat_drops(tiktok_mp3)
     print(f"  → {len(drops)} beat drops")
     print(f"  → Mẫu: {drops[:12]}")
+
+    tiktok_mp3_path, drops, was_trimmed = enforce_early_beat_drop(
+        audio_path=Path(tiktok_mp3),
+        beat_times=drops,
+        temp_dir=work_path / ".viral_tmp",
+        ffmpeg_bin=shutil.which("ffmpeg"),
+        detect_beat_func=detect_beat_drops,
+    )
+    tiktok_mp3 = str(tiktok_mp3_path)
+    if was_trimmed:
+        print(f"  → Đã cắt intro audio, beat đầu tiên rơi vào {drops[0]:.2f}s")
 
     print("\n" + "=" * 60)
     print("[2/3] Render video (9:16 crop + beat-sync + nhạc TikTok)...")
