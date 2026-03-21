@@ -6,6 +6,7 @@ export interface Project {
   name: string;
   description?: string;
   created_at: string;
+  jobs_count: number;
 }
 
 export function useProjects() {
@@ -41,5 +42,19 @@ export function useProjects() {
     setProjects(prev => prev.filter(p => p.id !== id));
   };
 
-  return { projects, loading, error, fetchProjects, createProject, deleteProject };
+  const getProject = useCallback(async (id: string) => {
+    try {
+      setLoading(true);
+      setError(null);
+      const res = await api.get(`/api/projects/${id}`);
+      return res.data;
+    } catch (err: any) {
+      setError(err?.response?.data?.detail || err.message || "Failed to fetch project");
+      throw err;
+    } finally {
+      setLoading(false);
+    }
+  }, []);
+
+  return { projects, loading, error, fetchProjects, createProject, deleteProject, getProject };
 }

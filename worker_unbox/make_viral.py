@@ -711,16 +711,17 @@ def _build_drawtext(ev: TextEvent, *, font_path: Path, font_size_hook: int,
               "shadowx=2:shadowy=2:shadowcolor=black@0.85")
     if ev.effect == "hook":
         return (f"drawtext={common}:fontsize={font_size_hook}:"
-                "x=(w-text_w)/2:y=(h/3)-(text_h/2):enable='between(t,0,3)'")
+                "x='(w-text_w)/2':y='(h/3)-(text_h/2)':enable='between(t,0,3)'")
     s = max(0.0, ev.start)
     e = s + max(0.2, feature_duration)
     prog = f"(t-{s:.3f})/{slide_duration:.3f}"
     ease = f"(1-pow(1-{prog},3))"
-    x = (f"if(lt(t,{s:.3f})\\,-text_w-80\\,"
-         f"if(lt(t,{s + slide_duration:.3f})\\,"
-         f"(-text_w-80)+((w*0.08)+text_w+80)*{ease}\\,w*0.08))")
+    x = (f"'if(lt(t,{s:.3f}),-text_w-80,"
+         f"if(lt(t,{s + slide_duration:.3f}),"
+         f"(-text_w-80)+((w*0.08)+text_w+80)*{ease},w*0.08))'")
+    y = "'(h*0.72)-(text_h/2)'"
     return (f"drawtext={common}:fontsize={font_size_feature}:"
-            f"x={x}:y=(h*0.72)-(text_h/2):enable='between(t,{s:.3f},{e:.3f})'")
+            f"x={x}:y={y}:enable='between(t,{s:.3f},{e:.3f})'")
 
 
 # ╔══════════════════════════════════════════════════════════════════════════╗

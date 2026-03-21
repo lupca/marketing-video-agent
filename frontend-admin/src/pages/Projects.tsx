@@ -1,6 +1,7 @@
 import { useState } from "react"
 import { format } from "date-fns"
-import { FolderHeart, Plus, RefreshCw, FileText, Trash2, AlertCircle, CheckCircle2 } from "lucide-react"
+import { FolderHeart, Plus, RefreshCw, FileText, Trash2, AlertCircle, CheckCircle2, Video } from "lucide-react"
+import { Link } from "react-router-dom"
 import { useProjects } from "../hooks/useProjects"
 import { Button } from "../components/ui/Button"
 import { Modal } from "../components/ui/Modal"
@@ -159,35 +160,46 @@ export default function Projects() {
       ) : (
         <div className="grid grid-cols-1 md:grid-cols-2 lg:grid-cols-3 gap-6 animate-in fade-in slide-in-from-bottom-8 duration-700">
           {projects.map((proj) => (
-            <Card key={proj.id} className="p-6 flex flex-col group hover:-translate-y-1 transition-transform duration-300">
-              <div className="flex items-start justify-between mb-4">
-                <div className="w-12 h-12 rounded-2xl bg-gradient-to-br from-primary/20 to-indigo-500/20 flex items-center justify-center border border-white/10 group-hover:border-primary/30 transition-colors">
-                  <FolderHeart className="w-6 h-6 text-primary group-hover:drop-shadow-[0_0_8px_rgba(124,58,237,0.8)] transition-all" />
+            <Card key={proj.id} className="p-6 flex flex-col group hover:-translate-y-2 hover:shadow-[0_8px_30px_rgba(124,58,237,0.15)] hover:border-primary/40 transition-all duration-300 relative overflow-hidden bg-white/5 backdrop-blur-md">
+              <div className="absolute top-0 right-0 w-32 h-32 bg-primary/5 rounded-full blur-3xl -mr-10 -mt-10 group-hover:bg-primary/20 transition-colors duration-500"></div>
+              
+              <div className="flex items-start justify-between mb-4 relative z-10">
+                <div className="w-12 h-12 rounded-2xl bg-gradient-to-br from-primary/20 to-indigo-500/20 flex items-center justify-center border border-white/10 group-hover:border-primary/50 transition-colors shadow-inner group-hover:shadow-[inset_0_0_20px_rgba(124,58,237,0.2)]">
+                  <FolderHeart className="w-6 h-6 text-primary group-hover:drop-shadow-[0_0_12px_rgba(124,58,237,0.8)] transition-all" />
                 </div>
-                <span className="text-[10px] font-bold uppercase tracking-wider text-muted-foreground/70 bg-white/5 px-2 py-1 rounded-md">
-                  ID: {proj.id}
-                </span>
+                <div className="flex flex-col items-end gap-1.5">
+                  <span className="text-[10px] font-bold uppercase tracking-wider text-muted-foreground/70 bg-black/40 px-2 py-1 rounded-md border border-white/5">
+                    ID: {proj.id.split('-')[0]}
+                  </span>
+                  <div className="flex items-center gap-1.5 bg-blue-500/10 text-blue-400 text-xs font-bold px-2 py-1 rounded-md border border-blue-500/20 group-hover:bg-blue-500/20 transition-colors">
+                    <Video className="w-3.5 h-3.5" />
+                    {proj.jobs_count} Videos
+                  </div>
+                </div>
               </div>
-              <h3 className="text-xl font-bold text-white mb-2 line-clamp-1">{proj.name}</h3>
-              <p className="text-sm text-muted-foreground line-clamp-2 flex-grow mb-6 min-h-[40px]">
+              <h3 className="text-xl font-bold text-white mb-2 line-clamp-1 relative z-10 group-hover:text-primary-100 transition-colors">{proj.name}</h3>
+              <p className="text-sm text-muted-foreground line-clamp-2 flex-grow mb-6 min-h-[40px] relative z-10">
                 {proj.description || <span className="italic text-muted-foreground/50">No description provided</span>}
               </p>
-              <div className="flex items-center justify-between border-t border-white/10 pt-4 mt-auto">
-                <div className="flex items-center gap-1.5 text-xs text-muted-foreground">
+              <div className="flex items-center justify-between border-t border-white/10 pt-4 mt-auto relative z-10">
+                <div className="flex items-center gap-1.5 text-xs text-muted-foreground bg-black/20 px-2.5 py-1.5 rounded-lg border border-white/5">
                   <FileText className="w-3.5 h-3.5" />
                   {format(new Date(proj.created_at), "MMM dd, yyyy")}
                 </div>
-                <div className="flex items-center gap-2">
-                  <button className="text-xs font-semibold text-primary hover:text-white transition-colors">
-                    View Setup →
-                  </button>
-                  <div className="w-px h-3 bg-white/10 mx-1"></div>
+                <div className="flex items-center gap-2 bg-black/20 p-1 rounded-xl border border-white/5">
+                  <Link 
+                    to={`/projects/${proj.id}`}
+                    className="text-xs font-bold text-primary hover:text-white hover:bg-primary px-3 py-1.5 rounded-lg transition-all"
+                  >
+                    View Project
+                  </Link>
+                  <div className="w-px h-4 bg-white/10 mx-1"></div>
                   <button
                     onClick={(e) => handleDeleteProject(proj.id, e)}
-                    className="p-1 rounded text-rose-400/50 hover:text-rose-400 hover:bg-rose-500/10 transition-colors"
+                    className="p-1.5 rounded-lg text-rose-400/50 hover:text-rose-400 hover:bg-rose-500/20 transition-colors"
                     title="Delete Project"
                   >
-                    <Trash2 className="w-3.5 h-3.5" />
+                    <Trash2 className="w-4 h-4" />
                   </button>
                 </div>
               </div>

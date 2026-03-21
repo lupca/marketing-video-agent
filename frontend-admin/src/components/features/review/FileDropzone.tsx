@@ -31,7 +31,7 @@ export function FileDropzone({
       </label>
       {selectedFile && (
         <div className="flex items-center gap-2 text-xs text-green-400 bg-green-400/10 p-2 rounded-lg border border-green-400/20">
-          <CheckCircle2 className="w-3.5 h-3.5" /> {selectedFile.file.name.length > 30 ? selectedFile.file.name.slice(0, 30) + '...' : selectedFile.file.name}
+          <CheckCircle2 className="w-3.5 h-3.5" /> {(selectedFile.file?.name || selectedFile.asset?.file_name || "").length > 30 ? (selectedFile.file?.name || selectedFile.asset?.file_name || "").slice(0, 30) + '...' : (selectedFile.file?.name || selectedFile.asset?.file_name || "")}
         </div>
       )}
     </div>

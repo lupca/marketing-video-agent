@@ -3,7 +3,7 @@
 from datetime import timedelta
 from fastapi import APIRouter, Depends, HTTPException
 from sqlalchemy.orm import Session
-from typing import List
+from typing import List, Optional
 
 from shared_core import models, schemas, database
 from shared_core.minio_utils import get_minio_client, get_bucket_name
@@ -85,16 +85,22 @@ def create_job(
 
 @router.get("", response_model=List[schemas.JobResponse])
 def get_jobs(
+    project_id: Optional[str] = None,
     skip: int = 0,
     limit: int = 100,
     db: Session = Depends(database.get_db),
     current_user: models.User = Depends(auth_module.get_current_user),
 ):
-    return (
+    query = (
         db.query(models.VideoJob)
         .join(models.Project)
         .filter(models.Project.user_id == current_user.id)
-        .order_by(models.VideoJob.id.desc())
+    )
+    if project_id:
+        query = query.filter(models.Project.id == project_id)
+        
+    return (
+        query.order_by(models.VideoJob.id.desc())
         .offset(skip)
         .limit(limit)
         .all()

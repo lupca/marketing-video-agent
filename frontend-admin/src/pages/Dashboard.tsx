@@ -5,6 +5,7 @@ import { useJobs } from "../hooks/useJobs";
 import type { VideoJob, JobLog } from "../hooks/useJobs";
 import { JobTable } from "../components/features/jobs/JobTable";
 import { JobDetailsModal } from "../components/features/jobs/JobDetailsModal";
+import { VideoPlayerModal } from "../components/features/jobs/VideoPlayerModal";
 import { Button } from "../components/ui/Button";
 import { Card } from "../components/ui/Card";
 
@@ -15,6 +16,7 @@ export default function Dashboard() {
   const [jobLogs, setJobLogs] = useState<JobLog[]>([]);
   const [loadingLogs, setLoadingLogs] = useState(false);
   const [deletingId, setDeletingId] = useState<number | null>(null);
+  const [watchUrl, setWatchUrl] = useState<string | null>(null);
 
   const handleRefresh = () => fetchJobs(true);
 
@@ -65,6 +67,16 @@ export default function Dashboard() {
     } catch (e: any) {
       console.error(e);
       alert(e?.response?.data?.detail || "Lỗi khi tải URL (Check API/MinIO)");
+    }
+  };
+
+  const handleWatchJob = async (id: number) => {
+    try {
+      const url = await getDownloadUrl(id);
+      if (url) setWatchUrl(url);
+    } catch (e: any) {
+      console.error(e);
+      alert(e?.response?.data?.detail || "Failed to get watch URL");
     }
   };
 
@@ -123,6 +135,7 @@ export default function Dashboard() {
             onViewDetails={handleViewDetails}
             onDeleteJob={handleDeleteJob}
             onDownloadJob={handleDownloadJob}
+            onWatchJob={handleWatchJob}
           />
         )}
       </Card>
@@ -133,6 +146,13 @@ export default function Dashboard() {
           logs={jobLogs}
           loadingLogs={loadingLogs}
           onClose={() => setSelectedJob(null)}
+        />
+      )}
+      
+      {watchUrl && (
+        <VideoPlayerModal 
+          url={watchUrl} 
+          onClose={() => setWatchUrl(null)} 
         />
       )}
     </div>

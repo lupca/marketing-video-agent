@@ -4,6 +4,7 @@ import Dashboard from "./pages/Dashboard";
 import CreateUnboxJob from "./pages/CreateUnboxJob";
 import CreateReviewJob from "./pages/CreateReviewJob";
 import Projects from "./pages/Projects";
+import ProjectDetails from "./pages/ProjectDetails";
 import Assets from "./pages/Assets";
 import SystemHealth from "./pages/SystemHealth";
 import Guides from "./pages/Guides";
@@ -113,6 +114,7 @@ function MainLayout() {
           <Route path="/create-unbox" element={<CreateUnboxJob />} />
           <Route path="/create-review" element={<CreateReviewJob />} />
           <Route path="/projects" element={<Projects />} />
+          <Route path="/projects/:id" element={<ProjectDetails />} />
           <Route path="/assets" element={<Assets />} />
           <Route path="/guides" element={<Guides />} />
           <Route path="/health" element={<SystemHealth />} />

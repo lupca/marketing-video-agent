@@ -34,9 +34,9 @@ export function ReviewSubmitStep(props: ReviewSubmitStepProps) {
             <p className="text-muted-foreground font-semibold uppercase text-xs tracking-wider">Dự án & Âm thanh</p>
             <div className="space-y-2">
               <p className="text-white flex justify-between border-b border-white/10 pb-2"><span>Dự án:</span> <span className="font-medium">{props.isCreatingProject ? props.newProjectName : props.projects.find(p => p.id === props.selectedProjectId)?.name || "Chưa chọn"}</span></p>
-              <p className="text-white flex justify-between border-b border-white/10 pb-2"><span>Voiceover:</span> <span className="font-medium text-green-400">{props.voiceover?.file.name || "—"}</span></p>
-              <p className="text-white flex justify-between border-b border-white/10 pb-2"><span>Kịch bản:</span> <span className="font-medium text-green-400">{props.script?.file.name || "—"}</span></p>
-              <p className="text-white flex justify-between border-b border-white/10 pb-2"><span>Nhạc nền:</span> <span className="font-medium">{props.bgm?.file.name || "Không có"}</span></p>
+              <p className="text-white flex justify-between border-b border-white/10 pb-2"><span>Voiceover:</span> <span className="font-medium text-green-400">{props.voiceover?.file?.name || props.voiceover?.asset?.file_name || "—"}</span></p>
+              <p className="text-white flex justify-between border-b border-white/10 pb-2"><span>Kịch bản:</span> <span className="font-medium text-green-400">{props.script?.file?.name || props.script?.asset?.file_name || "—"}</span></p>
+              <p className="text-white flex justify-between border-b border-white/10 pb-2"><span>Nhạc nền:</span> <span className="font-medium">{props.bgm?.file?.name || props.bgm?.asset?.file_name || "Không có"}</span></p>
               <p className="text-white flex justify-between border-b border-white/10 pb-2"><span>Ngôn ngữ:</span> <span>{props.language === "vi" ? "🇻🇳 Tiếng Việt" : "🇺🇸 English"}</span></p>
             </div>
           </div>

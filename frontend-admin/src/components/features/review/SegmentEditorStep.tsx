@@ -43,12 +43,12 @@ export function SegmentEditorStep({ segments, setSegments, onPrev, onNext, canGo
     setSegments(newSegments);
   };
 
-  const handleAssetSelect = (index: number, asset: Asset) => {
+  const handleAssetSelectMultiple = (index: number, assets: Asset[]) => {
     const newSegments = [...segments];
-    const newClip: UploadedFile = {
+    const newClips: UploadedFile[] = assets.map(asset => ({
       asset, id: asset.id, s3_url: asset.s3_url, uploading: false, progress: 0
-    };
-    newSegments[index].clips = [...newSegments[index].clips, newClip];
+    }));
+    newSegments[index].clips = [...newSegments[index].clips, ...newClips];
     setSegments(newSegments);
   };
 
@@ -235,7 +235,8 @@ export function SegmentEditorStep({ segments, setSegments, onPrev, onNext, canGo
               isOpen={modalOpenIdx === idx}
               onClose={() => setModalOpenIdx(null)}
               assetTypeFilter="clip"
-              onSelect={(asset) => handleAssetSelect(idx, asset)}
+              multiple={true}
+              onSelectMultiple={(assets) => handleAssetSelectMultiple(idx, assets)}
             />
           </div>
         ))}

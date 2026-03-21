@@ -1,9 +1,10 @@
-import { useState } from "react"
+import { useEffect, useState } from "react"
 import { useNavigate } from "react-router-dom"
-import { UploadCloud, Plus, Trash2, ChevronRight, CheckCircle2, Video, FileText, Send } from "lucide-react"
+import { UploadCloud, Plus, Folder, Trash2, ChevronRight, CheckCircle2, Video, FileText, Send } from "lucide-react"
 import api from "../lib/api"
 import { cn } from "../lib/utils"
-import { useAssets, type Asset } from "../hooks/useAssets"
+import { useAssets } from "../hooks/useAssets"
+import { useProjects } from "../hooks/useProjects"
 import { Button } from "../components/ui/Button"
 import { AssetSelector } from "../components/ui/AssetSelector"
 import { AssetSelectModal } from "../components/ui/AssetSelectModal"
@@ -18,12 +19,21 @@ interface TextEvent {
 export default function CreateUnboxJob() {
   const navigate = useNavigate()
   const { uploadAsset } = useAssets()
+  const { projects, createProject } = useProjects()
   const [step, setStep] = useState(1)
 
   // Data State
+  const [selectedProjectId, setSelectedProjectId] = useState("")
+  const [newProjectName, setNewProjectName] = useState("")
+  const [isCreatingProject, setIsCreatingProject] = useState(false)
   const [priority, setPriority] = useState<number>(0)
   const [clips, setClips] = useState<UploadedFile[]>([])
   const [audio, setAudio] = useState<UploadedFile | null>(null)
+  
+  useEffect(() => {
+    if (projects.length > 0 && !selectedProjectId) setSelectedProjectId(projects[0].id)
+    if (projects.length === 0) setIsCreatingProject(true)
+  }, [projects, selectedProjectId])
   
   const [modalOpen, setModalOpen] = useState(false)
   const [textEvents, setTextEvents] = useState<TextEvent[]>([
@@ -38,24 +48,51 @@ export default function CreateUnboxJob() {
   const handleSubmit = async () => {
     if (!clips || clips.length === 0) return setError("Please select at least 1 video clip")
     if (!audio) return setError("Please select an audio file")
+    if (!isCreatingProject && !selectedProjectId) return setError("Please select a project")
+    if (isCreatingProject && !newProjectName.trim()) return setError("Please enter a new project name")
 
     setLoading(true)
     setError(null)
     try {
+      let targetProjectId = selectedProjectId
+      if (isCreatingProject && newProjectName.trim()) {
+        setUploadStatus("Creating project...")
+        const proj = await createProject(newProjectName.trim())
+        targetProjectId = proj.id
+      }
+
+      const allAssetIds: string[] = []
+
       setUploadStatus("Uploading audio...")
-      const audioUrl = audio.file ? (await uploadAsset(audio.file as File, "audio")).s3_url : audio.asset!.s3_url
+      let audioUrl = "";
+      if (audio.file) {
+        const res = await uploadAsset(audio.file as File, "audio")
+        audioUrl = res.s3_url
+        allAssetIds.push(res.id)
+      } else {
+        audioUrl = audio.asset!.s3_url
+        allAssetIds.push(audio.asset!.id)
+      }
 
       const clipUrls: string[] = []
       for (let i = 0; i < clips.length; i++) {
         setUploadStatus(`Uploading clip ${i + 1} of ${clips.length}...`)
-        const url = clips[i].file ? (await uploadAsset(clips[i].file as File, "clip")).s3_url : clips[i].asset!.s3_url
-        clipUrls.push(url)
+        if (clips[i].file) {
+          const res = await uploadAsset(clips[i].file as File, "clip")
+          clipUrls.push(res.s3_url)
+          allAssetIds.push(res.id)
+        } else {
+          clipUrls.push(clips[i].asset!.s3_url)
+          allAssetIds.push(clips[i].asset!.id)
+        }
       }
 
       setUploadStatus("Committing job...")
       const payload = {
         job_type: "unbox",
         priority,
+        project_id: targetProjectId,
+        asset_ids: allAssetIds,
         config_data: {
           clips: clipUrls,
           audio: audioUrl,
@@ -128,6 +165,56 @@ export default function CreateUnboxJob() {
 
         {step === 1 && (
           <div className="space-y-8 animate-in fade-in slide-in-from-right-8 duration-500">
+            <div className="space-y-4">
+              <label className="text-sm font-semibold text-white/90 uppercase tracking-wider flex items-center gap-2">
+                <Folder className="w-4 h-4 text-primary" /> Dự án
+              </label>
+              <div className="flex flex-col sm:flex-row gap-4">
+                <button
+                  type="button"
+                  onClick={() => setIsCreatingProject(false)}
+                  className={cn("flex-1 px-4 py-3 rounded-xl border flex items-center gap-2 justify-center transition-all", !isCreatingProject ? "bg-primary/20 border-primary text-white shadow-[0_0_15px_rgba(124,58,237,0.3)]" : "bg-white/5 border-white/10 text-muted-foreground hover:bg-white/10")}
+                >
+                  <Folder className="w-4 h-4" /> Chọn dự án có sẵn
+                </button>
+                <button
+                  type="button"
+                  onClick={() => setIsCreatingProject(true)}
+                  className={cn("flex-1 px-4 py-3 rounded-xl border flex items-center gap-2 justify-center transition-all", isCreatingProject ? "bg-primary/20 border-primary text-white shadow-[0_0_15px_rgba(124,58,237,0.3)]" : "bg-white/5 border-white/10 text-muted-foreground hover:bg-white/10")}
+                >
+                  <Plus className="w-4 h-4" /> Tạo dự án mới
+                </button>
+              </div>
+
+              {isCreatingProject ? (
+                <div className="space-y-2 animate-in fade-in slide-in-from-top-2">
+                  <input
+                    type="text"
+                    value={newProjectName}
+                    onChange={e => setNewProjectName(e.target.value)}
+                    placeholder="Tên dự án mới..."
+                    className="flex h-12 w-full rounded-xl border border-white/10 bg-white/5 px-4 py-2 text-base text-white focus:outline-none focus:ring-2 focus:ring-primary/50 transition-all placeholder:text-muted-foreground/50"
+                  />
+                </div>
+              ) : (
+                <div className="space-y-2 animate-in fade-in slide-in-from-top-2">
+                  <select
+                    value={selectedProjectId}
+                    onChange={e => setSelectedProjectId(e.target.value)}
+                    className="flex h-12 w-full rounded-xl border border-white/10 bg-white/5 px-4 py-2 text-base text-white focus:outline-none focus:ring-2 focus:ring-primary/50 transition-all appearance-none"
+                  >
+                    {projects.length === 0 ? (
+                      <option disabled value="" className="bg-[#1A1A24]">Bạn chưa có dự án nào</option>
+                    ) : (
+                      projects.map(p => (
+                        <option key={p.id} value={p.id} className="bg-[#1A1A24]">{p.name}</option>
+                      ))
+                    )}
+                  </select>
+                </div>
+              )}
+            </div>
+            
             <div className="grid grid-cols-1 md:grid-cols-2 gap-8">
               <div className="space-y-3">
                 <div className="flex items-center justify-between">
@@ -158,16 +245,33 @@ export default function CreateUnboxJob() {
                   </label>
                 </div>
                 {clips.length > 0 && (
-                  <div className="flex items-center gap-2 text-sm text-green-400 bg-green-400/10 p-3 rounded-lg border border-green-400/20">
-                    <CheckCircle2 className="w-4 h-4" /> Selected {clips.length} video files
+                  <div className="space-y-3">
+                    <div className="flex items-center gap-2 text-sm text-green-400 bg-green-400/10 p-3 rounded-xl border border-green-400/20">
+                      <CheckCircle2 className="w-4 h-4" /> Selected {clips.length} video files
+                    </div>
+                    <div className="flex flex-wrap gap-2">
+                      {clips.map((c, idx) => (
+                        <span key={idx} className="text-sm bg-white/5 text-white/80 px-3 py-1.5 rounded-lg border border-white/10 flex items-center gap-2 shadow-sm">
+                          <Video className="w-4 h-4 text-primary/70" /> 
+                          {c.file?.name 
+                            ? (c.file.name.length > 25 ? c.file.name.slice(0, 25) + "..." : c.file.name) 
+                            : (c.asset?.file_name && c.asset.file_name.length > 25 ? c.asset.file_name.slice(0, 25) + "..." : c.asset?.file_name)}
+                          <button type="button" onClick={() => setClips(clips.filter((_, i) => i !== idx))} className="text-red-400 hover:text-red-300 ml-1 hover:bg-red-400/10 p-0.5 rounded transition-colors">
+                            <Trash2 className="w-3.5 h-3.5" />
+                          </button>
+                        </span>
+                      ))}
+                    </div>
                   </div>
                 )}
                 <AssetSelectModal
                   isOpen={modalOpen}
                   onClose={() => setModalOpen(false)}
                   assetTypeFilter="clip"
-                  onSelect={(asset) => {
-                    setClips([...clips, { asset, id: asset.id, s3_url: asset.s3_url, uploading: false, progress: 0 }])
+                  multiple={true}
+                  onSelectMultiple={(assets) => {
+                    const newClips = assets.map(asset => ({ asset, id: asset.id, s3_url: asset.s3_url, uploading: false, progress: 0 }));
+                    setClips([...clips, ...newClips]);
                   }}
                 />
               </div>

@@ -2,6 +2,7 @@
 
 from fastapi import APIRouter, Depends, HTTPException
 from sqlalchemy.orm import Session
+from sqlalchemy import func
 from typing import List
 
 from shared_core import models, schemas, database
@@ -32,12 +33,43 @@ def get_projects(
     db: Session = Depends(database.get_db),
     current_user: models.User = Depends(auth_module.get_current_user),
 ):
-    return (
-        db.query(models.Project)
+    results = (
+        db.query(models.Project, func.count(models.VideoJob.id).label("jobs_count"))
+        .outerjoin(models.VideoJob, models.VideoJob.project_id == models.Project.id)
         .filter(models.Project.user_id == current_user.id)
+        .group_by(models.Project.id)
         .order_by(models.Project.created_at.desc())
         .all()
     )
+    
+    out = []
+    for proj, count in results:
+        p_dict = proj.__dict__.copy()
+        p_dict["jobs_count"] = count
+        out.append(p_dict)
+    return out
+
+
+@router.get("/{project_id}", response_model=schemas.ProjectResponse)
+def get_project(
+    project_id: str,
+    db: Session = Depends(database.get_db),
+    current_user: models.User = Depends(auth_module.get_current_user),
+):
+    result = (
+        db.query(models.Project, func.count(models.VideoJob.id).label("jobs_count"))
+        .outerjoin(models.VideoJob, models.VideoJob.project_id == models.Project.id)
+        .filter(models.Project.id == project_id, models.Project.user_id == current_user.id)
+        .group_by(models.Project.id)
+        .first()
+    )
+    if not result:
+        raise HTTPException(status_code=404, detail="Project not found")
+    
+    proj, count = result
+    p_dict = proj.__dict__.copy()
+    p_dict["jobs_count"] = count
+    return p_dict
 
 
 @router.delete("/{project_id}")

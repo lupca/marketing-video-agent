@@ -1,6 +1,7 @@
 import React from "react";
 import { format } from "date-fns";
 import { Database, FileAudio, FileVideo, FileText, File, Loader2, Download, ExternalLink, Trash2, Folder, ChevronRight, Play } from "lucide-react";
+import { cn } from "../../../lib/utils";
 import type { Asset } from "../../../hooks/useAssets";
 
 export function formatBytes(bytes: number, decimals = 2) {
@@ -47,9 +48,12 @@ interface AssetTableProps {
   currentPath: string;
   setCurrentPath: (path: string) => void;
   onSelectAsset?: (asset: Asset) => void;
+  multiSelect?: boolean;
+  selectedAssets?: Asset[];
+  onToggleAsset?: (asset: Asset) => void;
 }
 
-export function AssetTable({ assets, loading, deletingId, onDelete, onUploadClick, currentPath, setCurrentPath, onSelectAsset }: AssetTableProps) {
+export function AssetTable({ assets, loading, deletingId, onDelete, onUploadClick, currentPath, setCurrentPath, onSelectAsset, multiSelect = false, selectedAssets = [], onToggleAsset }: AssetTableProps) {
   const { folders, files } = React.useMemo(() => {
     const folderSet = new Set<string>();
     const fileList: Asset[] = [];
@@ -100,6 +104,7 @@ export function AssetTable({ assets, loading, deletingId, onDelete, onUploadClic
         <table className="w-full text-sm text-left">
           <thead className="bg-black/40 text-xs uppercase text-muted-foreground border-b border-white/10">
             <tr>
+              {multiSelect && <th className="px-6 py-5 font-semibold tracking-wider w-12 text-center"></th>}
               <th className="px-6 py-5 font-semibold tracking-wider">File Name</th>
               <th className="px-6 py-5 font-semibold tracking-wider">Type</th>
               <th className="px-6 py-5 font-semibold tracking-wider">Size</th>
@@ -140,6 +145,7 @@ export function AssetTable({ assets, loading, deletingId, onDelete, onUploadClic
                 {/* Render Folders */}
                 {folders.map(folder => (
                   <tr key={`folder-${folder}`} className="hover:bg-white/[0.02] transition-colors group cursor-pointer" onClick={() => setCurrentPath(currentPath + folder + "/")}>
+                    {multiSelect && <td className="px-6 py-4"></td>}
                     <td className="px-6 py-4">
                       <div className="flex items-center gap-3">
                         <div className="p-2.5 rounded-xl bg-indigo-500/10 border border-indigo-500/20 text-indigo-400 group-hover:text-indigo-300 group-hover:border-indigo-400/30 transition-all">
@@ -160,8 +166,32 @@ export function AssetTable({ assets, loading, deletingId, onDelete, onUploadClic
                 ))}
                 
                 {/* Render Files */}
-                {files.map((asset) => (
-                <tr key={asset.id} className="hover:bg-white/[0.02] transition-colors group">
+                {files.map((asset) => {
+                  const isSelected = selectedAssets.some(a => a.id === asset.id);
+                  return (
+                <tr key={asset.id} className={cn("hover:bg-white/[0.02] transition-colors group", multiSelect ? "cursor-pointer" : "", isSelected ? "bg-primary/5" : "")} onClick={(e) => {
+                  if (multiSelect && onToggleAsset) {
+                    e.stopPropagation();
+                    onToggleAsset(asset);
+                  }
+                }}>
+                  {multiSelect && (
+                    <td className="px-6 py-4">
+                      <div className="flex items-center justify-center">
+                        <input 
+                          type="checkbox" 
+                          checked={isSelected}
+                          onChange={(e) => {
+                            e.stopPropagation();
+                            if (onToggleAsset) onToggleAsset(asset);
+                          }}
+                          className="w-4 h-4 rounded border-white/20 bg-black/40 text-primary focus:ring-primary/50 cursor-pointer appearance-none checked:bg-primary checked:border-primary relative
+                            before:content-[''] before:absolute before:inset-0 before:bg-[url('data:image/svg+xml;base64,PHN2ZyB2aWV3Qm94PSIwIDAgMjQgMjQiIGZpbGw9Im5vbmUiIHN0cm9rZT0id2hpdGUiIHN0cm9rZS13aWR0aD0iNCIgc3Ryb2tlLWxpbmVjYXA9InJvdW5kIiBzdHJva2UtbGluZWpvaW49InJvdW5kIiB4bWxucz0iaHR0cDovL3d3dy53My5vcmcvMjAwMC9zdmciPjxwb2x5bGluZSBwb2ludHM9IjIwIDYgOSAxNyA0IDEyIj48L3BvbHlsaW5lPjwvc3ZnPg==')] 
+                            before:bg-no-repeat before:bg-center before:bg-[length:80%] before:opacity-0 checked:before:opacity-100 transition-all"
+                        />
+                      </div>
+                    </td>
+                  )}
                   <td className="px-6 py-4">
                     <div className="flex items-center gap-3">
                       <div className="p-2.5 rounded-xl bg-white/5 border border-white/10 text-muted-foreground group-hover:text-primary group-hover:border-primary/30 transition-all">
@@ -239,7 +269,8 @@ export function AssetTable({ assets, loading, deletingId, onDelete, onUploadClic
                     </div>
                   </td>
                 </tr>
-                ))}
+                );
+                })}
               </React.Fragment>
             )}
           </tbody>

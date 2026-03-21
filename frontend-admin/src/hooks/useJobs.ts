@@ -23,7 +23,7 @@ export interface JobLog {
   created_at: string;
 }
 
-export function useJobs(autoRefresh: boolean = false, refreshIntervalMs: number = 5000) {
+export function useJobs(autoRefresh: boolean = false, refreshIntervalMs: number = 5000, projectId?: string) {
   const [jobs, setJobs] = useState<VideoJob[]>([]);
   const [loading, setLoading] = useState(true);
   const [refreshing, setRefreshing] = useState(false);
@@ -34,7 +34,8 @@ export function useJobs(autoRefresh: boolean = false, refreshIntervalMs: number 
       if (isRefreshing) setRefreshing(true);
       else setLoading(true);
       setError(null);
-      const res = await api.get("/api/jobs");
+      const url = projectId ? `/api/jobs?project_id=${projectId}` : "/api/jobs";
+      const res = await api.get(url);
       setJobs(res.data);
     } catch (err: any) {
       setError(err?.response?.data?.detail || err.message || "Failed to fetch jobs");
@@ -42,7 +43,7 @@ export function useJobs(autoRefresh: boolean = false, refreshIntervalMs: number 
       setLoading(false);
       setRefreshing(false);
     }
-  }, []);
+  }, [projectId]);
 
   useEffect(() => {
     fetchJobs();

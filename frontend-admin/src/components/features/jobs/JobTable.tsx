@@ -1,5 +1,5 @@
 import React, { useState } from "react";
-import { CheckCircle2, Clock, AlertCircle, ChevronDown, ChevronUp, Timer, Download, ExternalLink, Eye, Trash2 } from "lucide-react";
+import { CheckCircle2, Clock, AlertCircle, ChevronDown, ChevronUp, Timer, Download, ExternalLink, Eye, Trash2, Play } from "lucide-react";
 import { cn } from "../../../lib/utils";
 import { formatDuration, formatDate } from "../../../lib/format";
 import type { VideoJob } from "../../../hooks/useJobs";
@@ -15,10 +15,11 @@ interface JobTableProps {
   onViewDetails: (job: VideoJob) => void;
   onDeleteJob: (id: number) => void;
   onDownloadJob: (id: number) => void;
+  onWatchJob?: (id: number) => void;
   deletingId: number | null;
 }
 
-export function JobTable({ jobs, onViewDetails, onDeleteJob, onDownloadJob, deletingId }: JobTableProps) {
+export function JobTable({ jobs, onViewDetails, onDeleteJob, onDownloadJob, onWatchJob, deletingId }: JobTableProps) {
   const [expandedError, setExpandedError] = useState<number | null>(null);
 
   if (jobs.length === 0) {
@@ -139,11 +140,20 @@ export function JobTable({ jobs, onViewDetails, onDeleteJob, onDownloadJob, dele
                       <>
                         <button
                           onClick={() => onDownloadJob(job.id)}
-                          className="inline-flex items-center justify-center rounded-lg bg-emerald-500/10 hover:bg-emerald-500/20 text-emerald-400 border border-emerald-500/30 transition-all h-8 w-8 hover:shadow-[0_0_15px_rgba(16,185,129,0.3)]"
+                          className="inline-flex items-center justify-center rounded-lg bg-white/5 hover:bg-white/10 text-white/60 hover:text-white border border-white/10 transition-all h-8 w-8"
                           title="Download video"
                         >
                           <Download className="h-4 w-4" />
                         </button>
+                        {onWatchJob && (
+                          <button
+                            onClick={() => onWatchJob(job.id)}
+                            className="inline-flex items-center justify-center rounded-lg bg-emerald-500/10 hover:bg-emerald-500/20 text-emerald-400 border border-emerald-500/30 transition-all h-8 w-8 hover:shadow-[0_0_15px_rgba(16,185,129,0.3)]"
+                            title="Watch Video"
+                          >
+                            <Play className="h-4 w-4" />
+                          </button>
+                        )}
                         <a
                           href={getMinioBrowserUrl(job.result_url)}
                           target="_blank"

@@ -65,6 +65,7 @@ class ProjectResponse(BaseModel):
     user_id: str
     created_at: datetime
     updated_at: Optional[datetime] = None
+    jobs_count: int = 0
 
 
 # ── Jobs ──────────────────────────────────────────────────────────────────────
