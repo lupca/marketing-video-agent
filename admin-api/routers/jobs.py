@@ -54,10 +54,8 @@ def create_job(
     db.commit()
     db.refresh(db_job)
 
-    # For download jobs, inject user_id into config so the worker can create Asset records
+    # Prepare task config
     task_config = dict(db_job.config_data) if db_job.config_data else {}
-    if job.job_type == "download":
-        task_config["user_id"] = current_user.id
 
     # Link assets
     if job.asset_ids:

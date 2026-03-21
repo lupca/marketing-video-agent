@@ -136,3 +136,34 @@ class WorkerNode(Base):
     last_heartbeat = Column(DateTime(timezone=True), server_default=func.now())
 
     video_jobs = relationship("VideoJob", back_populates="worker_node")
+
+
+class DownloadJob(Base):
+    __tablename__ = "download_jobs"
+
+    id = Column(Integer, primary_key=True, index=True, autoincrement=True)
+    user_id = Column(String, ForeignKey("users.id", ondelete="CASCADE"), nullable=False)
+    source_url = Column(String, nullable=False)
+    format_type = Column(String, default="video")  # video or audio
+    status = Column(String, default="PENDING", index=True)
+    progress_percent = Column(Integer, default=0)
+    result_url = Column(String, nullable=True)
+    error_message = Column(Text, nullable=True)
+    started_at = Column(DateTime(timezone=True), nullable=True)
+    completed_at = Column(DateTime(timezone=True), nullable=True)
+    created_at = Column(DateTime(timezone=True), server_default=func.now())
+
+    user = relationship("User")
+    logs = relationship("DownloadJobLog", back_populates="download_job", cascade="all, delete-orphan")
+
+
+class DownloadJobLog(Base):
+    __tablename__ = "download_job_logs"
+
+    id = Column(BigInteger, primary_key=True, autoincrement=True)
+    job_id = Column(Integer, ForeignKey("download_jobs.id", ondelete="CASCADE"), index=True)
+    log_level = Column(String, default="INFO")
+    message = Column(Text, nullable=False)
+    created_at = Column(DateTime(timezone=True), server_default=func.now())
+
+    download_job = relationship("DownloadJob", back_populates="logs")

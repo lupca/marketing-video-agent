@@ -210,3 +210,128 @@ class TestTemplates:
         resp = authenticated_client.get("/api/templates")
         assert resp.status_code == 200
         assert len(resp.json()) >= 1
+
+
+class TestDownloadsCRUD:
+
+    @patch("celery_client.celery_app.send_task")
+    def test_create_download_job(self, mock_send_task, authenticated_client):
+        resp = authenticated_client.post("/api/downloads", json={
+            "url": "https://www.youtube.com/watch?v=test123",
+            "format": "video",
+        })
+        assert resp.status_code == 200
+        data = resp.json()
+        assert data["status"] == "PENDING"
+        assert data["source_url"] == "https://www.youtube.com/watch?v=test123"
+        assert data["format_type"] == "video"
+        assert data["progress_percent"] == 0
+        assert "id" in data
+        mock_send_task.assert_called_once()
+
+    @patch("celery_client.celery_app.send_task")
+    def test_create_download_job_audio(self, mock_send_task, authenticated_client):
+        resp = authenticated_client.post("/api/downloads", json={
+            "url": "https://www.youtube.com/watch?v=audio1",
+            "format": "audio",
+        })
+        assert resp.status_code == 200
+        data = resp.json()
+        assert data["format_type"] == "audio"
+        assert data["source_url"] == "https://www.youtube.com/watch?v=audio1"
+
+    def test_create_download_job_empty_url(self, authenticated_client):
+        resp = authenticated_client.post("/api/downloads", json={
+            "url": "   ",
+            "format": "video",
+        })
+        assert resp.status_code == 422
+
+    def test_create_download_job_invalid_format(self, authenticated_client):
+        resp = authenticated_client.post("/api/downloads", json={
+            "url": "https://example.com/video",
+            "format": "invalid",
+        })
+        assert resp.status_code == 422
+
+    @patch("celery_client.celery_app.send_task")
+    def test_list_download_jobs(self, mock_send_task, authenticated_client):
+        authenticated_client.post("/api/downloads", json={
+            "url": "https://youtube.com/1",
+            "format": "video",
+        })
+        authenticated_client.post("/api/downloads", json={
+            "url": "https://youtube.com/2",
+            "format": "audio",
+        })
+
+        resp = authenticated_client.get("/api/downloads")
+        assert resp.status_code == 200
+        data = resp.json()
+        assert len(data) == 2
+
+    @patch("celery_client.celery_app.send_task")
+    def test_get_single_download_job(self, mock_send_task, authenticated_client):
+        create_resp = authenticated_client.post("/api/downloads", json={
+            "url": "https://youtube.com/single",
+            "format": "video",
+        })
+        job_id = create_resp.json()["id"]
+
+        resp = authenticated_client.get(f"/api/downloads/{job_id}")
+        assert resp.status_code == 200
+        assert resp.json()["id"] == job_id
+        assert resp.json()["source_url"] == "https://youtube.com/single"
+
+    @patch("celery_client.celery_app.send_task")
+    def test_delete_download_job(self, mock_send_task, authenticated_client):
+        create_resp = authenticated_client.post("/api/downloads", json={
+            "url": "https://youtube.com/delete-me",
+            "format": "video",
+        })
+        job_id = create_resp.json()["id"]
+
+        del_resp = authenticated_client.delete(f"/api/downloads/{job_id}")
+        assert del_resp.status_code == 200
+        assert del_resp.json()["status"] == "deleted"
+
+        # Verify it's gone
+        get_resp = authenticated_client.get(f"/api/downloads/{job_id}")
+        assert get_resp.status_code == 404
+
+    def test_get_nonexistent_download_job(self, authenticated_client):
+        resp = authenticated_client.get("/api/downloads/99999")
+        assert resp.status_code == 404
+
+    @patch("celery_client.celery_app.send_task")
+    def test_get_download_job_logs(self, mock_send_task, authenticated_client):
+        create_resp = authenticated_client.post("/api/downloads", json={
+            "url": "https://youtube.com/logs-test",
+            "format": "video",
+        })
+        job_id = create_resp.json()["id"]
+
+        resp = authenticated_client.get(f"/api/downloads/{job_id}/logs")
+        assert resp.status_code == 200
+        assert isinstance(resp.json(), list)
+
+    def test_download_no_project_required(self, authenticated_client):
+        """Verify that download jobs do NOT require project_id."""
+        with patch("celery_client.celery_app.send_task"):
+            resp = authenticated_client.post("/api/downloads", json={
+                "url": "https://tiktok.com/@user/video/123",
+                "format": "video",
+            })
+        assert resp.status_code == 200
+        data = resp.json()
+        # No project_id field in DownloadJob
+        assert "project_id" not in data
+
+    def test_download_type_removed_from_video_jobs(self, authenticated_client, test_project):
+        """Verify that 'download' is no longer a valid job_type for video jobs."""
+        resp = authenticated_client.post("/api/jobs", json={
+            "job_type": "download",
+            "config_data": {},
+            "project_id": test_project.id,
+        })
+        assert resp.status_code == 422  # Validation error — 'download' not in VALID_JOB_TYPES

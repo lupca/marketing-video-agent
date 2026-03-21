@@ -8,7 +8,7 @@ from datetime import datetime
 
 # ── Allowed job types ─────────────────────────────────────────────────────────
 
-VALID_JOB_TYPES = {"review", "unbox", "download"}
+VALID_JOB_TYPES = {"review", "unbox"}
 
 
 # ── Auth ──────────────────────────────────────────────────────────────────────
@@ -124,6 +124,53 @@ class AssetResponse(BaseModel):
 # ── Job Logs ──────────────────────────────────────────────────────────────────
 
 class JobLogResponse(BaseModel):
+    model_config = ConfigDict(from_attributes=True)
+
+    id: int
+    job_id: int
+    log_level: str
+    message: str
+    created_at: datetime
+
+
+# ── Download Jobs ─────────────────────────────────────────────────────────────
+
+class DownloadJobCreate(BaseModel):
+    url: str
+    format: str = "video"
+
+    @field_validator("url")
+    @classmethod
+    def url_not_empty(cls, v: str) -> str:
+        if not v.strip():
+            raise ValueError("URL cannot be empty")
+        return v.strip()
+
+    @field_validator("format")
+    @classmethod
+    def format_valid(cls, v: str) -> str:
+        if v not in ("video", "audio"):
+            raise ValueError("format must be 'video' or 'audio'")
+        return v
+
+
+class DownloadJobResponse(BaseModel):
+    model_config = ConfigDict(from_attributes=True)
+
+    id: int
+    user_id: str
+    source_url: str
+    format_type: str
+    status: str
+    progress_percent: int
+    result_url: Optional[str] = None
+    error_message: Optional[str] = None
+    started_at: Optional[datetime] = None
+    completed_at: Optional[datetime] = None
+    created_at: datetime
+
+
+class DownloadJobLogResponse(BaseModel):
     model_config = ConfigDict(from_attributes=True)
 
     id: int
