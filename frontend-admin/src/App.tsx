@@ -1,8 +1,9 @@
 import { BrowserRouter as Router, Routes, Route, Link, useLocation, Navigate } from "react-router-dom";
-import { LayoutDashboard, Video, Zap, LogOut, User as UserIcon, FolderHeart, Database, Activity, Wand2, BookOpen } from "lucide-react";
+import { LayoutDashboard, Video, Zap, LogOut, User as UserIcon, FolderHeart, Database, Activity, Wand2, BookOpen, DownloadCloud } from "lucide-react";
 import Dashboard from "./pages/Dashboard";
 import CreateUnboxJob from "./pages/CreateUnboxJob";
 import CreateReviewJob from "./pages/CreateReviewJob";
+import DownloadVideo from "./pages/DownloadVideo";
 import Projects from "./pages/Projects";
 import ProjectDetails from "./pages/ProjectDetails";
 import Assets from "./pages/Assets";
@@ -33,6 +34,7 @@ function Sidebar() {
 
   const links = [
     { name: "Command Center", path: "/", icon: LayoutDashboard },
+    { name: "Sưu tầm Video", path: "/download", icon: DownloadCloud },
     { name: "Review Studio", path: "/create-review", icon: Wand2 },
     { name: "Projects", path: "/projects", icon: FolderHeart },
     { name: "Assets", path: "/assets", icon: Database },
@@ -111,6 +113,7 @@ function MainLayout() {
       <main className="flex-1 h-screen overflow-y-auto z-0 custom-scrollbar">
         <Routes>
           <Route path="/" element={<Dashboard />} />
+          <Route path="/download" element={<DownloadVideo />} />
           <Route path="/create-unbox" element={<CreateUnboxJob />} />
           <Route path="/create-review" element={<CreateReviewJob />} />
           <Route path="/projects" element={<Projects />} />

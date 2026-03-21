@@ -23,5 +23,6 @@ celery_app.conf.update(
     task_routes={
         "worker_review.tasks.*": {"queue": "review_queue"},
         "worker_unbox.tasks.*": {"queue": "unbox_queue"},
+        "worker_download.tasks.*": {"queue": "download_queue"},
     },
 )

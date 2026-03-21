@@ -68,6 +68,16 @@ fi
 "$UNBOX_VENV/bin/pip" install -r "$ROOT_DIR/worker_unbox/requirements.txt" -q
 echo -e "${GREEN}  ✔ Worker Unbox venv ready${NC}"
 
+# Worker Download venv
+DOWNLOAD_VENV="$ROOT_DIR/worker_download/venv"
+if [ ! -d "$DOWNLOAD_VENV" ]; then
+  echo -e "${YELLOW}  Creating Worker Download venv...${NC}"
+  python3 -m venv "$DOWNLOAD_VENV"
+fi
+"$DOWNLOAD_VENV/bin/pip" install --upgrade pip -q
+"$DOWNLOAD_VENV/bin/pip" install -r "$ROOT_DIR/worker_download/requirements.txt" -q
+echo -e "${GREEN}  ✔ Worker Download venv ready${NC}"
+
 # ----------------------------------------------------------
 # 3. Common env vars
 # ----------------------------------------------------------
@@ -110,6 +120,12 @@ UNBOX_PID=$!
 cd "$ROOT_DIR"
 echo -e "${GREEN}  ✔ Worker Unbox PID: $UNBOX_PID${NC}"
 
+cd "$ROOT_DIR/worker_download"
+"$DOWNLOAD_VENV/bin/celery" -A celery_worker worker -Q download_queue --loglevel=info -c 2 &
+DOWNLOAD_PID=$!
+cd "$ROOT_DIR"
+echo -e "${GREEN}  ✔ Worker Download PID: $DOWNLOAD_PID${NC}"
+
 # ----------------------------------------------------------
 # 6. Start Frontend
 # ----------------------------------------------------------
@@ -139,7 +155,7 @@ echo -e "\n${YELLOW}Press Ctrl+C to stop all services${NC}\n"
 # ----------------------------------------------------------
 cleanup() {
   echo -e "\n${YELLOW}Shutting down all processes...${NC}"
-  kill $API_PID $REVIEW_PID $UNBOX_PID $FRONTEND_PID 2>/dev/null
+  kill $API_PID $REVIEW_PID $UNBOX_PID $DOWNLOAD_PID $FRONTEND_PID 2>/dev/null
   docker compose -f "$ROOT_DIR/docker-compose.dev.yml" down
   echo -e "${GREEN}✔ All stopped.${NC}"
   exit 0

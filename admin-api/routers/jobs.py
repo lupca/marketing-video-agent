@@ -54,6 +54,11 @@ def create_job(
     db.commit()
     db.refresh(db_job)
 
+    # For download jobs, inject user_id into config so the worker can create Asset records
+    task_config = dict(db_job.config_data) if db_job.config_data else {}
+    if job.job_type == "download":
+        task_config["user_id"] = current_user.id
+
     # Link assets
     if job.asset_ids:
         valid_assets = (
@@ -70,7 +75,7 @@ def create_job(
     try:
         celery_client.celery_app.send_task(
             f"worker_{job.job_type}.tasks.process_video",
-            args=[db_job.id, db_job.config_data],
+            args=[db_job.id, task_config],
             queue=queue_name,
         )
     except Exception as e:
