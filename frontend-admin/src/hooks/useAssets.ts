@@ -3,7 +3,7 @@ import api from "../lib/api";
 
 export interface Asset {
   id: string;
-  asset_type: "video" | "audio" | "image" | "font";
+  asset_type: string; // Used to be strictly "video" | "audio" | "image" | "font" but it's dynamic ("voiceover", "clip", "bgm", "script", "doc", etc)
   file_name: string;
   file_size_bytes: number;
   s3_url: string;

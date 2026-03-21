@@ -46,9 +46,10 @@ interface AssetTableProps {
   onUploadClick: () => void;
   currentPath: string;
   setCurrentPath: (path: string) => void;
+  onSelectAsset?: (asset: Asset) => void;
 }
 
-export function AssetTable({ assets, loading, deletingId, onDelete, onUploadClick, currentPath, setCurrentPath }: AssetTableProps) {
+export function AssetTable({ assets, loading, deletingId, onDelete, onUploadClick, currentPath, setCurrentPath, onSelectAsset }: AssetTableProps) {
   const { folders, files } = React.useMemo(() => {
     const folderSet = new Set<string>();
     const fileList: Asset[] = [];
@@ -187,6 +188,14 @@ export function AssetTable({ assets, loading, deletingId, onDelete, onUploadClic
                   </td>
                   <td className="px-6 py-4 whitespace-nowrap text-right">
                     <div className="flex items-center justify-end gap-2 opacity-50 group-hover:opacity-100 transition-opacity">
+                      {onSelectAsset && (
+                        <button
+                          onClick={(e) => { e.stopPropagation(); onSelectAsset(asset); }}
+                          className="px-3 py-1.5 rounded-lg bg-primary/20 text-primary border border-primary/30 hover:bg-primary/30 transition-colors text-xs font-medium mr-2"
+                        >
+                          Select
+                        </button>
+                      )}
                       {asset.presigned_url && (asset.asset_type === "video" || asset.asset_type === "audio" || asset.asset_type === "image") && (
                         <a
                           href={asset.presigned_url}

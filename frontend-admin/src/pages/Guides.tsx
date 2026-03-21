@@ -173,12 +173,28 @@ const ContentUnboxWorker = () => (
         Hướng Dẫn: Plugin Video Unbox
       </h1>
       <p className="text-lg text-white/80">
-        Công cụ <strong className="font-semibold text-white">Worker Unbox</strong> được thiết kế đặc biệt cho dạng Video Viral, Music Sync. Hệ thống sẽ tự động bắt cảnh quay cắt ghép nối tiếp nhau khớp từng nhịp đập âm nhạc (Beat-drop sync).
+        Công cụ <strong className="font-semibold text-white">Worker Unbox</strong> là giải pháp tối ưu cho dạng Video Viral không lời, tập trung vào hình ảnh và âm nhạc. Với cơ chế <strong className="text-cyan-400">Beat-drop Sync</strong>, nó có thể tạo ra nhiều loại nội dung triệu view chứ không chỉ dừng lại ở việc mở hộp sản phẩm.
       </p>
     </div>
 
     <div className="pl-2">
-      <SectionHeading icon={Settings}>1. Cơ chế Hoạt Động Kỹ Thuật</SectionHeading>
+      <SectionHeading icon={Target}>1. Các loại Video Viral phù hợp nhất</SectionHeading>
+      <div className="grid grid-cols-1 md:grid-cols-2 gap-4 mb-8">
+        {[
+          { title: "📦 Product Unboxing", desc: "Mở hộp, bóc seal, khám phá phụ kiện với âm nhạc percussive (như EDM, Phonk)." },
+          { title: "✨ Lifestyle Showcase", desc: "Quay sản phẩm/trang phục ở nhiều góc độ nghệ thuật trong bối cảnh thực tế (Cinematic B-roll)." },
+          { title: "🔄 Transformation / BTS", desc: "Video Before/After, quá trình hoàn thiện sản phẩm hoặc dọn dẹp setup cực nhanh." },
+          { title: "🏖️ Recap & Highlights", desc: "Tóm tắt chuyến đi, sự kiện hoặc các khoảnh khắc ấn tượng bám nhịp theo bài hát sôi động." },
+          { title: "🛠️ Workflow / ASMR", desc: "Các bước thực hiện một quy trình (nấu ăn, DIY) với các cú máy cận cảnh sắc nét." },
+          { title: "🔥 Action / Sports", desc: "Những pha Highlight thể thao, tập luyện phối hợp với hiệu ứng Zoom mạnh trên từng nhịp drop." },
+        ].map((item, idx) => (
+          <div key={idx} className="p-4 rounded-xl bg-white/5 border border-white/10 flex flex-col gap-1">
+            <h4 className="font-bold text-white text-base">{item.title}</h4>
+            <p className="text-xs text-muted-foreground">{item.desc}</p>
+          </div>
+        ))}
+      </div>
+      <SectionHeading icon={Settings}>2. Cơ chế Hoạt Động Kỹ Thuật</SectionHeading>
       <p className="mb-4">
         Đây là một Engine render sử dụng <strong className="text-white">FFmpeg</strong> xử lý luồng Video kết hợp thư viện <code className="text-cyan-400 bg-cyan-400/10 px-1.5 py-0.5 rounded">librosa</code> xử lý Audio.
       </p>
@@ -205,7 +221,7 @@ const ContentUnboxWorker = () => (
 
       <div className="my-8 h-px bg-white/10" />
 
-      <SectionHeading icon={Target}>2. Dữ liệu Input & Config</SectionHeading>
+      <SectionHeading icon={Target}>3. Dữ liệu Input & Config</SectionHeading>
       <p>
         Dữ liệu do API truyền xuống là mảng <code className="text-cyan-400 bg-cyan-400/10 px-1.5 py-0.5 rounded">config_data</code>:
       </p>
@@ -225,9 +241,7 @@ const ContentUnboxWorker = () => (
 }`} 
       />
 
-      <div className="my-8 h-px bg-white/10" />
-
-      <SectionHeading icon={CodeIcon}>3. Tinh Chỉnh Nâng Cao (Dành cho Developer)</SectionHeading>
+      <SectionHeading icon={CodeIcon}>4. Tinh Chỉnh Nâng Cao (Dành cho Developer)</SectionHeading>
       <div className="rounded-xl border-l-4 border-red-500 bg-red-500/10 p-5 mt-4 text-sm">
         <p className="font-bold text-red-400 mb-3 uppercase tracking-wider text-xs">Phần cấu hình hệ thống Core</p>
         <p className="mb-4">Khi điều chỉnh Source hệ thống trong <code className="bg-black/30 px-1.5 py-0.5 rounded font-mono text-red-300">make_viral.py</code>:</p>
@@ -245,6 +259,59 @@ const ContentUnboxWorker = () => (
             <strong className="text-white">Thiếu FFmpeg Drawtext Backend:</strong> Module tự bắt <code className="text-red-300 bg-black/20 px-1">OverlayError</code> để đổi qua Fallback chạy MoviePy/Pillow Render Text dán đè thay nếu OS Developer không build bản có Drawtext.
           </li>
         </ul>
+      </div>
+
+      <div className="my-8 h-px bg-white/10" />
+
+      <SectionHeading icon={Bot}>5. Universal AI Prompt (Dành cho Content Marketing)</SectionHeading>
+      <div className="rounded-xl border border-cyan-500/20 bg-cyan-500/5 p-4 mb-4 flex gap-3">
+        <Info className="w-6 h-6 text-cyan-500 flex-shrink-0" />
+        <p className="text-sm text-cyan-200/80">
+          Hãy copy prompt dưới đây và dán vào ChatGPT / Claude. Bạn chỉ cần thay đổi <strong>MỤC TIÊU</strong> (Unboxing, Lookbook, Travel, ...) để AI tạo ra kịch bản quay và text overlay phù hợp nhất:
+        </p>
+      </div>
+
+      <CodeBlock 
+        language="text" 
+        title="Universal Scripting Prompt"
+        code={`Bạn là chuyên gia sáng tạo nội dung Video Viral (TikTok/Reels/Shorts). Bạn giỏi trong việc lên ý tưởng hình ảnh bám theo nhịp điệu âm nhạc (Beat-sync).
+
+Nhiệm vụ: Lên kịch bản quay B-roll và nội dung Text Overlay cho Video.
+- LOẠI VIDEO: [ĐIỀN VÀO: Unboxing / Showcase / Transformation / Travel Recap / Workout / ASMR]
+- CHỦ ĐỀ SẢN PHẨM: [ĐIỀN VÀO, VÍ DỤ: "Bàn phím cơ Custom"]
+
+Hệ thống render tự động của tôi sẽ cắt đoạn thô và chèn chữ theo 2 kiểu:
+1. "hook": Hiện to, nổi bật ngay giây đầu tiên (giây 0.0).
+2. "feature": Chữ hiện ở góc dưới trái, trượt vào màn hình (slide-in), thường dùng để giới thiệu điểm mạnh hoặc lợi ích.
+
+Hãy đưa ra kịch bản theo yêu cầu sau:
+
+### PHẦN 1: Ý TƯỞNG QUAY PHIM (Dành cho Producer)
+Tư vấn 15-20 cảnh quay cực ngắn (1.5s - 2.5s mỗi cảnh) phù hợp với LOẠI VIDEO đã chọn. Hãy tập trung vào các góc máy sáng tạo, ánh sáng tốt và hành động dứt khoát.
+(Vd: Cú máy trượt (Slide), máy xoay (Rotate), cận cảnh macro (Close-up), quay POV người dùng).
+
+### PHẦN 2: CHUỖI TEXT OVERLAY (JSON Format)
+Dựa trên mood của LOẠI VIDEO, hãy ghi ra các dòng text ngắn gọn, punchy (dưới 5 từ). Sắp xếp mốc thời gian (time) nối tiếp nhau khoảng mỗi 3-4 giây.
+In kết quả JSON đúng mẫu dưới đây (In duy nhất block JSON này, không giải thích thêm ở phần này):
+
+{
+  "text_events": [
+    {"time": 0.0, "text": "HOOK GÂY TÒ MÒ 🔥", "effect": "hook"},
+    {"time": 3.0, "text": "Key Feature 1", "effect": "feature"},
+    {"time": 6.5, "text": "Key Feature 2", "effect": "feature"},
+    {"time": 9.5, "text": "Lợi ích / Call To Action", "effect": "feature"}
+  ]
+}`} 
+      />
+
+      <div className="mt-8 rounded-xl bg-cyan-500/10 border border-cyan-500/20 p-5 items-center flex gap-4">
+        <Sparkles className="w-8 h-8 text-cyan-400 flex-shrink-0" />
+        <div>
+          <h4 className="font-semibold text-white mb-1">Mẹo đa năng</h4>
+          <p className="text-sm text-cyan-50">
+            Đừng chỉ nghĩ Link Bio là CTA duy nhất. Hãy dùng Text Feature để đặt câu hỏi tương tác (Vd: "Cmt số 1 nếu bạn thích màu này") để tăng engagement cho video!
+          </p>
+        </div>
       </div>
     </div>
   </div>

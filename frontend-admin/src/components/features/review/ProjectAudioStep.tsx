@@ -1,7 +1,8 @@
 import { Folder, Plus, Mic, FileText, Music, ChevronRight } from "lucide-react";
 import { cn } from "../../../lib/utils";
-import { FileDropzone } from "./FileDropzone";
+import { AssetSelector } from "../../ui/AssetSelector";
 import type { UploadedFile } from "./types";
+import type { Asset } from "../../../hooks/useAssets";
 import type { Project } from "../../../hooks/useProjects";
 import { Button } from "../../ui/Button";
 
@@ -26,9 +27,9 @@ interface ProjectAudioStepProps {
 }
 
 export function ProjectAudioStep(props: ProjectAudioStepProps) {
-  const handleAudioFile = (file: File | undefined, setter: (f: UploadedFile | null) => void) => {
-    if (!file) return;
-    setter({ file, id: null, s3_url: null, uploading: false, progress: 0 });
+  const handleAudioFile = (file: File | undefined, asset: Asset | undefined, setter: (f: UploadedFile | null) => void) => {
+    if (!file && !asset) return;
+    setter({ file, asset, id: asset?.id || null, s3_url: asset?.s3_url || null, uploading: false, progress: 0 });
   };
 
   return (
@@ -85,31 +86,34 @@ export function ProjectAudioStep(props: ProjectAudioStepProps) {
       </div>
 
       <div className="grid grid-cols-1 md:grid-cols-3 gap-6">
-        <FileDropzone
+        <AssetSelector
           label="Giọng đọc (Voiceover)"
           sublabel="MP3 — File thu âm chính"
           icon={<Mic className="w-6 h-6 text-primary" />}
           accept="audio/mpeg,audio/*"
+          assetTypeFilter="voiceover"
           selectedFile={props.voiceover}
-          onSelect={f => handleAudioFile(f, props.setVoiceover)}
+          onSelect={(f, a) => handleAudioFile(f, a, props.setVoiceover)}
           required
         />
-        <FileDropzone
+        <AssetSelector
           label="Kịch bản (Script)"
           sublabel="TXT — Nội dung đọc 100%"
           icon={<FileText className="w-6 h-6 text-indigo-400" />}
           accept=".txt,text/plain"
+          assetTypeFilter="script"
           selectedFile={props.script}
-          onSelect={f => handleAudioFile(f, props.setScript)}
+          onSelect={(f, a) => handleAudioFile(f, a, props.setScript)}
           required
         />
-        <FileDropzone
+        <AssetSelector
           label="Nhạc nền (BGM)"
           sublabel="MP3 — Tùy chọn"
           icon={<Music className="w-6 h-6 text-cyan-400" />}
           accept="audio/mpeg,audio/*"
+          assetTypeFilter="bgm"
           selectedFile={props.bgm}
-          onSelect={f => handleAudioFile(f, props.setBgm)}
+          onSelect={(f, a) => handleAudioFile(f, a, props.setBgm)}
         />
       </div>
 

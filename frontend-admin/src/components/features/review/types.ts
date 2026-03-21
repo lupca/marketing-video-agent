@@ -1,5 +1,8 @@
+import type { Asset } from "../../../hooks/useAssets";
+
 export interface UploadedFile {
-  file: File;
+  file?: File;
+  asset?: Asset;
   id: string | null;
   s3_url: string | null;
   uploading: boolean;

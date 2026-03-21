@@ -77,17 +77,22 @@ export default function CreateReviewJob() {
         targetProjectId = proj.id;
       }
 
-      setUploadStatus("Đang upload voiceover...");
-      const voRes = await uploadAsset(voiceover.file, "voiceover");
+      const getAssetRef = async (uf: UploadedFile, type: string) => {
+        if (uf.file) return await uploadAsset(uf.file, type);
+        return { id: uf.id!, s3_url: uf.s3_url! };
+      };
+
+      setUploadStatus("Đang xử lý voiceover...");
+      const voRes = await getAssetRef(voiceover, "voiceover");
       
-      setUploadStatus("Đang upload kịch bản...");
-      const scriptRes = await uploadAsset(script.file, "script");
+      setUploadStatus("Đang xử lý kịch bản...");
+      const scriptRes = await getAssetRef(script, "script");
       
       let bgmUrl = "";
       let bgmId = "";
       if (bgm) {
-        setUploadStatus("Đang upload nhạc nền...");
-        const res = await uploadAsset(bgm.file, "bgm");
+        setUploadStatus("Đang xử lý nhạc nền...");
+        const res = await getAssetRef(bgm, "bgm");
         bgmUrl = res.s3_url;
         bgmId = res.id;
       }
@@ -103,8 +108,12 @@ export default function CreateReviewJob() {
         setUploadStatus(`Đang upload clips phân cảnh ${i + 1}/${segments.length}...`);
 
         for (const clip of seg.clips) {
-          const res = await uploadAsset(clip.file, "segment_clip", seg.name);
-          allAssetIds.push(res.id);
+          let resId = clip.id;
+          if (clip.file) {
+            const res = await uploadAsset(clip.file, "segment_clip", seg.name);
+            resId = res.id;
+          }
+          if (resId) allAssetIds.push(resId);
         }
 
         const folderPrefix = `s3://videos/assets/segments/${seg.name}/`;

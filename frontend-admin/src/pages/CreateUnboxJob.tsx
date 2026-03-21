@@ -3,8 +3,11 @@ import { useNavigate } from "react-router-dom"
 import { UploadCloud, Plus, Trash2, ChevronRight, CheckCircle2, Video, FileText, Send } from "lucide-react"
 import api from "../lib/api"
 import { cn } from "../lib/utils"
-import { useAssets } from "../hooks/useAssets"
+import { useAssets, type Asset } from "../hooks/useAssets"
 import { Button } from "../components/ui/Button"
+import { AssetSelector } from "../components/ui/AssetSelector"
+import { AssetSelectModal } from "../components/ui/AssetSelectModal"
+import type { UploadedFile } from "../components/features/review/types"
 
 interface TextEvent {
   time: number
@@ -19,8 +22,10 @@ export default function CreateUnboxJob() {
 
   // Data State
   const [priority, setPriority] = useState<number>(0)
-  const [clips, setClips] = useState<FileList | null>(null)
-  const [audio, setAudio] = useState<File | null>(null)
+  const [clips, setClips] = useState<UploadedFile[]>([])
+  const [audio, setAudio] = useState<UploadedFile | null>(null)
+  
+  const [modalOpen, setModalOpen] = useState(false)
   const [textEvents, setTextEvents] = useState<TextEvent[]>([
     { time: 0.0, text: "Wait till you see this...", effect: "hook" }
   ])
@@ -38,12 +43,12 @@ export default function CreateUnboxJob() {
     setError(null)
     try {
       setUploadStatus("Uploading audio...")
-      const audioUrl = (await uploadAsset(audio, "audio")).s3_url
+      const audioUrl = audio.file ? (await uploadAsset(audio.file as File, "audio")).s3_url : audio.asset!.s3_url
 
       const clipUrls: string[] = []
       for (let i = 0; i < clips.length; i++) {
         setUploadStatus(`Uploading clip ${i + 1} of ${clips.length}...`)
-        const url = (await uploadAsset(clips[i], "clip")).s3_url
+        const url = clips[i].file ? (await uploadAsset(clips[i].file as File, "clip")).s3_url : clips[i].asset!.s3_url
         clipUrls.push(url)
       }
 
@@ -125,7 +130,16 @@ export default function CreateUnboxJob() {
           <div className="space-y-8 animate-in fade-in slide-in-from-right-8 duration-500">
             <div className="grid grid-cols-1 md:grid-cols-2 gap-8">
               <div className="space-y-3">
-                <label className="text-sm font-semibold text-white/90 uppercase tracking-wider">Raw Video Clips</label>
+                <div className="flex items-center justify-between">
+                  <label className="text-sm font-semibold text-white/90 uppercase tracking-wider">Raw Video Clips</label>
+                  <button
+                    type="button"
+                    onClick={() => setModalOpen(true)}
+                    className="text-xs text-primary hover:bg-primary/10 px-2 py-1 rounded-md transition-colors flex items-center gap-1"
+                  >
+                    Thư viện
+                  </button>
+                </div>
                 <div className="flex items-center justify-center w-full">
                   <label className="flex flex-col items-center justify-center w-full h-48 border-2 border-dashed border-white/20 rounded-2xl cursor-pointer hover:bg-white/5 hover:border-primary/50 transition-all duration-300 group">
                     <div className="flex flex-col items-center justify-center pt-5 pb-6 text-center px-4">
@@ -135,36 +149,42 @@ export default function CreateUnboxJob() {
                       <p className="mb-2 text-sm text-white/80"><span className="font-semibold text-primary">Click to browse</span> or drag & drop</p>
                       <p className="text-xs text-muted-foreground">MP4, MOV up to 1080p</p>
                     </div>
-                    <input type="file" className="hidden" multiple accept="video/mp4,video/quicktime" onChange={(e) => setClips(e.target.files)} />
+                    <input type="file" className="hidden" multiple accept="video/mp4,video/quicktime" onChange={(e) => {
+                      if (e.target.files) {
+                        const newFiles = Array.from(e.target.files).map(f => ({ file: f, id: null, s3_url: null, uploading: false, progress: 0 }))
+                        setClips([...clips, ...newFiles])
+                      }
+                    }} />
                   </label>
                 </div>
-                {clips && clips.length > 0 && (
+                {clips.length > 0 && (
                   <div className="flex items-center gap-2 text-sm text-green-400 bg-green-400/10 p-3 rounded-lg border border-green-400/20">
                     <CheckCircle2 className="w-4 h-4" /> Selected {clips.length} video files
                   </div>
                 )}
+                <AssetSelectModal
+                  isOpen={modalOpen}
+                  onClose={() => setModalOpen(false)}
+                  assetTypeFilter="clip"
+                  onSelect={(asset) => {
+                    setClips([...clips, { asset, id: asset.id, s3_url: asset.s3_url, uploading: false, progress: 0 }])
+                  }}
+                />
               </div>
 
-              <div className="space-y-3">
-                <label className="text-sm font-semibold text-white/90 uppercase tracking-wider">Background Audio</label>
-                <div className="flex items-center justify-center w-full">
-                  <label className="flex flex-col items-center justify-center w-full h-48 border-2 border-dashed border-white/20 rounded-2xl cursor-pointer hover:bg-white/5 hover:border-primary/50 transition-all duration-300 group">
-                    <div className="flex flex-col items-center justify-center pt-5 pb-6 text-center px-4">
-                      <div className="p-4 mb-4 rounded-full bg-white/5 group-hover:bg-primary/20 transition-colors">
-                        <UploadCloud className="w-8 h-8 text-indigo-400" />
-                      </div>
-                      <p className="mb-2 text-sm text-white/80"><span className="font-semibold text-indigo-400">Trending TikTok Sound</span></p>
-                      <p className="text-xs text-muted-foreground">MP3 format</p>
-                    </div>
-                    <input type="file" className="hidden" accept="audio/mpeg" onChange={(e) => setAudio(e.target.files?.[0] || null)} />
-                  </label>
-                </div>
-                {audio && (
-                  <div className="flex items-center gap-2 text-sm text-green-400 bg-green-400/10 p-3 rounded-lg border border-green-400/20">
-                    <CheckCircle2 className="w-4 h-4" /> Selected: {audio.name}
-                  </div>
-                )}
-              </div>
+              <AssetSelector
+                label="Background Audio"
+                sublabel="Trending TikTok Sound"
+                icon={<UploadCloud className="w-8 h-8 text-indigo-400" />}
+                accept="audio/mpeg"
+                assetTypeFilter="audio"
+                selectedFile={audio}
+                onSelect={(file, asset) => {
+                  if (file || asset) {
+                    setAudio({ file, asset, id: asset?.id || null, s3_url: asset?.s3_url || null, uploading: false, progress: 0 })
+                  }
+                }}
+              />
             </div>
 
             <div className="flex justify-end pt-4">

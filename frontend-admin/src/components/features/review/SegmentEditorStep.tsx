@@ -1,7 +1,10 @@
-import { Plus, Trash2, Upload, CheckCircle2, Video, ChevronRight } from "lucide-react";
+import { Plus, Trash2, Upload, CheckCircle2, Video, ChevronRight, Folder } from "lucide-react";
 import { cn } from "../../../lib/utils";
-import type { Segment, UploadedFile } from "./types";
 import { Button } from "../../ui/Button";
+import { AssetSelectModal } from "../../ui/AssetSelectModal";
+import type { Asset } from "../../../hooks/useAssets";
+import type { Segment, UploadedFile } from "./types";
+import { useState } from "react";
 
 const SEGMENT_PRESETS = [
   { name: "01_hook", label: "🎯 Hook — Thu hút trong 3s đầu" },
@@ -28,6 +31,8 @@ interface SegmentEditorStepProps {
 }
 
 export function SegmentEditorStep({ segments, setSegments, onPrev, onNext, canGoNext }: SegmentEditorStepProps) {
+  const [modalOpenIdx, setModalOpenIdx] = useState<number | null>(null);
+
   const handleSegmentClips = (index: number, files: FileList | null) => {
     if (!files) return;
     const newSegments = [...segments];
@@ -35,6 +40,15 @@ export function SegmentEditorStep({ segments, setSegments, onPrev, onNext, canGo
       file: f, id: null, s3_url: null, uploading: false, progress: 0
     }));
     newSegments[index].clips = [...newSegments[index].clips, ...newClips];
+    setSegments(newSegments);
+  };
+
+  const handleAssetSelect = (index: number, asset: Asset) => {
+    const newSegments = [...segments];
+    const newClip: UploadedFile = {
+      asset, id: asset.id, s3_url: asset.s3_url, uploading: false, progress: 0
+    };
+    newSegments[index].clips = [...newSegments[index].clips, newClip];
     setSegments(newSegments);
   };
 
@@ -144,10 +158,17 @@ export function SegmentEditorStep({ segments, setSegments, onPrev, onNext, canGo
               </label>
               <div className="flex items-center gap-3">
                 <label className="flex items-center gap-2 px-4 py-2 rounded-xl bg-white/5 hover:bg-white/10 border border-dashed border-white/20 cursor-pointer transition-colors text-sm text-white/80">
-                  <Upload className="w-4 h-4 text-primary" /> Chọn video clips
+                  <Upload className="w-4 h-4 text-primary" /> Từ Máy Tính
                   <input type="file" className="hidden" multiple accept="video/mp4,video/quicktime,.mov"
                     onChange={e => handleSegmentClips(idx, e.target.files)} />
                 </label>
+                <button
+                  type="button"
+                  onClick={() => setModalOpenIdx(idx)}
+                  className="flex items-center gap-2 px-4 py-2 rounded-xl bg-white/5 hover:bg-white/10 border border-white/20 transition-colors text-sm text-white/80"
+                >
+                  <Folder className="w-4 h-4 text-indigo-400" /> Thư Viện
+                </button>
                 {seg.clips.length > 0 && (
                   <span className="text-xs text-green-400 bg-green-400/10 px-3 py-1 rounded-full border border-green-400/20">
                     <CheckCircle2 className="w-3 h-3 inline mr-1" />{seg.clips.length} clip(s)
@@ -158,7 +179,10 @@ export function SegmentEditorStep({ segments, setSegments, onPrev, onNext, canGo
                 <div className="flex flex-wrap gap-2 mt-1">
                   {seg.clips.map((c, ci) => (
                     <span key={ci} className="text-xs bg-white/5 text-white/70 px-2 py-1 rounded-lg border border-white/10 flex items-center gap-1">
-                      <Video className="w-3 h-3" /> {c.file.name.length > 20 ? c.file.name.slice(0, 20) + "..." : c.file.name}
+                      <Video className="w-3 h-3" /> 
+                      {c.file?.name 
+                        ? (c.file.name.length > 20 ? c.file.name.slice(0, 20) + "..." : c.file.name) 
+                        : (c.asset?.file_name && c.asset.file_name.length > 20 ? c.asset.file_name.slice(0, 20) + "..." : c.asset?.file_name)}
                       <button type="button" onClick={() => {
                         const newSegs = [...segments];
                         newSegs[idx].clips = newSegs[idx].clips.filter((_, i) => i !== ci);
@@ -206,6 +230,13 @@ export function SegmentEditorStep({ segments, setSegments, onPrev, onNext, canGo
                 ))}
               </div>
             </div>
+            
+            <AssetSelectModal
+              isOpen={modalOpenIdx === idx}
+              onClose={() => setModalOpenIdx(null)}
+              assetTypeFilter="clip"
+              onSelect={(asset) => handleAssetSelect(idx, asset)}
+            />
           </div>
         ))}
       </div>
