@@ -949,7 +949,7 @@ class Renderer:
 
                     overlays.append(
                         clip.set_start(0.0)
-                            .set_duration(min(3.0, base.duration))
+                            .set_duration(min(2.5, base.duration))
                             .set_position(hook_pos)
                     )
                     continue
@@ -969,7 +969,7 @@ class Renderer:
                 tmp_imgs.append(p)
 
                 clip = ImageClip(str(p), transparent=True)
-                dur = min(2.8, base.duration - start)
+                dur = min(2.5, base.duration - start)
 
                 # TikTok safe zone: center horizontally, place in middle area
                 safe_top = int(self.height * TIKTOK_SAFE_TOP)
@@ -979,14 +979,13 @@ class Renderer:
                 feat_x = max(0, (self.width - clip.w) // 2)
                 feat_y = int((safe_top + safe_bottom) / 2 + 80)  # Slightly below center
 
-                def feat_pos(t, sx=start, fx=feat_x, fy=feat_y,
-                             cw=clip.w):
-                    elapsed = t - sx
-                    if elapsed < 0:
+                def feat_pos(t, fx=feat_x, fy=feat_y, cw=clip.w):
+                    # t is local time (starts at 0 when this text appears)
+                    if t < 0:
                         return (-cw - 80, fy)
 
                     # ease-out-back spring animation over 0.35s
-                    progress = min(elapsed / 0.35, 1.0)
+                    progress = min(t / 0.35, 1.0)
                     ease = self._ease_out_back(progress)
 
                     # Pop from scale 0 → 1 with overshoot
@@ -1195,10 +1194,11 @@ def _parse_text_events(
 ) -> List[TextEvent]:
     """
     Parse text events from config. Auto-assign beat times for events
-    with time=None.
+    with time=None, ensuring a minimum gap to prevent overlaps.
     """
     parsed: List[TextEvent] = []
     beat_idx = 0
+    last_event_time = 0.0
 
     for ev in events:
         text = str(ev.get("text", "")).strip()
@@ -1210,21 +1210,32 @@ def _parse_text_events(
 
         if event_type == "hook":
             parsed.append(TextEvent(start=0.0, text=text, event_type="hook"))
+            # Hook stays slightly longer, texts should not start before 2.0s
+            last_event_time = 2.0
             continue
 
-        # Auto-assign beat time if time is None
         if raw_time is None:
-            # Skip first beat (usually used for hard cut)
+            # Snap to a beat that is at least 2.0 seconds after the last event
+            target_min_time = last_event_time + 2.0
+            assigned_bt = None
+
             while beat_idx < len(beat_times):
                 bt = beat_times[beat_idx]
                 beat_idx += 1
-                if bt > 1.0:  # Skip beats in first second
-                    parsed.append(TextEvent(start=bt, text=text, event_type="feature"))
+                if bt >= target_min_time:
+                    assigned_bt = bt
                     break
+
+            if assigned_bt is None:
+                # Out of beats, just space it manually
+                assigned_bt = target_min_time
+
+            parsed.append(TextEvent(start=assigned_bt, text=text, event_type="feature"))
+            last_event_time = assigned_bt
         else:
-            parsed.append(TextEvent(
-                start=float(raw_time), text=text, event_type=event_type
-            ))
+            t = float(raw_time)
+            parsed.append(TextEvent(start=t, text=text, event_type=event_type))
+            last_event_time = max(last_event_time, t)
 
     return parsed
 
@@ -1376,15 +1387,18 @@ def make_unbox_viral(
     src_fps = _probe_fps(primary_video)
     segment_files: List[Path] = []
 
+    final_video_beat_times = []
     actual_beat_time_in_video = 0.0
     accumulated_video_duration = 0.0
     beat_found = False
 
     for i, seg in enumerate(processed_segments):
         actual_duration = (seg.end - seg.start) / seg.speed_factor
-        if not beat_found and seg.is_beat_cut:
-            actual_beat_time_in_video = accumulated_video_duration
-            beat_found = True
+        if seg.is_beat_cut:
+            final_video_beat_times.append(accumulated_video_duration)
+            if not beat_found:
+                actual_beat_time_in_video = accumulated_video_duration
+                beat_found = True
         accumulated_video_duration += actual_duration
 
         seg_out = tmp_dir / f"segment_{i:04d}.mp4"
@@ -1408,7 +1422,7 @@ def make_unbox_viral(
         segment_files, processed_segments, beat_times, concat_out
     )
 
-    # Parse text events (auto-assign to beats)
+    # Parse text events (auto-assign to musical beats)
     text_events = _parse_text_events(raw_text_events, beat_times)
     logger.info(f"  → {len(text_events)} text events")
 

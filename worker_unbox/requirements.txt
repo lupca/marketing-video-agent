@@ -18,3 +18,5 @@ ultralytics>=8.1.0
 opencv-python>=4.8.0
 opencv-contrib-python>=4.8.0
 ffmpeg-python>=0.2.0
+rembg>=2.0.50
+onnxruntime>=1.16.0

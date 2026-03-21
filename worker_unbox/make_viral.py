@@ -13,6 +13,7 @@ Usage:
 from __future__ import annotations
 
 import concurrent.futures
+import logging
 import os
 import random
 import re
@@ -24,10 +25,20 @@ from dataclasses import dataclass
 from pathlib import Path
 from typing import Any, Iterable, Sequence
 
+import cv2
 import librosa
 import numpy as np
 from moviepy.editor import CompositeVideoClip, ImageClip, VideoFileClip
 from PIL import Image, ImageDraw, ImageFont
+
+# rembg is optional – fallback to plain xfade when unavailable
+try:
+    from rembg import remove as rembg_remove
+    _HAS_REMBG = True
+except ImportError:
+    _HAS_REMBG = False
+
+log = logging.getLogger(__name__)
 
 # ╔══════════════════════════════════════════════════════════════════════════╗
 # ║  CONFIG – edit these to match your project                             ║
@@ -417,10 +428,123 @@ class VideoViralEngine:
                 shutil.copy2(files[0], output)
             return
 
+        # ── Try AI pop-out transition (requires rembg) ──────────────────
+        if _HAS_REMBG:
+            try:
+                self._concat_with_popout(files, output)
+                return
+            except Exception as exc:
+                log.warning("Pop-out transition failed, falling back to xfade: %s", exc)
+
+        # ── Fallback: original FFmpeg xfade ──────────────────────────────
+        self._concat_with_xfade(files, output)
+
+    # ── Pop-out transition concat (OpenCV frame-level) ──────────────────
+    def _concat_with_popout(self, files: Sequence[Path], output: Path) -> None:
+        """Decode scenes, apply PopoutTransition between each pair, then
+        re-encode everything into a single output."""
+        transition = PopoutTransition(
+            transition_frames=10,
+            scale_start=0.80,
+            scale_end=1.00,
+            blur_angle=0.0,
+            blur_kernel_max=35,
+        )
+        n_trans = transition.transition_frames
+
+        # Decode all scenes into frame lists
+        all_scene_frames: list[list[np.ndarray]] = []
+        for f in files:
+            frames = self._decode_video(f)
+            if not frames:
+                raise VideoProcessingError(f"Could not decode frames from {f}")
+            all_scene_frames.append(frames)
+
+        # Build final frame sequence with transitions baked in
+        final_frames: list[np.ndarray] = []
+        for idx, scene_frames in enumerate(all_scene_frames):
+            if idx == 0:
+                # First scene: keep all frames (transition will replace tail)
+                final_frames.extend(scene_frames)
+                continue
+
+            prev_frames = all_scene_frames[idx - 1]
+            cur_frames = scene_frames
+            usable_n = min(n_trans, len(prev_frames), len(cur_frames))
+
+            if usable_n >= 3:
+                # Extract tail of A and head of B for transition
+                tail_a = prev_frames[-usable_n:]
+                head_b = cur_frames[:usable_n]
+
+                try:
+                    trans_out = transition.build_transition(tail_a, head_b)
+                except Exception as exc:
+                    log.warning("Pop-out extraction failed on scene %d, "
+                                "using crossfade fallback: %s", idx, exc)
+                    trans_out = PopoutTransition.crossfade_fallback(
+                        tail_a, head_b, usable_n,
+                    )
+
+                # Replace the tail of what we already appended
+                if trans_out:
+                    final_frames[-usable_n:] = trans_out
+
+                # Append the rest of Clip B (skip the head that was used)
+                final_frames.extend(cur_frames[usable_n:])
+            else:
+                # Too few frames – just append directly
+                final_frames.extend(cur_frames)
+
+        # Encode all frames to the output file
+        self._encode_frames(final_frames, output)
+
+    def _decode_video(self, path: Path) -> list[np.ndarray]:
+        """Read all frames from a video file via OpenCV."""
+        cap = cv2.VideoCapture(str(path))
+        frames: list[np.ndarray] = []
+        try:
+            while True:
+                ok, frame = cap.read()
+                if not ok:
+                    break
+                frames.append(frame)
+        finally:
+            cap.release()
+        return frames
+
+    def _encode_frames(self, frames: list[np.ndarray], output: Path) -> None:
+        """Write a list of BGR frames to an mp4 file via OpenCV."""
+        if not frames:
+            raise VideoProcessingError("No frames to encode.")
+        h, w = frames[0].shape[:2]
+        fourcc = cv2.VideoWriter_fourcc(*"mp4v")
+        tmp_raw = self.working_dir / "_popout_raw.mp4"
+        writer = cv2.VideoWriter(str(tmp_raw), fourcc, self.fps, (w, h))
+        try:
+            for f in frames:
+                writer.write(f)
+        finally:
+            writer.release()
+
+        # Re-encode with libx264 for proper compatibility & quality
+        self._run([
+            self.ffmpeg_bin, "-y",
+            "-i", str(tmp_raw),
+            "-c:v", "libx264", "-preset", self.preset,
+            "-crf", str(self.crf), "-pix_fmt", "yuv420p",
+            "-r", str(self.fps),
+            "-movflags", "+faststart",
+            "-an",
+            str(output),
+        ])
+        tmp_raw.unlink(missing_ok=True)
+
+    # ── Original xfade concat (FFmpeg filter_complex) ───────────────────
+    def _concat_with_xfade(self, files: Sequence[Path], output: Path) -> None:
         xfade_duration = 0.5
         effects = ["fade", "slideleft"]
 
-        # Probe actual durations of rendered scene files
         durations = [self._probe_duration(f) for f in files]
 
         n = len(files)
@@ -428,11 +552,7 @@ class VideoViralEngine:
         for f in files:
             inputs.extend(["-i", str(f)])
 
-        # Build xfade filter chain:
-        # [0][1]xfade=transition=fade:duration=0.3:offset=O0[v01];
-        # [v01][2]xfade=transition=slideleft:duration=0.3:offset=O1[v02]; ...
         filter_parts: list[str] = []
-        # Running offset: each successive xfade reduces total by xfade_duration
         offset = durations[0] - xfade_duration
         prev_label = "[0]"
         for i in range(1, n):
@@ -471,6 +591,197 @@ class VideoViralEngine:
             "-ar", "48000", "-ac", "2", "-b:a", "192k",
             "-t", f"{dur:.3f}", "-movflags", "+faststart", str(output),
         ])
+
+
+# ╔══════════════════════════════════════════════════════════════════════════╗
+# ║  2b. Foreground Pop-out & Optical Flow Whip Transition (OpenCV)        ║
+# ╚══════════════════════════════════════════════════════════════════════════╝
+class PopoutTransition:
+    """AI-powered transition: extracts the foreground subject from Clip B
+    and composites it over the tail of Clip A with a zoom-in pop-out effect
+    and directional motion blur for a cinematic 'whip' feel.
+
+    Requires ``rembg`` for background removal.  Falls back to a simple
+    crossfade when rembg is not available.
+    """
+
+    def __init__(
+        self,
+        transition_frames: int = 10,
+        scale_start: float = 0.80,
+        scale_end: float = 1.00,
+        blur_angle: float = 0.0,
+        blur_kernel_max: int = 35,
+        crossfade_weight_start: float = 0.0,
+        crossfade_weight_end: float = 0.6,
+    ) -> None:
+        self.transition_frames = transition_frames
+        self.scale_start = scale_start
+        self.scale_end = scale_end
+        self.blur_angle = blur_angle  # degrees, 0 = horizontal whip
+        self.blur_kernel_max = blur_kernel_max
+        self.crossfade_weight_start = crossfade_weight_start
+        self.crossfade_weight_end = crossfade_weight_end
+
+    # ── foreground extraction ───────────────────────────────────────────
+    @staticmethod
+    def extract_foreground(frame_bgr: np.ndarray) -> np.ndarray:
+        """Return BGRA image where the background is transparent."""
+        if not _HAS_REMBG:
+            raise RuntimeError("rembg is required for foreground extraction.")
+        # rembg expects RGB PIL Image or raw bytes; easiest via PIL
+        rgb = cv2.cvtColor(frame_bgr, cv2.COLOR_BGR2RGB)
+        pil_in = Image.fromarray(rgb)
+        pil_out = rembg_remove(pil_in)  # returns RGBA PIL Image
+        rgba = np.array(pil_out)  # H×W×4, RGBA order
+        # convert RGBA → BGRA for OpenCV consistency
+        bgra = cv2.cvtColor(rgba, cv2.COLOR_RGBA2BGRA)
+        return bgra
+
+    # ── directional motion blur ─────────────────────────────────────────
+    @staticmethod
+    def apply_motion_blur(
+        frame: np.ndarray, angle_deg: float = 0.0, kernel_size: int = 25,
+    ) -> np.ndarray:
+        """Apply a directional (linear) motion blur at *angle_deg*."""
+        if kernel_size < 3:
+            return frame
+        ks = kernel_size if kernel_size % 2 == 1 else kernel_size + 1
+        kernel = np.zeros((ks, ks), dtype=np.float32)
+        mid = ks // 2
+        kernel[mid, :] = 1.0 / ks  # horizontal line kernel
+
+        # rotate the kernel to the desired angle
+        if abs(angle_deg) > 0.5:
+            M = cv2.getRotationMatrix2D((mid, mid), angle_deg, 1.0)
+            kernel = cv2.warpAffine(kernel, M, (ks, ks))
+            s = kernel.sum()
+            if s > 1e-6:
+                kernel /= s
+
+        return cv2.filter2D(frame, -1, kernel)
+
+    # ── alpha compositing ───────────────────────────────────────────────
+    @staticmethod
+    def composite_fg_on_bg(
+        bg_bgr: np.ndarray,
+        fg_bgra: np.ndarray,
+        scale: float = 1.0,
+    ) -> np.ndarray:
+        """Composite *fg_bgra* (with alpha) onto *bg_bgr* at centre,
+        optionally scaled.
+        """
+        h_bg, w_bg = bg_bgr.shape[:2]
+        h_fg, w_fg = fg_bgra.shape[:2]
+
+        # scale foreground
+        if abs(scale - 1.0) > 1e-4:
+            new_w = int(w_fg * scale)
+            new_h = int(h_fg * scale)
+            fg_bgra = cv2.resize(fg_bgra, (new_w, new_h), interpolation=cv2.INTER_LINEAR)
+            h_fg, w_fg = new_h, new_w
+
+        # centre placement (crop if fg bigger than bg)
+        x_off = (w_bg - w_fg) // 2
+        y_off = (h_bg - h_fg) // 2
+
+        # compute ROI boundaries (handle fg that overflows bg)
+        fg_x1 = max(0, -x_off)
+        fg_y1 = max(0, -y_off)
+        fg_x2 = min(w_fg, w_bg - x_off)
+        fg_y2 = min(h_fg, h_bg - y_off)
+        bg_x1 = max(0, x_off)
+        bg_y1 = max(0, y_off)
+        bg_x2 = bg_x1 + (fg_x2 - fg_x1)
+        bg_y2 = bg_y1 + (fg_y2 - fg_y1)
+
+        if bg_x2 <= bg_x1 or bg_y2 <= bg_y1:
+            return bg_bgr  # nothing to composite
+
+        fg_patch = fg_bgra[fg_y1:fg_y2, fg_x1:fg_x2]
+        alpha = fg_patch[:, :, 3:4].astype(np.float32) / 255.0
+        fg_rgb = fg_patch[:, :, :3].astype(np.float32)
+
+        result = bg_bgr.copy()
+        bg_patch = result[bg_y1:bg_y2, bg_x1:bg_x2].astype(np.float32)
+        blended = fg_rgb * alpha + bg_patch * (1.0 - alpha)
+        result[bg_y1:bg_y2, bg_x1:bg_x2] = blended.astype(np.uint8)
+        return result
+
+    # ── main transition builder ─────────────────────────────────────────
+    def build_transition(
+        self,
+        frames_a: list[np.ndarray],
+        frames_b: list[np.ndarray],
+    ) -> list[np.ndarray]:
+        """Build the pop-out + motion-blur transition frames.
+
+        *frames_a*: last N frames of Clip A (BGR, uint8)
+        *frames_b*: first N frames of Clip B (BGR, uint8)
+
+        Returns a list of *transition_frames* BGR frames that should
+        **replace** the tail of Clip A.
+        """
+        n = min(self.transition_frames, len(frames_a), len(frames_b))
+        if n == 0:
+            return []
+
+        # Extract foreground from the first frame of Clip B
+        fg_bgra = self.extract_foreground(frames_b[0])
+        log.info("PopoutTransition: foreground extracted (%dx%d)",
+                 fg_bgra.shape[1], fg_bgra.shape[0])
+
+        output: list[np.ndarray] = []
+        for i in range(n):
+            t = i / max(1, n - 1)  # 0.0 → 1.0
+
+            # --- background: frame from Clip A tail ---
+            bg = frames_a[len(frames_a) - n + i].copy()
+
+            # motion blur on background (strong → none)
+            blur_strength = int(self.blur_kernel_max * (1.0 - t))
+            if blur_strength >= 3:
+                bg = self.apply_motion_blur(bg, self.blur_angle, blur_strength)
+
+            # --- optional crossfade: blend in Clip B bg progressively ---
+            cf_w = self.crossfade_weight_start + (
+                self.crossfade_weight_end - self.crossfade_weight_start
+            ) * t
+            if cf_w > 0.01:
+                b_frame = frames_b[i]
+                if b_frame.shape[:2] != bg.shape[:2]:
+                    b_frame = cv2.resize(b_frame, (bg.shape[1], bg.shape[0]))
+                bg = cv2.addWeighted(bg, 1.0 - cf_w, b_frame, cf_w, 0)
+
+            # --- foreground: scale up from 80 % → 100 % ---
+            scale = self.scale_start + (self.scale_end - self.scale_start) * t
+            frame = self.composite_fg_on_bg(bg, fg_bgra, scale=scale)
+
+            output.append(frame)
+
+        return output
+
+    # ── convenience: simple crossfade fallback (no rembg) ───────────────
+    @staticmethod
+    def crossfade_fallback(
+        frames_a: list[np.ndarray],
+        frames_b: list[np.ndarray],
+        n: int = 10,
+    ) -> list[np.ndarray]:
+        """Simple alpha crossfade when rembg is not available."""
+        n = min(n, len(frames_a), len(frames_b))
+        if n == 0:
+            return []
+        out: list[np.ndarray] = []
+        for i in range(n):
+            t = i / max(1, n - 1)
+            a = frames_a[len(frames_a) - n + i]
+            b = frames_b[i]
+            if a.shape != b.shape:
+                b = cv2.resize(b, (a.shape[1], a.shape[0]))
+            blended = cv2.addWeighted(a, 1.0 - t, b, t, 0)
+            out.append(blended)
+        return out
 
 
 # ╔══════════════════════════════════════════════════════════════════════════╗
