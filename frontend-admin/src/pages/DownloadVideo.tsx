@@ -13,6 +13,7 @@ export default function DownloadVideo() {
   const [newProjectName, setNewProjectName] = useState("");
   const [isCreatingProject, setIsCreatingProject] = useState(false);
   const [url, setUrl] = useState("");
+  const [downloadFormat, setDownloadFormat] = useState<"video" | "audio">("video");
 
   const [loading, setLoading] = useState(false);
   const [statusMsg, setStatusMsg] = useState("");
@@ -55,7 +56,7 @@ export default function DownloadVideo() {
       await api.post("/api/jobs", {
         job_type: "download",
         project_id: targetProjectId,
-        config_data: { url: url.trim() },
+        config_data: { url: url.trim(), format: downloadFormat },
       });
 
       // Redirect to dashboard to see the job progress
@@ -156,11 +157,44 @@ export default function DownloadVideo() {
 
         <div className="w-full h-px bg-white/10"></div>
 
+        {/* Format Selection */}
+        <div className="space-y-4">
+          <div className="flex items-center gap-2 text-white">
+            <DownloadCloud className="w-5 h-5 text-primary" />
+            <h3 className="text-lg font-semibold">2. Định dạng Tải</h3>
+          </div>
+          <div className="flex gap-4">
+            <label className={cn(
+              "flex-1 p-4 rounded-xl border cursor-pointer transition-all",
+              downloadFormat === "video" 
+                ? "bg-primary/20 border-primary/50 shadow-[0_0_15px_rgba(124,58,237,0.3)] ring-1 ring-primary/20" 
+                : "bg-white/5 border-white/10 hover:bg-white/10"
+            )}>
+              <input type="radio" className="hidden" name="format" value="video" checked={downloadFormat === "video"} onChange={() => setDownloadFormat("video")} />
+              <div className="font-medium text-white mb-1">Video (MP4)</div>
+              <div className="text-xs opacity-70">Tải video độ phân giải cao nhất</div>
+            </label>
+            
+            <label className={cn(
+              "flex-1 p-4 rounded-xl border cursor-pointer transition-all",
+              downloadFormat === "audio" 
+                ? "bg-primary/20 border-primary/50 shadow-[0_0_15px_rgba(124,58,237,0.3)] ring-1 ring-primary/20" 
+                : "bg-white/5 border-white/10 hover:bg-white/10"
+            )}>
+              <input type="radio" className="hidden" name="format" value="audio" checked={downloadFormat === "audio"} onChange={() => setDownloadFormat("audio")} />
+              <div className="font-medium text-white mb-1">Chỉ lấy Nhạc (MP3)</div>
+              <div className="text-xs opacity-70">Trích xuất âm thanh từ liên kết</div>
+            </label>
+          </div>
+        </div>
+
+        <div className="w-full h-px bg-white/10"></div>
+
         {/* URL Input */}
         <div className="space-y-4">
           <div className="flex items-center gap-2 text-white">
             <DownloadCloud className="w-5 h-5 text-primary" />
-            <h3 className="text-lg font-semibold">2. Đường dẫn Video</h3>
+            <h3 className="text-lg font-semibold">3. Đường dẫn Link</h3>
           </div>
           <p className="text-sm text-muted-foreground">
             Hỗ trợ link từ YouTube, TikTok, Facebook v.v. (Ví dụ: https://www.youtube.com/shorts/...)
