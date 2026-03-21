@@ -1,8 +1,10 @@
 import { useState } from "react"
-import api from "../lib/api"
 import { useNavigate } from "react-router-dom"
-import { UploadCloud, Plus, Trash2, Loader2, ChevronRight, CheckCircle2, Video, FileText, Send } from "lucide-react"
+import { UploadCloud, Plus, Trash2, ChevronRight, CheckCircle2, Video, FileText, Send } from "lucide-react"
+import api from "../lib/api"
 import { cn } from "../lib/utils"
+import { useAssets } from "../hooks/useAssets"
+import { Button } from "../components/ui/Button"
 
 interface TextEvent {
   time: number
@@ -12,6 +14,7 @@ interface TextEvent {
 
 export default function CreateUnboxJob() {
   const navigate = useNavigate()
+  const { uploadAsset } = useAssets()
   const [step, setStep] = useState(1)
 
   // Data State
@@ -25,13 +28,7 @@ export default function CreateUnboxJob() {
   // UI State
   const [loading, setLoading] = useState(false)
   const [error, setError] = useState<string | null>(null)
-
-  const uploadFile = async (file: File) => {
-    const formData = new FormData()
-    formData.append("file", file)
-    const res = await api.post("/api/assets/upload", formData)
-    return res.data.s3_url
-  }
+  const [uploadStatus, setUploadStatus] = useState("")
 
   const handleSubmit = async () => {
     if (!clips || clips.length === 0) return setError("Please select at least 1 video clip")
@@ -40,17 +37,17 @@ export default function CreateUnboxJob() {
     setLoading(true)
     setError(null)
     try {
-      // 1. Upload audio
-      const audioUrl = await uploadFile(audio)
+      setUploadStatus("Uploading audio...")
+      const audioUrl = (await uploadAsset(audio, "audio")).s3_url
 
-      // 2. Upload clips
       const clipUrls: string[] = []
       for (let i = 0; i < clips.length; i++) {
-        const url = await uploadFile(clips[i])
+        setUploadStatus(`Uploading clip ${i + 1} of ${clips.length}...`)
+        const url = (await uploadAsset(clips[i], "clip")).s3_url
         clipUrls.push(url)
       }
 
-      // 3. Create job
+      setUploadStatus("Committing job...")
       const payload = {
         job_type: "unbox",
         priority,
@@ -68,6 +65,7 @@ export default function CreateUnboxJob() {
       setError(err?.response?.data?.detail || err.message || "Failed to create job")
     } finally {
       setLoading(false)
+      setUploadStatus("")
     }
   }
 
@@ -79,8 +77,6 @@ export default function CreateUnboxJob() {
 
   return (
     <div className="max-w-5xl mx-auto p-8 lg:p-12 space-y-10">
-
-      {/* Header */}
       <div className="space-y-2">
         <h2 className="text-4xl font-extrabold tracking-tight bg-clip-text text-transparent bg-gradient-to-r from-white to-white/60">
           Create Viral Unbox
@@ -90,10 +86,7 @@ export default function CreateUnboxJob() {
         </p>
       </div>
 
-      {/* Main Glass Panel */}
       <div className="glass-panel p-6 lg:p-10 flex flex-col space-y-10">
-
-        {/* Stepper Wizard */}
         <div className="flex items-center justify-between w-full border-b border-white/10 pb-8">
           {steps.map((s, idx) => (
             <div key={s.id} className="flex items-center">
@@ -128,11 +121,9 @@ export default function CreateUnboxJob() {
           </div>
         )}
 
-        {/* Step 1: Upload Media */}
         {step === 1 && (
           <div className="space-y-8 animate-in fade-in slide-in-from-right-8 duration-500">
             <div className="grid grid-cols-1 md:grid-cols-2 gap-8">
-              {/* Video Dropzone */}
               <div className="space-y-3">
                 <label className="text-sm font-semibold text-white/90 uppercase tracking-wider">Raw Video Clips</label>
                 <div className="flex items-center justify-center w-full">
@@ -154,7 +145,6 @@ export default function CreateUnboxJob() {
                 )}
               </div>
 
-              {/* Audio Dropzone */}
               <div className="space-y-3">
                 <label className="text-sm font-semibold text-white/90 uppercase tracking-wider">Background Audio</label>
                 <div className="flex items-center justify-center w-full">
@@ -178,18 +168,17 @@ export default function CreateUnboxJob() {
             </div>
 
             <div className="flex justify-end pt-4">
-              <button
+              <Button
                 onClick={() => setStep(2)}
                 disabled={!clips || clips.length === 0 || !audio}
-                className="glowing-button text-white px-8 py-3 rounded-xl font-medium flex items-center gap-2 disabled:opacity-50 disabled:shadow-none"
+                className="glowing-button px-8 py-3 rounded-xl font-medium"
               >
-                Continue to Script <ChevronRight className="w-5 h-5" />
-              </button>
+                Continue to Script <ChevronRight className="w-5 h-5 ml-2" />
+              </Button>
             </div>
           </div>
         )}
 
-        {/* Step 2: Script & Timeline */}
         {step === 2 && (
           <div className="space-y-8 animate-in fade-in slide-in-from-right-8 duration-500">
             <div className="flex items-center justify-between">
@@ -278,17 +267,16 @@ export default function CreateUnboxJob() {
               >
                 Back
               </button>
-              <button
+              <Button
                 onClick={() => setStep(3)}
-                className="glowing-button text-white px-8 py-3 rounded-xl font-medium flex items-center gap-2"
+                className="glowing-button px-8 py-3 rounded-xl font-medium"
               >
-                Review Configuration <ChevronRight className="w-5 h-5" />
-              </button>
+                Review Configuration <ChevronRight className="w-5 h-5 ml-2" />
+              </Button>
             </div>
           </div>
         )}
 
-        {/* Step 3: Review & Render */}
         {step === 3 && (
           <div className="space-y-8 animate-in fade-in slide-in-from-right-8 duration-500">
             <div className="rounded-2xl bg-black/40 border border-white/10 p-8 space-y-6">
@@ -344,13 +332,14 @@ export default function CreateUnboxJob() {
               >
                 Back to Script
               </button>
-              <button
+              <Button
                 onClick={handleSubmit}
-                disabled={loading}
-                className="glowing-button text-white px-10 py-3 rounded-xl font-medium flex items-center gap-2 shadow-[0_0_30px_rgba(124,58,237,0.6)]"
+                isLoading={loading}
+                className="glowing-button px-10 py-3 rounded-xl font-medium shadow-[0_0_30px_rgba(124,58,237,0.6)]"
               >
-                {loading ? <><Loader2 className="mr-2 h-5 w-5 animate-spin" /> Processing GPU Job...</> : <><Send className="w-5 h-5" /> Send to Render Farm</>}
-              </button>
+                {!loading && <Send className="w-5 h-5 mr-2" />}
+                {loading ? (uploadStatus || "Processing GPU Job...") : "Send to Render Farm"}
+              </Button>
             </div>
           </div>
         )}
