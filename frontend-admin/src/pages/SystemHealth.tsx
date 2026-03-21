@@ -1,8 +1,10 @@
 import { useEffect, useState } from "react"
 import api from "../lib/api"
 import { format } from "date-fns"
-import { Activity, Server, FileCode, CheckCircle2, Clock, PlaySquare } from "lucide-react"
+import { Activity, Server, FileCode, CheckCircle2, Clock, PlaySquare, Plus } from "lucide-react"
 import { cn } from "../lib/utils"
+import { Modal } from "../components/ui/Modal"
+import { Button } from "../components/ui/Button"
 
 interface WorkerNode {
   id: string
@@ -25,6 +27,15 @@ export default function SystemHealth() {
   const [templates, setTemplates] = useState<Template[]>([])
   const [loading, setLoading] = useState(true)
 
+  const [isTemplateModalOpen, setIsTemplateModalOpen] = useState(false)
+  const [newTemplate, setNewTemplate] = useState({
+    name: "",
+    job_type: "review",
+    default_config_data: "{}",
+    is_active: true
+  })
+  const [isCreating, setIsCreating] = useState(false)
+
   const fetchHealth = async () => {
     try {
       const [workersRes, templatesRes] = await Promise.all([
@@ -37,6 +48,33 @@ export default function SystemHealth() {
       console.error("Failed to fetch system data", e)
     } finally {
       setLoading(false)
+    }
+  }
+
+  const handleCreateTemplate = async (e: React.FormEvent) => {
+    e.preventDefault()
+    setIsCreating(true)
+    try {
+      let parsedConfig = {}
+      try {
+        parsedConfig = JSON.parse(newTemplate.default_config_data)
+      } catch (err) {
+        alert("Invalid JSON in config data")
+        setIsCreating(false)
+        return
+      }
+      await api.post("/api/templates", {
+        ...newTemplate,
+        default_config_data: parsedConfig
+      })
+      setIsTemplateModalOpen(false)
+      setNewTemplate({ name: "", job_type: "review", default_config_data: "{}", is_active: true })
+      fetchHealth()
+    } catch (error) {
+      console.error("Failed to create template", error)
+      alert("Failed to create template. Please check the network tab.")
+    } finally {
+      setIsCreating(false)
     }
   }
 
@@ -109,11 +147,16 @@ export default function SystemHealth() {
 
         {/* Templates Panel */}
         <div className="glass-panel p-6 flex flex-col h-full border border-indigo-500/10">
-          <div className="flex items-center gap-3 mb-6">
-            <div className="p-2 rounded bg-indigo-500/10 text-indigo-400">
-              <FileCode className="w-5 h-5" />
+          <div className="flex items-center justify-between mb-6">
+            <div className="flex items-center gap-3">
+              <div className="p-2 rounded bg-indigo-500/10 text-indigo-400">
+                <FileCode className="w-5 h-5" />
+              </div>
+              <h3 className="text-xl font-bold text-white">Generative Templates</h3>
             </div>
-            <h3 className="text-xl font-bold text-white">Generative Templates</h3>
+            <Button size="sm" onClick={() => setIsTemplateModalOpen(true)} className="gap-2 shrink-0">
+              <Plus className="w-4 h-4" /> New Template
+            </Button>
           </div>
           
           <div className="flex-1">
@@ -143,6 +186,73 @@ export default function SystemHealth() {
         </div>
 
       </div>
+      
+      <Modal
+        isOpen={isTemplateModalOpen}
+        onClose={() => !isCreating && setIsTemplateModalOpen(false)}
+        title="Create Generative Template"
+      >
+        <form onSubmit={handleCreateTemplate} className="p-6 space-y-4">
+          <div className="space-y-2">
+            <label className="text-sm font-medium text-white/80">Template Name</label>
+            <input
+              type="text"
+              required
+              className="w-full bg-white/5 border border-white/10 rounded-lg px-4 py-2.5 text-white focus:outline-none focus:ring-2 focus:ring-emerald-500/50"
+              placeholder="e.g. Default Review Video"
+              value={newTemplate.name}
+              onChange={e => setNewTemplate(prev => ({ ...prev, name: e.target.value }))}
+            />
+          </div>
+          <div className="space-y-2">
+            <label className="text-sm font-medium text-white/80">Job Type</label>
+            <select
+              className="w-full bg-[#111] border border-white/10 rounded-lg px-4 py-2.5 text-white focus:outline-none focus:ring-2 focus:ring-emerald-500/50"
+              value={newTemplate.job_type}
+              onChange={e => setNewTemplate(prev => ({ ...prev, job_type: e.target.value }))}
+            >
+              <option value="review">Review / TTS Story</option>
+              <option value="unbox">Unbox / Beat Sync</option>
+            </select>
+          </div>
+          <div className="space-y-2">
+            <label className="text-sm font-medium text-white/80">Default Config Data (JSON)</label>
+            <textarea
+              required
+              rows={5}
+              className="w-full bg-white/5 border border-white/10 rounded-lg px-4 py-2.5 text-white focus:outline-none focus:ring-2 focus:ring-emerald-500/50 font-mono text-sm"
+              value={newTemplate.default_config_data}
+              onChange={e => setNewTemplate(prev => ({ ...prev, default_config_data: e.target.value }))}
+            />
+          </div>
+          <div className="flex items-center gap-2 pt-2">
+            <input
+              type="checkbox"
+              id="isActive"
+              checked={newTemplate.is_active}
+              onChange={e => setNewTemplate(prev => ({ ...prev, is_active: e.target.checked }))}
+              className="rounded bg-white/5 border-white/10 text-emerald-500 focus:ring-emerald-500 focus:ring-offset-gray-900"
+            />
+            <label htmlFor="isActive" className="text-sm text-white/80 cursor-pointer">
+              Active (Visible to creators)
+            </label>
+          </div>
+          <div className="pt-4 flex justify-end gap-3">
+            <Button
+              type="button"
+              variant="outline"
+              onClick={() => setIsTemplateModalOpen(false)}
+              disabled={isCreating}
+            >
+              Cancel
+            </Button>
+            <Button type="submit" disabled={isCreating}>
+              {isCreating ? "Creating..." : "Create Template"}
+            </Button>
+          </div>
+        </form>
+      </Modal>
+
     </div>
   )
 }
