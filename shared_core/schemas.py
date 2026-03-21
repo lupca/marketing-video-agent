@@ -115,6 +115,7 @@ class AssetResponse(BaseModel):
     file_name: str
     file_size_bytes: int
     s3_url: str
+    presigned_url: Optional[str] = None
     mime_type: Optional[str] = None
     created_at: datetime
 

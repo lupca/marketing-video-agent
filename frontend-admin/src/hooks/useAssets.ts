@@ -7,6 +7,7 @@ export interface Asset {
   file_name: string;
   file_size_bytes: number;
   s3_url: string;
+  presigned_url?: string;
   mime_type: string;
   created_at: string;
 }
@@ -43,11 +44,12 @@ export function useAssets(typeFilter?: string) {
     setAssets(prev => prev.filter(a => a.id !== id));
   };
 
-  const uploadAsset = async (file: File, assetType: string, segmentName?: string) => {
+  const uploadAsset = async (file: File, assetType: string, segmentName?: string, folderPath?: string) => {
     const formData = new FormData();
     formData.append("file", file);
     formData.append("asset_type", assetType);
     if (segmentName) formData.append("segment_name", segmentName);
+    if (folderPath) formData.append("folder_path", folderPath);
 
     const res = await api.post("/api/assets/upload", formData);
     // Refresh the list after upload

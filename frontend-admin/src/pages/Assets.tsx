@@ -1,5 +1,5 @@
 import { useState, useRef } from "react";
-import { Database, UploadCloud, RefreshCw, Search } from "lucide-react";
+import { Database, UploadCloud, RefreshCw, Search, FolderPlus } from "lucide-react";
 import { useAssets } from "../hooks/useAssets";
 import { AssetTable } from "../components/features/assets/AssetTable";
 import { Button } from "../components/ui/Button";
@@ -7,10 +7,12 @@ import { Button } from "../components/ui/Button";
 export default function Assets() {
   const [filterType, setFilterType] = useState<string>("all");
   const { assets, loading, refreshing, fetchAssets, deleteAsset, uploadAsset } = useAssets(filterType);
+  const [currentPath, setCurrentPath] = useState<string>("");
   
   const [deletingId, setDeletingId] = useState<string | null>(null);
   const [uploading, setUploading] = useState(false);
   const fileInputRef = useRef<HTMLInputElement>(null);
+  const folderInputRef = useRef<HTMLInputElement>(null);
 
   const handleRefresh = () => fetchAssets(true);
 
@@ -31,6 +33,10 @@ export default function Assets() {
     fileInputRef.current?.click();
   };
 
+  const handleFolderUploadClick = () => {
+    folderInputRef.current?.click();
+  };
+
   const handleFileChange = async (e: React.ChangeEvent<HTMLInputElement>) => {
     const file = e.target.files?.[0];
     if (!file) return;
@@ -41,15 +47,50 @@ export default function Assets() {
     else if (file.type.startsWith("audio/")) assetType = "audio";
     else if (file.type.startsWith("text/")) assetType = "script";
     else if (file.name.endsWith(".srt") || file.name.endsWith(".vtt")) assetType = "script";
+    else if (file.type.startsWith("image/")) assetType = "image";
 
     try {
-      await uploadAsset(file, assetType);
+      await uploadAsset(file, assetType, undefined, currentPath);
     } catch (err) {
       console.error(err);
       alert("Failed to upload asset");
     } finally {
       setUploading(false);
       if (fileInputRef.current) fileInputRef.current.value = "";
+    }
+  };
+
+  const handleFolderChange = async (e: React.ChangeEvent<HTMLInputElement>) => {
+    const files = e.target.files;
+    if (!files || files.length === 0) return;
+
+    setUploading(true);
+    try {
+      // Upload sequentially to avoid overloading MinIO and DB with too many simultaneous requests
+      for (let i = 0; i < files.length; i++) {
+        const file = files[i];
+        let assetType = "doc";
+        if (file.type.startsWith("video/")) assetType = "video";
+        else if (file.type.startsWith("audio/")) assetType = "audio";
+        else if (file.type.startsWith("text/")) assetType = "script";
+        else if (file.name.endsWith(".srt") || file.name.endsWith(".vtt")) assetType = "script";
+        else if (file.type.startsWith("image/")) assetType = "image";
+
+        const pathParts = file.webkitRelativePath.split("/");
+        pathParts.pop(); // remove file name
+        let folderPath = pathParts.join("/");
+        if (currentPath) {
+          folderPath = currentPath + (currentPath.endsWith("/") ? "" : "/") + folderPath;
+        }
+
+        await uploadAsset(file, assetType, undefined, folderPath);
+      }
+    } catch (err) {
+      console.error(err);
+      alert("Failed to upload folder");
+    } finally {
+      setUploading(false);
+      if (folderInputRef.current) folderInputRef.current.value = "";
     }
   };
 
@@ -88,13 +129,24 @@ export default function Assets() {
           </Button>
           
           <Button
+            onClick={handleFolderUploadClick}
+            disabled={uploading}
+            isLoading={uploading}
+            variant="secondary"
+            className="pr-6 pl-4"
+          >
+            {!uploading && <FolderPlus className="w-4 h-4 mr-2" />}
+            Folder
+          </Button>
+
+          <Button
             onClick={handleUploadClick}
             disabled={uploading}
             isLoading={uploading}
             className="glowing-button pr-6 pl-4"
           >
             {!uploading && <UploadCloud className="w-4 h-4 mr-2" />}
-            {uploading ? "Uploading..." : "Upload Asset"}
+            File
           </Button>
           <input
             type="file"
@@ -102,6 +154,16 @@ export default function Assets() {
             onChange={handleFileChange}
             className="hidden"
             title="Upload Media"
+          />
+          <input
+            type="file"
+            ref={folderInputRef}
+            onChange={handleFolderChange}
+            className="hidden"
+            title="Upload Folder"
+            // @ts-ignore
+            webkitdirectory="true"
+            directory="true"
           />
         </div>
       </div>
@@ -112,6 +174,8 @@ export default function Assets() {
         deletingId={deletingId}
         onDelete={handleDelete}
         onUploadClick={handleUploadClick}
+        currentPath={currentPath}
+        setCurrentPath={setCurrentPath}
       />
     </div>
   );

@@ -1,11 +1,12 @@
 import { BrowserRouter as Router, Routes, Route, Link, useLocation, Navigate } from "react-router-dom";
-import { LayoutDashboard, Video, Zap, LogOut, User as UserIcon, FolderHeart, Database, Activity, Wand2 } from "lucide-react";
+import { LayoutDashboard, Video, Zap, LogOut, User as UserIcon, FolderHeart, Database, Activity, Wand2, BookOpen } from "lucide-react";
 import Dashboard from "./pages/Dashboard";
 import CreateUnboxJob from "./pages/CreateUnboxJob";
 import CreateReviewJob from "./pages/CreateReviewJob";
 import Projects from "./pages/Projects";
 import Assets from "./pages/Assets";
 import SystemHealth from "./pages/SystemHealth";
+import Guides from "./pages/Guides";
 import Login from "./pages/Login";
 import Register from "./pages/Register";
 import { AuthProvider, useAuth } from "./context/AuthContext";
@@ -35,6 +36,7 @@ function Sidebar() {
     { name: "Projects", path: "/projects", icon: FolderHeart },
     { name: "Assets", path: "/assets", icon: Database },
     { name: "Unbox Factory", path: "/create-unbox", icon: Video },
+    { name: "Content Guides", path: "/guides", icon: BookOpen },
     { name: "System Health", path: "/health", icon: Activity },
   ];
 
@@ -112,6 +114,7 @@ function MainLayout() {
           <Route path="/create-review" element={<CreateReviewJob />} />
           <Route path="/projects" element={<Projects />} />
           <Route path="/assets" element={<Assets />} />
+          <Route path="/guides" element={<Guides />} />
           <Route path="/health" element={<SystemHealth />} />
         </Routes>
       </main>

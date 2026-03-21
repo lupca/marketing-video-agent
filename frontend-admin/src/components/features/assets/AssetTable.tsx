@@ -1,5 +1,6 @@
+import React from "react";
 import { format } from "date-fns";
-import { Database, FileAudio, FileVideo, FileText, File, Loader2, Download, ExternalLink, Trash2 } from "lucide-react";
+import { Database, FileAudio, FileVideo, FileText, File, Loader2, Download, ExternalLink, Trash2, Folder, ChevronRight, Play } from "lucide-react";
 import type { Asset } from "../../../hooks/useAssets";
 
 export function formatBytes(bytes: number, decimals = 2) {
@@ -43,11 +44,57 @@ interface AssetTableProps {
   deletingId: string | null;
   onDelete: (id: string) => void;
   onUploadClick: () => void;
+  currentPath: string;
+  setCurrentPath: (path: string) => void;
 }
 
-export function AssetTable({ assets, loading, deletingId, onDelete, onUploadClick }: AssetTableProps) {
+export function AssetTable({ assets, loading, deletingId, onDelete, onUploadClick, currentPath, setCurrentPath }: AssetTableProps) {
+  const { folders, files } = React.useMemo(() => {
+    const folderSet = new Set<string>();
+    const fileList: Asset[] = [];
+    
+    assets.forEach(asset => {
+      if (currentPath && !asset.file_name.startsWith(currentPath)) return;
+      
+      const relativePath = currentPath ? asset.file_name.slice(currentPath.length) : asset.file_name;
+      const parts = relativePath.split("/");
+      
+      if (parts.length > 1) {
+        folderSet.add(parts[0]);
+      } else {
+        fileList.push(asset);
+      }
+    });
+    
+    return { folders: Array.from(folderSet).sort(), files: fileList };
+  }, [assets, currentPath]);
+
+  const breadcrumbs = currentPath.split("/").filter(Boolean);
+
   return (
     <div className="glass-panel overflow-hidden animate-in fade-in slide-in-from-bottom-8 duration-700">
+      <div className="px-6 py-4 flex items-center gap-2 border-b border-white/10 text-sm overflow-x-auto whitespace-nowrap">
+        <button
+          onClick={() => setCurrentPath("")}
+          className="text-muted-foreground hover:text-white transition-colors"
+        >
+          Home
+        </button>
+        {breadcrumbs.map((crumb, idx) => {
+          const path = breadcrumbs.slice(0, idx + 1).join("/") + "/";
+          return (
+            <React.Fragment key={path}>
+              <ChevronRight className="w-4 h-4 text-muted-foreground/50" />
+              <button
+                onClick={() => setCurrentPath(path)}
+                className="text-muted-foreground hover:text-white transition-colors"
+              >
+                {crumb}
+              </button>
+            </React.Fragment>
+          );
+        })}
+      </div>
       <div className="w-full overflow-x-auto min-h-[400px]">
         <table className="w-full text-sm text-left">
           <thead className="bg-black/40 text-xs uppercase text-muted-foreground border-b border-white/10">
@@ -67,7 +114,7 @@ export function AssetTable({ assets, loading, deletingId, onDelete, onUploadClic
                   Fetching assets from S3...
                 </td>
               </tr>
-            ) : assets.length === 0 ? (
+            ) : folders.length === 0 && files.length === 0 ? (
               <tr>
                 <td colSpan={5} className="px-6 py-24 text-center">
                   <div className="flex flex-col items-center justify-center gap-4 text-muted-foreground">
@@ -76,7 +123,7 @@ export function AssetTable({ assets, loading, deletingId, onDelete, onUploadClic
                     </div>
                     <div>
                       <p className="text-white font-medium mb-1">No assets found</p>
-                      <p className="text-sm">Upload media to use in your video projects.</p>
+                      <p className="text-sm">Upload media or folders to use in your video projects.</p>
                     </div>
                     <button
                       onClick={onUploadClick}
@@ -88,7 +135,31 @@ export function AssetTable({ assets, loading, deletingId, onDelete, onUploadClic
                 </td>
               </tr>
             ) : (
-              assets.map((asset) => (
+              <React.Fragment>
+                {/* Render Folders */}
+                {folders.map(folder => (
+                  <tr key={`folder-${folder}`} className="hover:bg-white/[0.02] transition-colors group cursor-pointer" onClick={() => setCurrentPath(currentPath + folder + "/")}>
+                    <td className="px-6 py-4">
+                      <div className="flex items-center gap-3">
+                        <div className="p-2.5 rounded-xl bg-indigo-500/10 border border-indigo-500/20 text-indigo-400 group-hover:text-indigo-300 group-hover:border-indigo-400/30 transition-all">
+                          <Folder className="w-5 h-5 fill-indigo-500/20" />
+                        </div>
+                        <span className="font-medium text-white">{folder}</span>
+                      </div>
+                    </td>
+                    <td className="px-6 py-4 whitespace-nowrap">
+                      <span className="inline-flex items-center px-2.5 py-1 rounded-md bg-white/5 border border-white/10 text-xs font-semibold capitalize tracking-wide text-muted-foreground">
+                        Folder
+                      </span>
+                    </td>
+                    <td className="px-6 py-4 whitespace-nowrap text-muted-foreground font-mono text-xs">--</td>
+                    <td className="px-6 py-4 whitespace-nowrap text-muted-foreground text-xs">--</td>
+                    <td className="px-6 py-4 whitespace-nowrap text-right"></td>
+                  </tr>
+                ))}
+                
+                {/* Render Files */}
+                {files.map((asset) => (
                 <tr key={asset.id} className="hover:bg-white/[0.02] transition-colors group">
                   <td className="px-6 py-4">
                     <div className="flex items-center gap-3">
@@ -96,10 +167,10 @@ export function AssetTable({ assets, loading, deletingId, onDelete, onUploadClic
                         {getAssetIcon(asset.asset_type)}
                       </div>
                       <div className="flex flex-col">
-                        <span className="font-medium text-white line-clamp-1 max-w-[300px]" title={asset.file_name}>
-                          {asset.file_name}
+                        <span className="font-medium text-white line-clamp-1 max-w-[300px]" title={currentPath ? asset.file_name.slice(currentPath.length) : asset.file_name}>
+                          {currentPath ? asset.file_name.slice(currentPath.length) : asset.file_name}
                         </span>
-                        <span className="text-xs text-muted-foreground/50 mt-0.5">{asset.id.slice(0, 8)}...</span>
+                        <span className="text-xs text-muted-foreground/50 mt-0.5" title={asset.id}>{asset.id.slice(0, 8)}...</span>
                       </div>
                     </div>
                   </td>
@@ -116,10 +187,23 @@ export function AssetTable({ assets, loading, deletingId, onDelete, onUploadClic
                   </td>
                   <td className="px-6 py-4 whitespace-nowrap text-right">
                     <div className="flex items-center justify-end gap-2 opacity-50 group-hover:opacity-100 transition-opacity">
+                      {asset.presigned_url && (asset.asset_type === "video" || asset.asset_type === "audio" || asset.asset_type === "image") && (
+                        <a
+                          href={asset.presigned_url}
+                          target="_blank"
+                          rel="noreferrer"
+                          className="p-2 rounded-lg hover:bg-emerald-500/10 text-muted-foreground hover:text-emerald-400 transition-colors"
+                          title="View Media"
+                        >
+                          <Play className="h-4 w-4" />
+                        </a>
+                      )}
+                      
                       <a
-                        href={getMinioDownloadUrl(asset.s3_url)}
+                        href={asset.presigned_url || getMinioDownloadUrl(asset.s3_url)}
                         target="_blank"
                         rel="noreferrer"
+                        download
                         className="p-2 rounded-lg hover:bg-emerald-500/10 text-muted-foreground hover:text-emerald-400 transition-colors"
                         title="Download Asset"
                       >
@@ -146,7 +230,8 @@ export function AssetTable({ assets, loading, deletingId, onDelete, onUploadClic
                     </div>
                   </td>
                 </tr>
-              ))
+                ))}
+              </React.Fragment>
             )}
           </tbody>
         </table>
