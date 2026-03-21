@@ -921,7 +921,7 @@ class Renderer:
                     img = self._render_text_image(
                         ev.text, font, font_size_hook,
                         max_width=int(self.width * 0.70),
-                        stroke_width=5,
+                        event_type="hook",
                     )
                     p = tmp_dir / f"hook_{len(tmp_imgs):03d}.png"
                     img.save(str(p))
@@ -929,29 +929,27 @@ class Renderer:
 
                     clip = ImageClip(str(p), transparent=True)
 
-                    # Hook: centered in safe zone, ease-out-back at 0s
-                    # Safe zone Y: between 15% and 80% of height
+                    # Slam Down: scale 2.5 → 1.0 over 0.25s, then hold 1.0
+                    slam_dur = 0.25
+
+                    def slam_scale(t, sd=slam_dur):
+                        if t < sd:
+                            progress = t / sd
+                            return 2.5 - 1.5 * progress  # 2.5 → 1.0
+                        return 1.0
+
+                    # Hook: centered in safe zone
                     safe_y = int(self.height * TIKTOK_SAFE_TOP)
                     safe_bottom = int(self.height * (1 - TIKTOK_SAFE_BOTTOM))
                     center_y = (safe_y + safe_bottom) // 2 - clip.h // 2
                     center_x = (self.width - clip.w) // 2
 
-                    def hook_pos(t, cx=center_x, cy=center_y,
-                                 cw=clip.w, ch=clip.h):
-                        # ease-out-back spring animation
-                        progress = min(t / 0.4, 1.0)  # 0.4s animation
-                        ease = self._ease_out_back(progress)
-                        # Scale from 0 to 1
-                        scale = ease
-                        # Translate from slightly above
-                        y_offset = int((1 - scale) * -80)
-                        return (cx, cy + y_offset)
-
-                    overlays.append(
-                        clip.set_start(0.0)
-                            .set_duration(min(2.5, base.duration))
-                            .set_position(hook_pos)
-                    )
+                    clip = (clip
+                        .set_start(0.0)
+                        .set_duration(min(2.5, base.duration))
+                        .set_position((center_x, center_y))
+                        .resize(lambda t: slam_scale(t)))
+                    overlays.append(clip)
                     continue
 
                 # Feature text
@@ -962,38 +960,34 @@ class Renderer:
                 img = self._render_text_image(
                     ev.text, font, font_size_feature,
                     max_width=int(self.width * 0.70),
-                    stroke_width=4,
+                    event_type="feature",
                 )
                 p = tmp_dir / f"feat_{len(tmp_imgs):03d}.png"
                 img.save(str(p))
                 tmp_imgs.append(p)
 
                 clip = ImageClip(str(p), transparent=True)
+
+                # Tilt the feature text for dynamic feel
+                clip = clip.rotate(-3.5, expand=True)
+
                 dur = min(2.5, base.duration - start)
 
                 # TikTok safe zone: center horizontally, place in middle area
                 safe_top = int(self.height * TIKTOK_SAFE_TOP)
                 safe_bottom = int(self.height * (1 - TIKTOK_SAFE_BOTTOM))
-                safe_right = int(self.width * (1 - TIKTOK_SAFE_RIGHT))
-                # Center within safe zone
                 feat_x = max(0, (self.width - clip.w) // 2)
-                feat_y = int((safe_top + safe_bottom) / 2 + 80)  # Slightly below center
+                feat_y = int((safe_top + safe_bottom) / 2 + 80)
 
                 def feat_pos(t, fx=feat_x, fy=feat_y, cw=clip.w):
-                    # t is local time (starts at 0 when this text appears)
                     if t < 0:
                         return (-cw - 80, fy)
-
                     # ease-out-back spring animation over 0.35s
                     progress = min(t / 0.35, 1.0)
                     ease = self._ease_out_back(progress)
-
-                    # Pop from scale 0 → 1 with overshoot
-                    # Start from center, scale X position
                     target_x = fx
                     x = int(target_x + (1 - ease) * 60)
                     y_bounce = int(fy - (1 - ease) * 40)
-
                     return (x, y_bounce)
 
                 overlays.append(
@@ -1098,6 +1092,9 @@ class Renderer:
             if p.exists():
                 return p
         for c in [
+            Path("../assets/fonts/BeVietnamPro-Bold.ttf").resolve(),
+            Path("../../assets/fonts/BeVietnamPro-Bold.ttf").resolve(),
+            Path("assets/fonts/BeVietnamPro-Bold.ttf").resolve(),
             Path("assets/fonts/NotoSans-Regular.ttf").resolve(),
             Path("assets/fonts/NotoSans-Medium.ttf").resolve(),
             Path("assets/fonts/BeVietnamPro-Regular.ttf").resolve(),
@@ -1115,9 +1112,13 @@ class Renderer:
         font_path: Path,
         font_size: int,
         max_width: int,
-        stroke_width: int = 4,
+        event_type: str = "feature",
     ) -> Image.Image:
-        """Render text with stroke and drop shadow to a transparent PNG."""
+        """Render text with a rounded-rect background to a transparent PNG.
+
+        event_type="hook":    Yellow Cyberpunk bg + Black text
+        event_type="feature": Semi-transparent Black bg + White text
+        """
         font = ImageFont.truetype(str(font_path), size=font_size)
 
         # Measure text
@@ -1127,26 +1128,32 @@ class Renderer:
         ml = "\n".join(lines)
 
         bb = draw.multiline_textbbox(
-            (0, 0), ml, font=font, spacing=10, stroke_width=stroke_width
+            (0, 0), ml, font=font, spacing=10
         )
         w, h = bb[2] - bb[0], bb[3] - bb[1]
-        pad = 20
+        pad = 25
+        radius = 15
 
         img = Image.new("RGBA", (w + pad * 2, h + pad * 2), (0, 0, 0, 0))
         dr = ImageDraw.Draw(img)
 
-        # Drop shadow
-        dr.multiline_text(
-            (pad + 3, pad + 3), ml, font=font,
-            fill=(0, 0, 0, 200), spacing=10,
-            stroke_width=stroke_width, stroke_fill=(0, 0, 0, 255),
-            align="center",
+        # Style based on event type
+        if event_type == "hook":
+            bg_color = (255, 215, 0, 255)    # Yellow Cyberpunk
+            text_color = (0, 0, 0, 255)      # Black
+        else:
+            bg_color = (0, 0, 0, 180)        # Semi-transparent Black
+            text_color = (255, 255, 255, 255) # White
+
+        # Draw rounded rectangle background
+        dr.rounded_rectangle(
+            [(0, 0), (w + pad * 2 - 1, h + pad * 2 - 1)],
+            radius=radius, fill=bg_color,
         )
-        # Main text
+        # Draw text (no stroke, no shadow)
         dr.multiline_text(
             (pad, pad), ml, font=font,
-            fill=(255, 255, 255, 255), spacing=10,
-            stroke_width=stroke_width, stroke_fill=(0, 0, 0, 255),
+            fill=text_color, spacing=10,
             align="center",
         )
         return img

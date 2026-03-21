@@ -109,19 +109,19 @@ echo -e "${GREEN}  ✔ API PID: $API_PID${NC}"
 echo -e "\n${GREEN}[4/5]${NC} Starting Celery Workers..."
 
 cd "$ROOT_DIR/worker_review"
-"$REVIEW_VENV/bin/celery" -A celery_worker worker -Q review_queue --loglevel=info -c 1 &
+"$REVIEW_VENV/bin/celery" -A celery_worker worker -Q review_queue --loglevel=info -c 2 &
 REVIEW_PID=$!
 cd "$ROOT_DIR"
 echo -e "${GREEN}  ✔ Worker Review PID: $REVIEW_PID${NC}"
 
 cd "$ROOT_DIR/worker_unbox"
-"$UNBOX_VENV/bin/celery" -A celery_worker worker -Q unbox_queue --loglevel=info -c 1 &
+"$UNBOX_VENV/bin/celery" -A celery_worker worker -Q unbox_queue --loglevel=info -c 2 &
 UNBOX_PID=$!
 cd "$ROOT_DIR"
 echo -e "${GREEN}  ✔ Worker Unbox PID: $UNBOX_PID${NC}"
 
 cd "$ROOT_DIR/worker_download"
-"$DOWNLOAD_VENV/bin/celery" -A celery_worker worker -Q download_queue --loglevel=info -c 2 &
+"$DOWNLOAD_VENV/bin/celery" -A celery_worker worker -Q download_queue --loglevel=info -c 3 &
 DOWNLOAD_PID=$!
 cd "$ROOT_DIR"
 echo -e "${GREEN}  ✔ Worker Download PID: $DOWNLOAD_PID${NC}"

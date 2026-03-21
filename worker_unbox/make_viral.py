@@ -428,29 +428,26 @@ class VideoViralEngine:
                 shutil.copy2(files[0], output)
             return
 
-        # ── Try AI pop-out transition (requires rembg) ──────────────────
-        if _HAS_REMBG:
-            try:
-                self._concat_with_popout(files, output)
-                return
-            except Exception as exc:
-                log.warning("Pop-out transition failed, falling back to xfade: %s", exc)
+        # ── Try audio-reactive AI transition ─────────────────────────────
+        try:
+            self._concat_with_smart_transitions(files, output)
+            return
+        except Exception as exc:
+            log.warning("Smart transitions failed, falling back to xfade: %s", exc)
 
         # ── Fallback: original FFmpeg xfade ──────────────────────────────
         self._concat_with_xfade(files, output)
 
-    # ── Pop-out transition concat (OpenCV frame-level) ──────────────────
-    def _concat_with_popout(self, files: Sequence[Path], output: Path) -> None:
-        """Decode scenes, apply PopoutTransition between each pair, then
-        re-encode everything into a single output."""
-        transition = PopoutTransition(
-            transition_frames=10,
-            scale_start=0.80,
-            scale_end=1.00,
-            blur_angle=0.0,
-            blur_kernel_max=35,
-        )
-        n_trans = transition.transition_frames
+    # ── Audio-reactive transition concat (OpenCV frame-level) ───────────
+    def _concat_with_smart_transitions(
+        self, files: Sequence[Path], output: Path,
+    ) -> None:
+        """Decode scenes, pick the best transition per pair via
+        AudioReactiveTransitionRouter, then re-encode."""
+        router = AudioReactiveTransitionRouter()
+
+        # Probe scene durations (seconds) for the router
+        durations = [self._probe_duration(f) for f in files]
 
         # Decode all scenes into frame lists
         all_scene_frames: list[list[np.ndarray]] = []
@@ -464,39 +461,42 @@ class VideoViralEngine:
         final_frames: list[np.ndarray] = []
         for idx, scene_frames in enumerate(all_scene_frames):
             if idx == 0:
-                # First scene: keep all frames (transition will replace tail)
                 final_frames.extend(scene_frames)
                 continue
+
+            # Duration of the *previous* clip → determines beat intensity
+            clip_a_dur = durations[idx - 1]
+            transition = router.select(clip_a_dur)
+            n_trans = transition.transition_frames
+            log.info("Scene %d → %d: %s (dur=%.2fs, n=%d)",
+                     idx - 1, idx, type(transition).__name__,
+                     clip_a_dur, n_trans)
 
             prev_frames = all_scene_frames[idx - 1]
             cur_frames = scene_frames
             usable_n = min(n_trans, len(prev_frames), len(cur_frames))
 
             if usable_n >= 3:
-                # Extract tail of A and head of B for transition
                 tail_a = prev_frames[-usable_n:]
                 head_b = cur_frames[:usable_n]
 
                 try:
                     trans_out = transition.build_transition(tail_a, head_b)
                 except Exception as exc:
-                    log.warning("Pop-out extraction failed on scene %d, "
-                                "using crossfade fallback: %s", idx, exc)
+                    log.warning("Transition failed on scene %d (%s), "
+                                "using crossfade fallback: %s",
+                                idx, type(transition).__name__, exc)
                     trans_out = PopoutTransition.crossfade_fallback(
                         tail_a, head_b, usable_n,
                     )
 
-                # Replace the tail of what we already appended
                 if trans_out:
                     final_frames[-usable_n:] = trans_out
 
-                # Append the rest of Clip B (skip the head that was used)
                 final_frames.extend(cur_frames[usable_n:])
             else:
-                # Too few frames – just append directly
                 final_frames.extend(cur_frames)
 
-        # Encode all frames to the output file
         self._encode_frames(final_frames, output)
 
     def _decode_video(self, path: Path) -> list[np.ndarray]:
@@ -785,6 +785,202 @@ class PopoutTransition:
 
 
 # ╔══════════════════════════════════════════════════════════════════════════╗
+# ║  2c. Luma Fade Transition (OpenCV)                                     ║
+# ╚══════════════════════════════════════════════════════════════════════════╝
+class LumaFadeTransition:
+    """Transition that reveals Clip B through the dark→light luminance
+    regions of Clip A.  The darkest areas of Clip A become transparent
+    first, gradually expanding until the full frame is Clip B.
+    """
+
+    def __init__(self, transition_frames: int = 12) -> None:
+        self.transition_frames = transition_frames
+
+    def build_transition(
+        self,
+        frames_a: list[np.ndarray],
+        frames_b: list[np.ndarray],
+    ) -> list[np.ndarray]:
+        n = min(self.transition_frames, len(frames_a), len(frames_b))
+        if n == 0:
+            return []
+
+        output: list[np.ndarray] = []
+        for i in range(n):
+            t = i / max(1, n - 1)  # 0.0 → 1.0
+
+            a = frames_a[len(frames_a) - n + i]
+            b = frames_b[i]
+            if b.shape[:2] != a.shape[:2]:
+                b = cv2.resize(b, (a.shape[1], a.shape[0]))
+
+            # Convert Clip A to grayscale → luminance map
+            gray = cv2.cvtColor(a, cv2.COLOR_BGR2GRAY)
+
+            # Threshold sweeps from 0 → 255 as t goes 0 → 1
+            # Pixels darker than threshold → reveal Clip B
+            thresh_val = int(t * 255)
+            _, mask = cv2.threshold(gray, thresh_val, 255, cv2.THRESH_BINARY)
+            # mask: 255 = keep A (brighter than threshold), 0 = show B
+
+            # Smooth the mask edges for a soft transition
+            blur_k = max(3, int(21 * (1.0 - abs(t - 0.5) * 2)))  # wider at mid
+            blur_k = blur_k if blur_k % 2 == 1 else blur_k + 1
+            mask_soft = cv2.GaussianBlur(mask, (blur_k, blur_k), 0)
+
+            # Blend using the soft mask
+            alpha = mask_soft.astype(np.float32)[:, :, np.newaxis] / 255.0
+            blended = (a.astype(np.float32) * alpha +
+                       b.astype(np.float32) * (1.0 - alpha))
+            output.append(blended.astype(np.uint8))
+
+        return output
+
+
+# ╔══════════════════════════════════════════════════════════════════════════╗
+# ║  2d. Whip Pan Transition (OpenCV)                                      ║
+# ╚══════════════════════════════════════════════════════════════════════════╝
+class WhipPanTransition:
+    """High-speed horizontal slide (whip pan) with heavy motion blur.
+    The *direction* parameter controls slide direction:
+      +1 = slide left  (Clip B enters from the right)
+      -1 = slide right (Clip B enters from the left)
+    """
+
+    def __init__(
+        self,
+        transition_frames: int = 6,
+        direction: int = 1,
+        blur_kernel_max: int = 45,
+    ) -> None:
+        self.transition_frames = transition_frames
+        self.direction = direction  # +1 left, -1 right
+        self.blur_kernel_max = blur_kernel_max
+
+    def build_transition(
+        self,
+        frames_a: list[np.ndarray],
+        frames_b: list[np.ndarray],
+    ) -> list[np.ndarray]:
+        n = min(self.transition_frames, len(frames_a), len(frames_b))
+        if n == 0:
+            return []
+
+        output: list[np.ndarray] = []
+        h, w = frames_a[0].shape[:2]
+
+        for i in range(n):
+            t = i / max(1, n - 1)  # 0.0 → 1.0
+
+            a = frames_a[len(frames_a) - n + i]
+            b = frames_b[i]
+            if b.shape[:2] != a.shape[:2]:
+                b = cv2.resize(b, (w, h))
+
+            # Horizontal offset: A slides out, B slides in
+            offset = int(t * w) * self.direction
+
+            # Build the composite canvas
+            canvas = np.zeros_like(a)
+
+            if self.direction > 0:
+                # Clip A slides left, Clip B enters from right
+                a_x1_src = min(max(offset, 0), w)
+                a_x2_src = w
+                a_x1_dst = 0
+                a_x2_dst = a_x2_src - a_x1_src
+
+                b_x1_src = 0
+                b_x2_src = min(offset, w)
+                b_x1_dst = w - offset if offset <= w else 0
+                b_x2_dst = w
+            else:
+                # Clip A slides right, Clip B enters from left
+                abs_off = abs(offset)
+                a_x1_src = 0
+                a_x2_src = max(w - abs_off, 0)
+                a_x1_dst = abs_off
+                a_x2_dst = w
+
+                b_x1_src = max(w - abs_off, 0)
+                b_x2_src = w
+                b_x1_dst = 0
+                b_x2_dst = min(abs_off, w)
+
+            # Place Clip A (sliding out)
+            aw = a_x2_dst - a_x1_dst
+            if aw > 0 and (a_x2_src - a_x1_src) > 0:
+                src_w = min(a_x2_src - a_x1_src, aw)
+                canvas[:, a_x1_dst:a_x1_dst + src_w] = a[:, a_x1_src:a_x1_src + src_w]
+
+            # Place Clip B (sliding in)
+            bw = b_x2_dst - b_x1_dst
+            if bw > 0 and (b_x2_src - b_x1_src) > 0:
+                src_w = min(b_x2_src - b_x1_src, bw)
+                canvas[:, b_x1_dst:b_x1_dst + src_w] = b[:, b_x1_src:b_x1_src + src_w]
+
+            # Apply horizontal motion blur (strongest at mid-transition)
+            blur_t = 1.0 - abs(t - 0.5) * 2  # peak at t=0.5
+            blur_k = int(self.blur_kernel_max * blur_t)
+            if blur_k >= 3:
+                blur_k = blur_k if blur_k % 2 == 1 else blur_k + 1
+                kernel = np.zeros((blur_k, blur_k), dtype=np.float32)
+                kernel[blur_k // 2, :] = 1.0 / blur_k
+                canvas = cv2.filter2D(canvas, -1, kernel)
+
+            output.append(canvas)
+
+        return output
+
+
+# ╔══════════════════════════════════════════════════════════════════════════╗
+# ║  2e. Audio-Reactive Transition Router                                  ║
+# ╚══════════════════════════════════════════════════════════════════════════╝
+class AudioReactiveTransitionRouter:
+    """Selects the optimal transition class based on the duration of the
+    preceding clip (≈ distance to the next beat drop).
+
+    Routing rules:
+      - duration >= 1.5s  (slow beat)    → LumaFadeTransition(12 frames)
+      - 0.7s <= dur < 1.5s (beat drop)   → PopoutTransition(10 frames)
+      - duration < 0.7s  (fast-paced)    → WhipPanTransition(6 frames),
+                                           alternating left ↔ right
+    """
+
+    def __init__(self) -> None:
+        self._whip_direction: int = 1  # toggles between +1 / -1
+
+    def select(
+        self, clip_a_duration: float,
+    ) -> LumaFadeTransition | PopoutTransition | WhipPanTransition:
+        """Return a transition instance suited to the clip's beat interval."""
+        if clip_a_duration >= 1.5:
+            log.debug("Router: slow beat (%.2fs) → LumaFade", clip_a_duration)
+            return LumaFadeTransition(transition_frames=12)
+
+        if clip_a_duration >= 0.7:
+            log.debug("Router: beat drop (%.2fs) → Popout", clip_a_duration)
+            return PopoutTransition(
+                transition_frames=10,
+                scale_start=0.80,
+                scale_end=1.00,
+                blur_angle=0.0,
+                blur_kernel_max=35,
+            )
+
+        # Fast-paced: whip pan, alternate direction
+        direction = self._whip_direction
+        self._whip_direction *= -1  # toggle for next call
+        log.debug("Router: fast beat (%.2fs) → WhipPan dir=%d",
+                  clip_a_duration, direction)
+        return WhipPanTransition(
+            transition_frames=6,
+            direction=direction,
+            blur_kernel_max=45,
+        )
+
+
+# ╔══════════════════════════════════════════════════════════════════════════╗
 # ║  3. Text overlay  (MoviePy + Pillow, FFmpeg drawtext fallback)         ║
 # ╚══════════════════════════════════════════════════════════════════════════╝
 def overlay_text(
@@ -857,15 +1053,29 @@ def _overlay_moviepy(
             if ev.effect == "hook":
                 img = _render_text_img(text=ev.text, font_path=font_path,
                                        font_size=font_size_hook,
-                                       max_width=int(base.w * 0.86))
+                                       max_width=int(base.w * 0.86),
+                                       effect="hook")
                 p = tmp_dir / f"hook_{len(tmp_imgs):03d}.png"; img.save(p); tmp_imgs.append(p)
                 clip = ImageClip(str(p), transparent=True)
-                overlays.append(
-                    clip.set_start(0.0)
-                        .set_duration(max(0.01, min(3.0, base.duration)))
-                        .set_position((int(base.w / 2 - clip.w / 2),
-                                       int(base.h / 3 - clip.h / 2)))
-                )
+
+                # Slam Down: scale 2.5 → 1.0 over 0.25s, then hold 1.0
+                slam_dur = 0.25
+
+                def slam_scale(t, sd=slam_dur):
+                    if t < sd:
+                        progress = t / sd
+                        return 2.5 - 1.5 * progress  # 2.5 → 1.0
+                    return 1.0
+
+                center_x = int(base.w / 2 - clip.w / 2)
+                center_y = int(base.h / 3 - clip.h / 2)
+
+                clip = (clip
+                    .set_start(0.0)
+                    .set_duration(max(0.01, min(3.0, base.duration)))
+                    .set_position((center_x, center_y))
+                    .resize(lambda t: slam_scale(t)))
+                overlays.append(clip)
                 continue
 
             start = max(0.0, ev.start)
@@ -873,9 +1083,14 @@ def _overlay_moviepy(
                 continue
             img = _render_text_img(text=ev.text, font_path=font_path,
                                    font_size=font_size_feature,
-                                   max_width=int(base.w * 0.84))
+                                   max_width=int(base.w * 0.84),
+                                   effect="feature")
             p = tmp_dir / f"feat_{len(tmp_imgs):03d}.png"; img.save(p); tmp_imgs.append(p)
             clip = ImageClip(str(p), transparent=True)
+
+            # Tilt the feature text for dynamic feel
+            clip = clip.rotate(-3.5, expand=True)
+
             dur = min(max(0.2, feature_duration), base.duration - start)
             y_pos = int(base.h * 0.72 - clip.h / 2)
             tx = int(base.w * 0.08)
@@ -886,7 +1101,11 @@ def _overlay_moviepy(
                     return (-tw - 80.0, float(yy))
                 if t < sx + d:
                     p_ = (t - sx) / d
-                    x = (-tw - 80.0) + (tgt + tw + 80.0) * (1.0 - pow(1.0 - p_, 3))
+                    # ease-out-back spring overshoot
+                    s_val = 1.70158
+                    p_rev = p_ - 1.0
+                    ease = 1.0 + p_rev * p_rev * ((s_val + 1) * p_rev + s_val)
+                    x = (-tw - 80.0) + (tgt + tw + 80.0) * ease
                     return (x, float(yy))
                 return (float(tgt), float(yy))
 
@@ -932,22 +1151,41 @@ def _overlay_ffmpeg(
 
 # ── text rendering helpers ─────────────────────────────────────────────────
 def _render_text_img(*, text: str, font_path: Path, font_size: int,
-                     max_width: int, stroke_width: int = 4) -> Image.Image:
+                     max_width: int, effect: str = "feature") -> Image.Image:
+    """Render text onto a transparent RGBA image with a rounded-rect background.
+
+    effect="hook":    Yellow Cyberpunk bg + Black text
+    effect="feature": Semi-transparent Black bg + White text
+    """
     font = ImageFont.truetype(str(font_path), size=font_size)
     m = Image.new("RGBA", (16, 16), (0, 0, 0, 0))
     d = ImageDraw.Draw(m)
     lines = _wrap(d, text, font, max_width)
     ml = "\n".join(lines)
-    bb = d.multiline_textbbox((0, 0), ml, font=font, spacing=10, stroke_width=stroke_width)
-    w, h, pad = bb[2] - bb[0], bb[3] - bb[1], 18
+    bb = d.multiline_textbbox((0, 0), ml, font=font, spacing=10)
+    w, h = bb[2] - bb[0], bb[3] - bb[1]
+    pad = 25
+    radius = 15
+
     img = Image.new("RGBA", (w + pad * 2, h + pad * 2), (0, 0, 0, 0))
     dr = ImageDraw.Draw(img)
-    # shadow layer
-    dr.multiline_text((pad + 3, pad + 3), ml, font=font, fill=(0, 0, 0, 220),
-                      spacing=10, stroke_width=stroke_width, stroke_fill=(0, 0, 0, 255), align="center")
-    # main layer
-    dr.multiline_text((pad, pad), ml, font=font, fill=(255, 255, 255, 255),
-                      spacing=10, stroke_width=stroke_width, stroke_fill=(0, 0, 0, 255), align="center")
+
+    # Style based on effect type
+    if effect == "hook":
+        bg_color = (255, 215, 0, 255)    # Yellow Cyberpunk
+        text_color = (0, 0, 0, 255)      # Black
+    else:
+        bg_color = (0, 0, 0, 180)        # Semi-transparent Black
+        text_color = (255, 255, 255, 255) # White
+
+    # Draw rounded rectangle background
+    dr.rounded_rectangle(
+        [(0, 0), (w + pad * 2 - 1, h + pad * 2 - 1)],
+        radius=radius, fill=bg_color,
+    )
+    # Draw text (no stroke, no shadow)
+    dr.multiline_text((pad, pad), ml, font=font, fill=text_color,
+                      spacing=10, align="center")
     return img
 
 
@@ -974,6 +1212,9 @@ def _resolve_font(font_path: str | Path | None) -> Path:
             raise FileNotFoundError(f"Font not found: {p}")
         return p
     for c in [
+        Path("../assets/fonts/BeVietnamPro-Bold.ttf").resolve(),
+        Path("../../assets/fonts/BeVietnamPro-Bold.ttf").resolve(),
+        Path("assets/fonts/BeVietnamPro-Bold.ttf").resolve(),
         Path("assets/fonts/NotoSans-Regular.ttf").resolve(),
         Path("assets/fonts/NotoSans-Medium.ttf").resolve(),
         Path("assets/fonts/BeVietnamPro-Regular.ttf").resolve(),
@@ -1103,7 +1344,7 @@ def make_viral(work_dir: str = ".", config: dict = None, preview: bool = False) 
         input_video=stage2, output_video=final, events=text_events,
         font_size_hook=78, font_size_feature=58,
         feature_duration=2.6, slide_duration=0.55,
-        fps=30, crf=19, preset="veryfast", backend="auto",
+        fps=30, crf=19, preset="veryfast", backend="moviepy",
     )
     stage2.unlink(missing_ok=True)
 
