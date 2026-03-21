@@ -7,4 +7,4 @@ SQLAlchemy>=2.0.28
 psycopg2-binary>=2.9.9
 minio>=7.2.5
 pyjwt>=2.8.0
-passlib[bcrypt]>=1.7.4
+bcrypt>=4.0.0
