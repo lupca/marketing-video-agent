@@ -2,6 +2,7 @@ import { BrowserRouter as Router, Routes, Route, Link, useLocation, Navigate } f
 import { LayoutDashboard, Video, Zap, LogOut, User as UserIcon, FolderHeart, Database, Activity, Wand2, BookOpen, DownloadCloud } from "lucide-react";
 import Dashboard from "./pages/Dashboard";
 import CreateUnboxJob from "./pages/CreateUnboxJob";
+import CreateUnboxViralJob from "./pages/CreateUnboxViralJob";
 import CreateReviewJob from "./pages/CreateReviewJob";
 import DownloadVideo from "./pages/DownloadVideo";
 import Projects from "./pages/Projects";
@@ -39,6 +40,7 @@ function Sidebar() {
     { name: "Projects", path: "/projects", icon: FolderHeart },
     { name: "Assets", path: "/assets", icon: Database },
     { name: "Unbox Factory", path: "/create-unbox", icon: Video },
+    { name: "Viral Unbox", path: "/create-viral", icon: Zap },
     { name: "Content Guides", path: "/guides", icon: BookOpen },
     { name: "System Health", path: "/health", icon: Activity },
   ];
@@ -115,6 +117,7 @@ function MainLayout() {
           <Route path="/" element={<Dashboard />} />
           <Route path="/download" element={<DownloadVideo />} />
           <Route path="/create-unbox" element={<CreateUnboxJob />} />
+          <Route path="/create-viral" element={<CreateUnboxViralJob />} />
           <Route path="/create-review" element={<CreateReviewJob />} />
           <Route path="/projects" element={<Projects />} />
           <Route path="/projects/:id" element={<ProjectDetails />} />

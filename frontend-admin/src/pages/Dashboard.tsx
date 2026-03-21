@@ -83,7 +83,8 @@ export default function Dashboard() {
   };
 
   const handleCopyJob = (job: VideoJob) => {
-    navigate(`/create-${job.job_type}?clone=${job.id}`);
+    const path = job.job_type === "unbox_viral" ? "viral" : job.job_type;
+    navigate(`/create-${path}?clone=${job.id}`);
   };
 
   const stats = [

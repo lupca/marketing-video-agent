@@ -70,9 +70,15 @@ def create_job(
 
     # Queue worker task
     queue_name = f"{job.job_type}_queue"
+    task_name = f"worker_{job.job_type}.tasks.process_video"
+    
+    if job.job_type == "unbox_viral":
+        queue_name = "unbox_queue"
+        task_name = "worker_unbox.tasks.process_unbox_viral"
+
     try:
         celery_client.celery_app.send_task(
-            f"worker_{job.job_type}.tasks.process_video",
+            task_name,
             args=[db_job.id, task_config],
             queue=queue_name,
         )

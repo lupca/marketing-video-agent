@@ -182,10 +182,10 @@ export default function CreateUnboxJob() {
     <div className="max-w-5xl mx-auto p-8 lg:p-12 space-y-10">
       <div className="space-y-2">
         <h2 className="text-4xl font-extrabold tracking-tight bg-clip-text text-transparent bg-gradient-to-r from-white to-white/60">
-          Create Viral Unbox
+          Create Basic Unbox
         </h2>
       <p className="text-muted-foreground text-lg">
-          Upload raw vertical clips and sync them with trending audio.
+          Classic beat-sync video generation from raw vertical clips.
         </p>
       </div>
 

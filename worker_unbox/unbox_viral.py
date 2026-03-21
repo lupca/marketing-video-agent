@@ -44,6 +44,11 @@ TIKTOK_SAFE_TOP = 0.15       # 15% top margin
 TIKTOK_SAFE_BOTTOM = 0.20    # 20% bottom margin
 TIKTOK_SAFE_RIGHT = 0.15     # 15% right margin
 
+# Pacing constraint: Beat drop must arrive before viewers scroll away
+BEAT_DROP_DEADLINE_SEC = 5.0     # Max allowed time for first beat drop
+BEAT_DROP_TARGET_MIN = 3.0       # Target window start after trim
+BEAT_DROP_TARGET_MAX = 4.5       # Target window end after trim
+
 # Motion analysis thresholds
 STATIC_THRESHOLD = 2.0       # Below = static (cut)
 REPETITIVE_THRESHOLD = 8.0   # Below = repetitive motion (speed ramp)
@@ -264,6 +269,32 @@ class AudioAnalyzer:
         self._run_ffmpeg([
             "-i", str(audio_path),
             "-af", f"asetrate={new_rate},aresample=44100",
+            str(out),
+        ])
+        return out
+
+    # ── Trim Audio Intro (Pacing Constraint) ─────────────────────────────
+
+    def trim_audio_intro(
+        self,
+        audio_path: str | Path,
+        trim_sec: float,
+        output_path: str | Path,
+    ) -> Path:
+        """
+        Trim the first `trim_sec` seconds from the audio file.
+        Used to shift a late beat drop into the TikTok-safe window.
+        """
+        out = Path(output_path).resolve()
+        out.parent.mkdir(parents=True, exist_ok=True)
+        logger.info(
+            f"  Trimming {trim_sec:.2f}s intro from audio → "
+            f"beat drop shifts to TikTok-safe range"
+        )
+        self._run_ffmpeg([
+            "-i", str(audio_path),
+            "-ss", f"{trim_sec:.3f}",
+            "-c", "copy",
             str(out),
         ])
         return out
@@ -1253,6 +1284,34 @@ def make_unbox_viral(
     logger.info(f"  → First 10: {beat_times[:10]}")
 
     first_beat = beat_times[0] if beat_times else 3.0
+
+    # ── Pacing Constraint: Trim long intro if beat drop arrives too late ──
+    #   On TikTok, viewers scroll away if the first 3-5s have no action.
+    #   If the first beat drop is past BEAT_DROP_DEADLINE_SEC, we trim the
+    #   MP3 intro so the beat drop lands in the 3.0-4.5s sweet spot.
+    if first_beat > BEAT_DROP_DEADLINE_SEC:
+        target_beat_time = (BEAT_DROP_TARGET_MIN + BEAT_DROP_TARGET_MAX) / 2
+        trim_amount = first_beat - target_beat_time
+        logger.warning(
+            f"  ⚠ First beat drop at {first_beat:.2f}s is too late "
+            f"(deadline: {BEAT_DROP_DEADLINE_SEC}s). "
+            f"Trimming {trim_amount:.2f}s from MP3 intro."
+        )
+
+        trimmed_audio = tmp_dir / f"trimmed_{audio_path.name}"
+        audio_path = audio_analyzer.trim_audio_intro(
+            audio_path, trim_amount, trimmed_audio,
+        )
+
+        # Re-detect beats on the trimmed audio
+        beat_infos = audio_analyzer.detect_beats(audio_path)
+        beat_times = [b.time for b in beat_infos]
+        first_beat = beat_times[0] if beat_times else target_beat_time
+
+        logger.info(
+            f"  → After trim: first beat now at {first_beat:.2f}s"
+        )
+        logger.info(f"  → Re-detected {len(beat_times)} beats: {beat_times[:10]}")
 
     # ── Step 2: Extract Original Audio ──────────────────────────────────
 
