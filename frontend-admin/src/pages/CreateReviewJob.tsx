@@ -1,4 +1,4 @@
-import { useState, useRef } from "react"
+import { useState, useRef, useEffect } from "react"
 import axios from "axios"
 import { useNavigate } from "react-router-dom"
 import api from "../lib/api"
@@ -77,15 +77,13 @@ export default function CreateReviewJob() {
   const [language, setLanguage] = useState("vi")
 
   // Load projects on mount
-  import("react").then(({ useEffect }) => {
-    useEffect(() => {
-      api.get("/api/projects").then(res => {
-        setProjects(res.data)
-        if (res.data.length > 0) setSelectedProjectId(res.data[0].id)
-        else setIsCreatingProject(true)
-      }).catch(console.error)
-    }, [])
-  })
+  useEffect(() => {
+    api.get("/api/projects").then(res => {
+      setProjects(res.data)
+      if (res.data.length > 0) setSelectedProjectId(res.data[0].id)
+      else setIsCreatingProject(true)
+    }).catch(console.error)
+  }, [])
 
   // Step 2: Segments
   const [segments, setSegments] = useState<Segment[]>([

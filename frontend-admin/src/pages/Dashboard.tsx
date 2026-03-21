@@ -35,10 +35,7 @@ function formatDuration(start: string, end: string): string {
   return `${mins}m ${remainSecs}s`
 }
 
-function getMinioDownloadUrl(s3Url: string): string {
-  // s3://videos/outputs/review_job_4.mp4 → http://localhost:9000/videos/outputs/review_job_4.mp4
-  return s3Url.replace("s3://", "http://localhost:9000/")
-}
+
 
 function getMinioBrowserUrl(s3Url: string): string {
   // s3://videos/outputs/review_job_4.mp4 → http://localhost:9001/browser/videos/outputs/review_job_4.mp4
@@ -101,6 +98,18 @@ export default function Dashboard() {
       console.error(e)
     } finally {
       setLoadingLogs(false)
+    }
+  }
+
+  const handleDownload = async (jobId: number) => {
+    try {
+      const res = await api.get(`/api/jobs/${jobId}/download`)
+      if (res.data?.download_url) {
+        window.open(res.data.download_url, '_blank')
+      }
+    } catch (e: any) {
+      console.error(e)
+      alert(e?.response?.data?.detail || "Lỗi khi tải URL (Check API/MinIO)")
     }
   }
 
@@ -295,15 +304,13 @@ export default function Dashboard() {
                         <div className="flex items-center justify-end gap-2 text-muted-foreground">
                           {job.result_url && (
                             <>
-                              <a
-                                href={getMinioDownloadUrl(job.result_url)}
-                                target="_blank"
-                                rel="noreferrer"
+                              <button
+                                onClick={() => handleDownload(job.id)}
                                 className="inline-flex items-center justify-center rounded-lg bg-emerald-500/10 hover:bg-emerald-500/20 text-emerald-400 border border-emerald-500/30 transition-all h-8 w-8 hover:shadow-[0_0_15px_rgba(16,185,129,0.3)]"
                                 title="Download video"
                               >
                                 <Download className="h-4 w-4" />
-                              </a>
+                              </button>
                               <a
                                 href={getMinioBrowserUrl(job.result_url)}
                                 target="_blank"
