@@ -78,6 +78,16 @@ fi
 "$DOWNLOAD_VENV/bin/pip" install -r "$ROOT_DIR/worker_download/requirements.txt" -q
 echo -e "${GREEN}  ✔ Worker Download venv ready${NC}"
 
+# Worker Slideshow venv
+SLIDESHOW_VENV="$ROOT_DIR/worker_slideshow/venv"
+if [ ! -d "$SLIDESHOW_VENV" ]; then
+  echo -e "${YELLOW}  Creating Worker Slideshow venv...${NC}"
+  python3 -m venv "$SLIDESHOW_VENV"
+fi
+"$SLIDESHOW_VENV/bin/pip" install --upgrade pip -q
+"$SLIDESHOW_VENV/bin/pip" install -r "$ROOT_DIR/worker_slideshow/requirements.txt" -q
+echo -e "${GREEN}  ✔ Worker Slideshow venv ready${NC}"
+
 # ----------------------------------------------------------
 # 3. Common env vars
 # ----------------------------------------------------------
@@ -126,6 +136,12 @@ DOWNLOAD_PID=$!
 cd "$ROOT_DIR"
 echo -e "${GREEN}  ✔ Worker Download PID: $DOWNLOAD_PID${NC}"
 
+cd "$ROOT_DIR/worker_slideshow"
+"$SLIDESHOW_VENV/bin/celery" -A celery_worker worker -Q slideshow_queue --loglevel=info -c 2 &
+SLIDESHOW_PID=$!
+cd "$ROOT_DIR"
+echo -e "${GREEN}  ✔ Worker Slideshow PID: $SLIDESHOW_PID${NC}"
+
 # ----------------------------------------------------------
 # 6. Start Frontend
 # ----------------------------------------------------------
@@ -155,7 +171,7 @@ echo -e "\n${YELLOW}Press Ctrl+C to stop all services${NC}\n"
 # ----------------------------------------------------------
 cleanup() {
   echo -e "\n${YELLOW}Shutting down all processes...${NC}"
-  kill $API_PID $REVIEW_PID $UNBOX_PID $DOWNLOAD_PID $FRONTEND_PID 2>/dev/null
+  kill $API_PID $REVIEW_PID $UNBOX_PID $DOWNLOAD_PID $SLIDESHOW_PID $FRONTEND_PID 2>/dev/null
   docker compose -f "$ROOT_DIR/docker-compose.dev.yml" down
   echo -e "${GREEN}✔ All stopped.${NC}"
   exit 0

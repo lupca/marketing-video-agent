@@ -4,6 +4,7 @@ import Dashboard from "./pages/Dashboard";
 import CreateUnboxJob from "./pages/CreateUnboxJob";
 import CreateUnboxViralJob from "./pages/CreateUnboxViralJob";
 import CreateReviewJob from "./pages/CreateReviewJob";
+import CreateSlideshowJob from "./pages/CreateSlideshowJob";
 import DownloadVideo from "./pages/DownloadVideo";
 import Projects from "./pages/Projects";
 import ProjectDetails from "./pages/ProjectDetails";
@@ -41,6 +42,7 @@ function Sidebar() {
     { name: "Assets", path: "/assets", icon: Database },
     { name: "Unbox Factory", path: "/create-unbox", icon: Video },
     { name: "Viral Unbox", path: "/create-viral", icon: Zap },
+    { name: "Slideshow", path: "/create-slideshow", icon: Zap },
     { name: "Content Guides", path: "/guides", icon: BookOpen },
     { name: "System Health", path: "/health", icon: Activity },
   ];
@@ -119,6 +121,7 @@ function MainLayout() {
           <Route path="/create-unbox" element={<CreateUnboxJob />} />
           <Route path="/create-viral" element={<CreateUnboxViralJob />} />
           <Route path="/create-review" element={<CreateReviewJob />} />
+          <Route path="/create-slideshow" element={<CreateSlideshowJob />} />
           <Route path="/projects" element={<Projects />} />
           <Route path="/projects/:id" element={<ProjectDetails />} />
           <Route path="/assets" element={<Assets />} />

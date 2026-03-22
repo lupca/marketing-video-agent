@@ -1,0 +1,27 @@
+__pycache__
+.cache_blur
+.cache_tts
+.venv
+assets
+bk
+dist
+build
+*.egg-info
+*.log
+*.pyc
+*.pyo
+data
+images
+*.mp3
+*.webp
+*.mp4
+*.avi
+*.mkv
+*.flv
+
+# Allow default assets for Docker build
+!logo.webp
+!bg_music.mp3
+!arrow.png
+!assets/
+!assets/**
