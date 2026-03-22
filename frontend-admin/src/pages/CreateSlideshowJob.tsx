@@ -1,6 +1,6 @@
 import { useEffect, useState } from "react";
 import { useNavigate, useSearchParams } from "react-router-dom";
-import { Plus, Folder, Trash2, ChevronRight, CheckCircle2, ImagePlus, FileText, Send, Copy } from "lucide-react";
+import { Plus, Folder, Trash2, ChevronRight, CheckCircle2, ImagePlus, FileText, Send, Copy, UploadCloud } from "lucide-react";
 import api from "../lib/api";
 import { cn } from "../lib/utils";
 import { useAssets } from "../hooks/useAssets";
@@ -35,6 +35,9 @@ export default function CreateSlideshowJob() {
   const [outroText, setOutroText] = useState("Mua ngay hôm nay!");
   const [variant, setVariant] = useState("A");
 
+  const [bgMusic, setBgMusic] = useState<UploadedFile | null>(null);
+  const [logo, setLogo] = useState<UploadedFile | null>(null);
+
   const [products, setProducts] = useState<ProductInput[]>([
     { image: null, text: "Sản phẩm 1", hook: "Mới" },
     { image: null, text: "Sản phẩm 2", hook: "Sale" },
@@ -65,6 +68,22 @@ export default function CreateSlideshowJob() {
 
         const cfg = job.config_data || {};
         if (cfg.variant) setVariant(cfg.variant);
+        
+        if (cfg.assets) {
+          if (cfg.assets.bg_music) {
+            setBgMusic({
+              file: undefined, id: null, s3_url: cfg.assets.bg_music, uploading: false, progress: 0,
+              asset: { id: "", s3_url: cfg.assets.bg_music, file_name: "bg_music.mp3", file_size_bytes: 0, asset_type: "audio", mime_type: "audio/mpeg", created_at: "" }
+            });
+          }
+          if (cfg.assets.logo) {
+            setLogo({
+              file: undefined, id: null, s3_url: cfg.assets.logo, uploading: false, progress: 0,
+              asset: { id: "", s3_url: cfg.assets.logo, file_name: "logo.png", file_size_bytes: 0, asset_type: "image", mime_type: "image/png", created_at: "" }
+            });
+          }
+        }
+        
         if (cfg.input_json) {
           if (cfg.input_json.intro_text) setIntroText(cfg.input_json.intro_text);
           if (cfg.input_json.outro_text) setOutroText(cfg.input_json.outro_text);
@@ -130,6 +149,32 @@ export default function CreateSlideshowJob() {
 
       const allAssetIds: string[] = [];
       const finalProducts: any[] = [];
+      
+      const customAssets: Record<string, string> = {};
+
+      if (bgMusic) {
+        setUploadStatus("Đang upload nhạc nền...");
+        if (bgMusic.file) {
+          const res = await uploadAsset(bgMusic.file as File, "audio");
+          customAssets.bg_music = res.s3_url;
+          allAssetIds.push(res.id);
+        } else if (bgMusic.asset) {
+          customAssets.bg_music = bgMusic.asset.s3_url;
+          allAssetIds.push(bgMusic.asset.id);
+        }
+      }
+
+      if (logo) {
+        setUploadStatus("Đang upload logo...");
+        if (logo.file) {
+          const res = await uploadAsset(logo.file as File, "image");
+          customAssets.logo = res.s3_url;
+          allAssetIds.push(res.id);
+        } else if (logo.asset) {
+          customAssets.logo = logo.asset.s3_url;
+          allAssetIds.push(logo.asset.id);
+        }
+      }
 
       for (let i = 0; i < products.length; i++) {
         setUploadStatus(`Đang upload ảnh ${i + 1}/${products.length}...`);
@@ -159,6 +204,7 @@ export default function CreateSlideshowJob() {
         asset_ids: allAssetIds,
         config_data: {
           variant,
+          assets: Object.keys(customAssets).length > 0 ? customAssets : undefined,
           input_json: {
             intro_text: introText,
             outro_text: outroText,
@@ -337,6 +383,33 @@ export default function CreateSlideshowJob() {
               </select>
             </div>
 
+            <div className="grid grid-cols-1 md:grid-cols-2 gap-8">
+              <AssetSelector
+                label="Nhạc nền"
+                sublabel="MP3, WAV (Bắt buộc)"
+                icon={<UploadCloud className="w-8 h-8 text-indigo-400" />}
+                accept="audio/*"
+                assetTypeFilter="audio"
+                selectedFile={bgMusic}
+                onSelect={(file, asset) => {
+                  if (file || asset) setBgMusic({ file, asset, id: asset?.id || null, s3_url: asset?.s3_url || null, uploading: false, progress: 0 });
+                  else setBgMusic(null);
+                }}
+              />
+              <AssetSelector
+                label="Logo Góc"
+                sublabel="PNG, WebP trong suốt (Bắt buộc)"
+                icon={<ImagePlus className="w-8 h-8 text-blue-400" />}
+                accept="image/png,image/webp"
+                assetTypeFilter="image"
+                selectedFile={logo}
+                onSelect={(file, asset) => {
+                  if (file || asset) setLogo({ file, asset, id: asset?.id || null, s3_url: asset?.s3_url || null, uploading: false, progress: 0 });
+                  else setLogo(null);
+                }}
+              />
+            </div>
+
             <div className="flex justify-end pt-4">
               <Button
                 onClick={() => setStep(2)}
@@ -428,7 +501,7 @@ export default function CreateSlideshowJob() {
               </button>
               <Button
                 onClick={() => setStep(3)}
-                disabled={products.length < 2 || products.some(p => !p.image || !p.text)}
+                disabled={products.length < 2 || products.some(p => !p.image || !p.text) || !bgMusic || !logo}
                 className="glowing-button border-rose-500/50 bg-rose-500/20 text-rose-300 hover:bg-rose-500/30 px-8 py-3 rounded-xl font-medium"
               >
                 Kiểm tra & Render <ChevronRight className="w-5 h-5 ml-2" />
@@ -470,6 +543,12 @@ export default function CreateSlideshowJob() {
                   </p>
                   <p className="text-white font-medium flex justify-between border-b border-white/10 pb-2">
                     <span>Số sản phẩm:</span> <span>{products.length} ảnh</span>
+                  </p>
+                  <p className="text-white font-medium flex justify-between border-b border-white/10 pb-2">
+                    <span>Nhạc nền tùy chỉnh:</span> <span>Có</span>
+                  </p>
+                  <p className="text-white font-medium flex justify-between border-b border-white/10 pb-2">
+                    <span>Logo tùy chỉnh:</span> <span>Có</span>
                   </p>
                 </div>
                 <div className="space-y-2">

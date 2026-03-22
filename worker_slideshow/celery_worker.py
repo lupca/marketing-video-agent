@@ -30,9 +30,9 @@ def download_slideshow_assets(config_data: Dict[str, Any], work_dir: str) -> Dic
     images_dir = os.path.join(work_dir, "images")
     os.makedirs(images_dir, exist_ok=True)
     
-    # Copy default assets (music, logo, arrow) from worker source to work_dir
+    # Copy default assets (arrow) from worker source to work_dir
     base_dir = os.path.dirname(os.path.abspath(__file__))
-    for f in ["bg_music.mp3", "logo.webp", "arrow.png"]:
+    for f in ["arrow.png"]:
         src = os.path.join(base_dir, f)
         dst = os.path.join(work_dir, f)
         if os.path.exists(src):
@@ -58,8 +58,7 @@ def download_slideshow_assets(config_data: Dict[str, Any], work_dir: str) -> Dic
                 # Update config to just use the local filename
                 product["image"] = local_filename
 
-    # If logo or bg_music were dynamically passed in config, download them too
-    # Example for dynamic assets, if needed in the future
+    # Download required bg_music and logo
     if "assets" in config_data:
         assets = config_data["assets"]
         if "bg_music" in assets and is_minio_path(assets["bg_music"]):
