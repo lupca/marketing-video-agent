@@ -45,7 +45,7 @@ export function AssetSelectModal({ isOpen, onClose, assetTypeFilter, onSelect, m
   const filteredAssets = useMemo(() => {
     if (!assets) return [];
     if (!assetTypeFilter || assetTypeFilter === "all") return assets;
-    
+
     return assets.filter(asset => {
       const type = asset.asset_type;
       if (assetTypeFilter === "clip" || assetTypeFilter === "video") {
@@ -67,12 +67,12 @@ export function AssetSelectModal({ isOpen, onClose, assetTypeFilter, onSelect, m
   return (
     <Modal isOpen={isOpen} onClose={onClose} title="Chọn Asset từ Thư viện" maxWidth="4xl">
       <div className="p-4 bg-black/40">
-        <AssetTable 
+        <AssetTable
           assets={filteredAssets}
           loading={loading}
           deletingId={null}
           onDelete={deleteAsset}
-          onUploadClick={() => {}}
+          onUploadClick={() => { }}
           currentPath={currentPath}
           setCurrentPath={setCurrentPath}
           onSelectAsset={multiple ? undefined : (asset) => {

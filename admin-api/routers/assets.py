@@ -53,7 +53,8 @@ async def upload_asset(
         db.refresh(asset)
         
         data = schemas.AssetResponse.model_validate(asset)
-        data.presigned_url = get_presigned_url(get_object_name(asset.s3_url))
+        data.full_path = get_object_name(asset.s3_url)
+        data.presigned_url = get_presigned_url(data.full_path)
         return data
     except Exception as e:
         raise HTTPException(status_code=500, detail=str(e))
@@ -77,7 +78,8 @@ def list_assets(
     results = []
     for a in assets:
         data = schemas.AssetResponse.model_validate(a)
-        data.presigned_url = get_presigned_url(get_object_name(a.s3_url))
+        data.full_path = get_object_name(a.s3_url)
+        data.presigned_url = get_presigned_url(data.full_path)
         results.append(data)
     return results
 

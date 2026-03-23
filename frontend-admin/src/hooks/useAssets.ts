@@ -9,6 +9,7 @@ export interface Asset {
   s3_url: string;
   presigned_url?: string;
   mime_type: string;
+  full_path?: string;
   created_at: string;
 }
 
