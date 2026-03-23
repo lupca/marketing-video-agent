@@ -8,7 +8,7 @@ import logging
 import shutil
 import subprocess
 from pathlib import Path
-from typing import List
+from typing import List, Union
 
 import librosa
 import numpy as np
@@ -23,7 +23,7 @@ def _normalize(v: np.ndarray) -> np.ndarray:
     return np.zeros_like(v) if hi - lo < 1e-8 else (v - lo) / (hi - lo)
 
 def detect_beat_drops(
-    mp3_path: str | Path,
+    mp3_path: Union[str, Path],
     *,
     sr: int = 22050,
     hop_length: int = 512,
@@ -82,7 +82,7 @@ class AudioAnalyzer:
 
     def detect_beats(
         self,
-        audio_path: str | Path,
+        audio_path: Union[str, Path],
         *,
         min_gap_sec: float = 0.4,
         drop_quantile: float = 0.72,
@@ -135,7 +135,7 @@ class AudioAnalyzer:
         return selected
 
     def extract_original_audio(
-        self, video_path: str | Path, output_path: str | Path
+        self, video_path: Union[str, Path], output_path: Union[str, Path]
     ) -> Path:
         out = Path(output_path).resolve()
         out.parent.mkdir(parents=True, exist_ok=True)
@@ -149,11 +149,11 @@ class AudioAnalyzer:
 
     def mix_audio(
         self,
-        original_audio: str | Path,
-        mp3_audio: str | Path,
+        original_audio: Union[str, Path],
+        mp3_audio: Union[str, Path],
         first_beat_time: float,
         total_duration: float,
-        output_path: str | Path,
+        output_path: Union[str, Path],
     ) -> Path:
         out = Path(output_path).resolve()
         out.parent.mkdir(parents=True, exist_ok=True)
@@ -177,9 +177,9 @@ class AudioAnalyzer:
 
     def speed_ramp_audio(
         self,
-        audio_path: str | Path,
+        audio_path: Union[str, Path],
         speed: float,
-        output_path: str | Path,
+        output_path: Union[str, Path],
     ) -> Path:
         out = Path(output_path).resolve()
         new_rate = int(44100 * speed)
@@ -192,9 +192,9 @@ class AudioAnalyzer:
 
     def trim_audio_intro(
         self,
-        audio_path: str | Path,
+        audio_path: Union[str, Path],
         trim_sec: float,
-        output_path: str | Path,
+        output_path: Union[str, Path],
     ) -> Path:
         out = Path(output_path).resolve()
         out.parent.mkdir(parents=True, exist_ok=True)

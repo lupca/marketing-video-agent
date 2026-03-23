@@ -9,7 +9,7 @@ import shutil
 import subprocess
 import tempfile
 from pathlib import Path
-from typing import Any, Sequence
+from typing import Any, Sequence, Union
 
 from moviepy.editor import CompositeVideoClip, ImageClip, VideoFileClip
 from PIL import Image, ImageDraw, ImageFont
@@ -20,7 +20,7 @@ log = logging.getLogger(__name__)
 
 # ── Shared Text Rendering Helpers ──────────────────────────────────────────
 
-def resolve_font(font_path: str | Path | None = None) -> Path:
+def resolve_font(font_path: Union[str, Path, None] = None) -> Path:
     if font_path:
         p = Path(font_path).resolve()
         if p.exists():
@@ -57,7 +57,7 @@ def wrap_text(draw: ImageDraw.ImageDraw, text: str, font: ImageFont.FreeTypeFont
     lines.append(cur)
     return lines
 
-def render_text_img(*, text: str, font_path: Path, font_size: int,
+def render_text_img(text: str, font_path: Path, font_size: int,
                     max_width: int, effect: str = "feature") -> Image.Image:
     """Render text onto a transparent RGBA image with a rounded-rect background."""
     font = ImageFont.truetype(str(font_path), size=font_size)
@@ -91,7 +91,7 @@ def render_text_img(*, text: str, font_path: Path, font_size: int,
 
 # ── make_viral specific text overlay ──────────────────────────────────────
 
-def parse_make_viral_event(item: dict[str, Any] | Sequence[Any]) -> TextEventMakeViral:
+def parse_make_viral_event(item: Union[dict[str, Any], Sequence[Any]]) -> TextEventMakeViral:
     if isinstance(item, dict):
         s = float(item.get("time", 0.0))
         t = str(item.get("text", "")).strip()
@@ -256,11 +256,11 @@ def _overlay_moviepy(
 
 
 def overlay_text_make_viral(
-    input_video: str | Path,
-    output_video: str | Path,
-    events: Sequence[dict[str, Any] | Sequence[Any]],
+    input_video: Union[str, Path],
+    output_video: Union[str, Path],
+    events: Sequence[Union[dict[str, Any], Sequence[Any]]],
     *,
-    font_path: str | Path | None = None,
+    font_path: Union[str, Path] | None = None,
     font_size_hook: int = 84,
     font_size_feature: int = 64,
     feature_duration: float = 2.8,

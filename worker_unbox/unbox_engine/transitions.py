@@ -2,7 +2,11 @@
 Transitions module for video engine.
 Extracted from make_viral.py. Contains OpenCV-based transitions.
 """
+from __future__ import annotations
+
 import logging
+from typing import Union
+
 import cv2
 import numpy as np
 from PIL import Image
@@ -306,7 +310,7 @@ class AudioReactiveTransitionRouter:
 
     def select(
         self, clip_a_duration: float,
-    ) -> LumaFadeTransition | PopoutTransition | WhipPanTransition:
+    ) -> Union[LumaFadeTransition, PopoutTransition, WhipPanTransition]:
         if clip_a_duration >= 1.5:
             log.debug("Router: slow beat (%.2fs) → LumaFade", clip_a_duration)
             return LumaFadeTransition(transition_frames=12)

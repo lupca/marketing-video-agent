@@ -11,7 +11,7 @@ import re
 import shutil
 import subprocess
 from pathlib import Path
-from typing import Iterable, Sequence
+from typing import Iterable, List, Optional, Sequence, Union
 
 import cv2
 import numpy as np
@@ -27,7 +27,7 @@ class VideoViralEngine:
 
     def __init__(
         self,
-        input_videos: Sequence[str | Path],
+        input_videos: Sequence[Union[str, Path]],
         *,
         target_width: int = 1080,
         target_height: int = 1920,
@@ -38,12 +38,12 @@ class VideoViralEngine:
         fps: int = 30,
         crf: int = 21,
         preset: str = "veryfast",
-        workers: int | None = None,
-        seed: int | None = None,
-        working_dir: str | Path = ".viral_engine_tmp",
+        workers: Optional[int] = None,
+        seed: Optional[int] = None,
+        working_dir: Union[str, Path] = ".viral_engine_tmp",
         keep_temp: bool = False,
-        beat_drop_times: Sequence[float] | None = None,
-        audio_track: str | Path | None = None,
+        beat_drop_times: Optional[Sequence[float]] = None,
+        audio_track: Union[str, Path, None] = None,
     ) -> None:
         if not input_videos:
             raise ValueError("input_videos must contain at least 1 file.")
@@ -79,7 +79,7 @@ class VideoViralEngine:
         if missing:
             raise FileNotFoundError(f"Input files not found: {missing}")
 
-    def build(self, output_path: str | Path) -> Path:
+    def build(self, output_path: Union[str, Path]) -> Path:
         output = Path(output_path).expanduser().resolve()
         output.parent.mkdir(parents=True, exist_ok=True)
         self.scene_dir.mkdir(parents=True, exist_ok=True)
@@ -133,7 +133,7 @@ class VideoViralEngine:
             return 0.0, duration
 
         segs: list[tuple[float, float]] = []
-        active: float | None = None
+        active: Optional[float] = None
         for line in proc.stderr.splitlines():
             m = self._SILENCE_START_RE.search(line)
             if m:
@@ -249,7 +249,7 @@ class VideoViralEngine:
         return durs
 
     @staticmethod
-    def _nearest_beat(beats: list[float], target: float) -> float | None:
+    def _nearest_beat(beats: List[float], target: float) -> Optional[float]:
         if not beats: return None
         a = np.asarray(beats)
         return float(a[int(np.argmin(np.abs(a - target)))])

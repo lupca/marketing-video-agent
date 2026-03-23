@@ -118,6 +118,7 @@ class AssetResponse(BaseModel):
     s3_url: str
     presigned_url: Optional[str] = None
     mime_type: Optional[str] = None
+    full_path: Optional[str] = None
     created_at: datetime
 
 

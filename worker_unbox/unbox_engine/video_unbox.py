@@ -4,11 +4,12 @@ unbox_viral specific video processing core.
 from __future__ import annotations
 
 import logging
+import os
 import shutil
 import subprocess
 import tempfile
 from pathlib import Path
-from typing import List, Optional
+from typing import List, Optional, Union
 
 import cv2
 import numpy as np
@@ -61,7 +62,7 @@ class VideoProcessor:
 
     def analyze_motion(
         self,
-        video_path: str | Path,
+        video_path: Union[str, Path],
         window_sec: float = MOTION_WINDOW_SEC,
     ) -> List[SegmentInfo]:
         cap = cv2.VideoCapture(str(video_path))
@@ -150,7 +151,7 @@ class VideoProcessor:
 
     def compute_crop_track(
         self,
-        video_path: str | Path,
+        video_path: Union[str, Path],
         sample_interval: int = 5,
     ) -> List[CropRegion]:
         cap = cv2.VideoCapture(str(video_path))
@@ -321,10 +322,10 @@ class Renderer:
 
     def render_segment(
         self,
-        video_path: str | Path,
+        video_path: Union[str, Path],
         segment: ProcessedSegment,
         crop_regions: List[CropRegion],
-        output_path: str | Path,
+        output_path: Union[str, Path],
         src_fps: float = 30.0,
     ) -> Path:
         out = Path(output_path).resolve()
@@ -386,7 +387,7 @@ class Renderer:
         segment_files: List[Path],
         segments: List[ProcessedSegment],
         beat_times: List[float],
-        output_path: str | Path,
+        output_path: Union[str, Path],
     ) -> Path:
         out = Path(output_path).resolve()
         out.parent.mkdir(parents=True, exist_ok=True)
@@ -457,10 +458,10 @@ class Renderer:
 
     def overlay_text(
         self,
-        video_path: str | Path,
+        video_path: Union[str, Path],
         text_events: List[TextEventUnbox],
-        output_path: str | Path,
-        font_path: Optional[str | Path] = None,
+        output_path: Union[str, Path],
+        font_path: Optional[Union[str, Path]] = None,
         font_size_hook: int = 84,
         font_size_feature: int = 64,
     ) -> Path:
@@ -555,9 +556,9 @@ class Renderer:
 
     def mux_final(
         self,
-        video_path: str | Path,
-        audio_path: str | Path,
-        output_path: str | Path,
+        video_path: Union[str, Path],
+        audio_path: Union[str, Path],
+        output_path: Union[str, Path],
     ) -> Path:
         out = Path(output_path).resolve()
         dur = self._probe_duration(video_path)
@@ -595,7 +596,7 @@ class Renderer:
             "-crf", str(self.crf),
         ]
 
-    def _probe_duration(self, video_path: str | Path) -> float:
+    def _probe_duration(self, video_path: Union[str, Path]) -> float:
         proc = subprocess.run([
             self._ffprobe, "-v", "error",
             "-show_entries", "format=duration",
@@ -615,7 +616,7 @@ class Renderer:
             )
         return proc
 
-def probe_fps(video_path: str | Path) -> float:
+def probe_fps(video_path: Union[str, Path]) -> float:
     ffprobe = shutil.which("ffprobe")
     if not ffprobe:
         return float(TARGET_FPS)
