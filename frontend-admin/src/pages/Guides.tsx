@@ -1,5 +1,5 @@
 import React, { useState } from 'react';
-import { Check, Copy, Sparkles, Zap, AlignLeft, Info, Code as CodeIcon, Settings, Target, Bot } from 'lucide-react';
+import { Check, Copy, Sparkles, Zap, AlignLeft, Info, Code as CodeIcon, Settings, Target, Bot, Layout } from 'lucide-react';
 import { cn } from '../lib/utils';
 
 // Helper component for Code Block with Copy capability
@@ -317,8 +317,87 @@ In kết quả JSON đúng mẫu dưới đây (In duy nhất block JSON này, k
   </div>
 );
 
+const ContentSlideshowWorker = () => (
+  <div className="space-y-6 text-gray-300 leading-relaxed font-light">
+    <div className="rounded-xl border border-amber-500/30 bg-amber-500/10 p-6 shadow-sm shadow-amber-900/20">
+      <h1 className="flex items-center gap-3 text-3xl font-bold bg-gradient-to-r from-amber-400 to-orange-400 bg-clip-text text-transparent mb-4">
+        <Sparkles className="w-8 h-8 text-amber-400" />
+        Hướng Dẫn: Slideshow Form Automation
+      </h1>
+      <p className="text-lg text-white/80">
+        Công cụ <strong className="font-semibold text-white">Worker Slideshow</strong> giúp bạn tạo video quảng cáo sản phẩm nhanh chóng từ danh sách ảnh. Dưới đây là cách sử dụng AI để viết kịch bản tối ưu nhất cho công cụ này.
+      </p>
+    </div>
+
+    <div className="pl-2">
+      <SectionHeading icon={Bot}>1. Prompt AI Tạo Kịch Bản Điền Form Tự Động</SectionHeading>
+      <div className="rounded-xl border border-amber-500/20 bg-amber-500/5 p-4 mb-4 flex gap-3">
+        <Info className="w-6 h-6 text-amber-500 flex-shrink-0" />
+        <p className="text-sm text-amber-200/80">
+          <strong>Cách dùng:</strong> Copy đoạn mẫu dưới đây, điền thông tin nguyên liệu thô của bạn vào phần trong ngoặc vuông <code className="bg-black/30 px-1 rounded text-amber-300">[...]</code> và gửi cho AI. AI sẽ trả về kết quả chuẩn để bạn copy thẳng vào từng ô trên giao diện phần mềm.
+        </p>
+      </div>
+
+      <CodeBlock 
+        language="text" 
+        title="Prompt dành cho ChatGPT/Claude"
+        code={`Đóng vai: Bạn là một content creator mảng cầu lông tại Hà Nội, chuyên làm nội dung review đồ "ngon-bổ-rẻ" hướng tới đối tượng Học sinh - Sinh viên.
+
+Nhiệm vụ: Viết kịch bản video ngắn dạng Infographic. Trình bày kết quả thật rõ ràng để tôi có thể copy và dán trực tiếp vào các ô nhập liệu trên phần mềm tạo video.
+
+Thông tin chiến dịch:
+- Chủ đề/Sản phẩm: [Điền chủ đề. Ví dụ: Combo Vợt Astrox 88 Play + Cước Kizuna Z61 + Căng 11kg]
+- Đặc điểm nổi bật: [Ví dụ: Vợt dễ thuần, cước nổ to, phù hợp người mới, có quà tặng kèm]
+
+Cấu trúc khung hình (Tổng cộng [Điền số lượng ảnh] ảnh):
+Ảnh 1: [Ý tưởng cho ảnh 1 - VD: Vợt Astrox 88 Play]
+Ảnh 2: [Ý tưởng cho ảnh 2 - VD: Cước Kizuna Z61]
+Ảnh 3: [Ý tưởng cho ảnh 3 - VD: Mức căng 11kg]
+Ảnh 4: [Ý tưởng cho ảnh 4 - VD: Quà tặng kèm]
+
+Yêu cầu đầu ra (Format Output):
+Hãy xuất kết quả theo đúng cấu trúc dưới đây, ngôn từ giật tít, đậm chất Gen Z:
+
+[CÀI ĐẶT CHUNG]
+Intro Text (Mở đầu): [1 câu giật tít ngắn gọn khơi gợi sự tò mò, tối đa 15 chữ]
+Outro Text (Kết thúc): [1 câu kêu gọi hành động mua hàng/click link khẩn cấp]
+
+[DANH SÁCH SẢN PHẨM]
+Ảnh 1:
+Tên / Mô tả: [Mô tả lợi ích cốt lõi, ngắn gọn, súc tích]
+Hook Badge: [Tối đa 3 từ, ví dụ: Vợt Quốc Dân, Siêu Bền...]
+
+Ảnh 2:
+Tên / Mô tả: [...]
+Hook Badge: [...]
+
+(Lặp lại tương tự cho đến hết số lượng ảnh)`} 
+      />
+
+      <div className="mt-8 rounded-xl bg-amber-500/10 border border-amber-500/20 p-5 items-center flex gap-4">
+        <Target className="w-8 h-8 text-amber-400 flex-shrink-0" />
+        <div>
+          <h4 className="font-semibold text-white mb-1">Tại sao nên dùng Prompt này?</h4>
+          <p className="text-sm text-amber-50">
+            Prompt này giúp AI hiểu rõ <strong>đối tượng mục tiêu</strong> và <strong>văn phong</strong> mong muốn. Kết quả trả về được chia theo từng Slide, tương ứng chính xác với các ô nhập liệu giúp bạn tiết kiệm 90% thời gian lên kịch bản.
+          </p>
+        </div>
+      </div>
+    </div>
+  </div>
+);
+
 export default function Guides() {
-  const [activeTab, setActiveTab] = useState<'review' | 'unbox'>('review');
+  const [activeTab, setActiveTab] = useState<'review' | 'unbox' | 'slideshow'>('review');
+
+  const renderContent = () => {
+    switch (activeTab) {
+      case 'review': return <ContentReviewWorker />;
+      case 'unbox': return <ContentUnboxWorker />;
+      case 'slideshow': return <ContentSlideshowWorker />;
+      default: return <ContentReviewWorker />;
+    }
+  };
 
   return (
     <div className="p-8 max-w-5xl mx-auto pb-24 animate-in fade-in duration-500">
@@ -364,10 +443,27 @@ export default function Guides() {
             <div className="absolute bottom-0 left-0 right-0 h-0.5 bg-cyan-400 rounded-t-full shadow-[0_-2px_8px_rgba(34,211,238,0.5)]" />
           )}
         </button>
+        <button
+          onClick={() => setActiveTab('slideshow')}
+          className={cn(
+            "pb-4 px-2 text-sm font-semibold transition-all relative",
+            activeTab === 'slideshow' 
+              ? "text-amber-400" 
+              : "text-muted-foreground hover:text-white"
+          )}
+        >
+          <div className="flex items-center gap-2">
+            <Layout className="w-4 h-4" />
+            Slideshow Video Guide
+          </div>
+          {activeTab === 'slideshow' && (
+            <div className="absolute bottom-0 left-0 right-0 h-0.5 bg-amber-400 rounded-t-full shadow-[0_-2px_8px_rgba(245,158,11,0.5)]" />
+          )}
+        </button>
       </div>
 
       <div className="transition-all duration-300">
-        {activeTab === 'review' ? <ContentReviewWorker /> : <ContentUnboxWorker />}
+        {renderContent()}
       </div>
     </div>
   );

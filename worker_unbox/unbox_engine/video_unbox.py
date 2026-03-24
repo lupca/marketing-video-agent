@@ -29,8 +29,8 @@ TIKTOK_SAFE_TOP = 0.15
 TIKTOK_SAFE_BOTTOM = 0.20
 TIKTOK_SAFE_RIGHT = 0.15
 
-STATIC_THRESHOLD = 2.0
-REPETITIVE_THRESHOLD = 8.0
+STATIC_THRESHOLD = 0.5       # Below = static (cut/fast-forward)
+REPETITIVE_THRESHOLD = 4.0   # Below = repetitive motion (speed ramp)
 MOTION_WINDOW_SEC = 0.5
 SPEED_RAMP_FACTOR = 3.5
 EMA_ALPHA = 0.15
@@ -273,12 +273,19 @@ class VideoProcessor:
     ) -> List[ProcessedSegment]:
         processed: List[ProcessedSegment] = []
         for seg in motion_segments:
-            if seg.classification == "STATIC":
-                continue
             duration = seg.end - seg.start
-            if seg.classification == "DYNAMIC" and duration < min_dynamic_sec:
-                continue
-            speed = SPEED_RAMP_FACTOR if seg.classification == "REPETITIVE" else 1.0
+            
+            # Classification-based speed & filtering
+            if seg.classification == "STATIC":
+                # Don't cut static completely, just speed it up (fast-forward boring parts)
+                speed = 2.0
+            elif seg.classification == "REPETITIVE":
+                speed = SPEED_RAMP_FACTOR
+            else: # DYNAMIC
+                if duration < min_dynamic_sec:
+                    continue
+                speed = 1.0
+
             is_beat = any(seg.start <= bt <= seg.end for bt in beat_times)
             processed.append(ProcessedSegment(
                 start=seg.start,

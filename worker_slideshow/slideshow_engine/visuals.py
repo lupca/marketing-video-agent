@@ -3,11 +3,44 @@ import random
 from pathlib import Path
 from typing import List
 
-from PIL import Image, ImageFilter
+from PIL import Image, ImageFilter, ImageFont
 
 from moviepy import ColorClip, CompositeVideoClip, ImageClip, TextClip, vfx
 
 from .config import BLUR_CACHE_DIR, H, HOOK_DURATION, W
+
+
+def wrap_text_smart(text: str, font_path: Path, font_size: int, max_width: int) -> str:
+    """Break text into lines at word boundaries to fit max_width."""
+    if not text:
+        return ""
+    try:
+        font = ImageFont.truetype(str(font_path), font_size)
+    except Exception:
+        return text
+
+    words = text.split()
+    lines = []
+    current_line = []
+
+    for word in words:
+        test_line = " ".join(current_line + [word])
+        # getlength returns the horizontal advance of the text.
+        if font.getlength(test_line) <= max_width:
+            current_line.append(word)
+        else:
+            if current_line:
+                lines.append(" ".join(current_line))
+                current_line = [word]
+            else:
+                # Single word is longer than max_width, force it on its own line
+                lines.append(word)
+                current_line = []
+
+    if current_line:
+        lines.append(" ".join(current_line))
+
+    return "\n".join(lines)
 
 
 def ensure_vietnamese_font(font_path: Path) -> Path:
@@ -100,9 +133,10 @@ def create_image_layers(
 
 def create_bottom_text_overlay(text: str, duration: float, font_path: Path) -> CompositeVideoClip:
     show_duration = max(0.2, duration - HOOK_DURATION)
+    wrapped_text = wrap_text_smart(text, font_path, 66, int(W * 0.88))
 
     txt = TextClip(
-        text=text,
+        text=wrapped_text,
         font=str(font_path),
         font_size=66,
         color="#FFD400",
@@ -141,8 +175,9 @@ def create_hook_overlay(
     hook_stroke: int,
 ) -> CompositeVideoClip:
     # Add margin/interline to avoid glyph clipping at descenders.
+    wrapped_hook = wrap_text_smart(hook_text, font_path, 92, int(W * 0.93))
     hook = TextClip(
-        text=hook_text,
+        text=wrapped_hook,
         font=str(font_path),
         font_size=92,
         color=hook_color,
