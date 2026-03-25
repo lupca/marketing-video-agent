@@ -80,11 +80,18 @@ def render_text_img(text: str, font_path: Path, font_size: int,
         bg_color = (0, 0, 0, 180)        # Semi-transparent Black
         text_color = (255, 255, 255, 255) # White
 
+    # Background box
     dr.rounded_rectangle(
         [(0, 0), (w + pad * 2 - 1, h + pad * 2 - 1)],
         radius=radius, fill=bg_color,
     )
+    # Shadow text
+    shadow_off = 3
+    dr.multiline_text((pad + shadow_off, pad + shadow_off), ml, font=font, fill=(0, 0, 0, 180),
+                      spacing=10, align="center")
+    # Main text with stroke
     dr.multiline_text((pad, pad), ml, font=font, fill=text_color,
+                      stroke_width=2, stroke_fill=(0, 0, 0, 255),
                       spacing=10, align="center")
     return img
 
@@ -93,9 +100,9 @@ def render_text_img(text: str, font_path: Path, font_size: int,
 
 def parse_make_viral_event(item: Union[dict[str, Any], Sequence[Any]]) -> TextEventMakeViral:
     if isinstance(item, dict):
-        s = float(item.get("time", 0.0))
+        s = float(item.get("time", item.get("start", 0.0)))
         t = str(item.get("text", "")).strip()
-        e = str(item.get("effect", "feature")).strip().lower()
+        e = str(item.get("effect", item.get("type", "feature"))).strip().lower()
     else:
         if len(item) < 3:
             raise ValueError("Event must have [time, text, effect].")
@@ -125,24 +132,40 @@ def _esc_dt(v: str) -> str:
 
 def _build_drawtext(ev: TextEventMakeViral, *, font_path: Path, font_size_hook: int,
                     font_size_feature: int, feature_duration: float,
-                    slide_duration: float) -> str:
+                    slide_duration: float, y_offset: int = 0) -> str:
     txt, fnt = _esc_dt(ev.text), _esc_dt(str(font_path))
-    common = (f"fontfile='{fnt}':text='{txt}':fontcolor=white:line_spacing=12:"
-              "box=0:borderw=4:bordercolor=black@0.95:"
-              "shadowx=2:shadowy=2:shadowcolor=black@0.85")
+    
     if ev.effect == "hook":
-        return (f"drawtext={common}:fontsize={font_size_hook}:"
-                "x='(w-text_w)/2':y='(h/3)-(text_h/2)':enable='between(t,0,3)'")
+        # Yellow background, black text
+        color = "black"
+        box_color = "0xFFD700@1.0"
+        fs = font_size_hook
+        y = "'(h/3)-(text_h/2)'"
+        enable = "enable='between(t,0,3)'"
+    else:
+        # Semi-transparent black background, white text
+        color = "white"
+        box_color = "black@0.70"
+        fs = font_size_feature
+        y = f"'(h*0.72)-(text_h/2)+{y_offset}'"
+        enable = f"enable='between(t,{ev.start:.3f},{ev.start + feature_duration:.3f})'"
+
+    common = (f"fontfile='{fnt}':text='{txt}':fontcolor={color}:fontsize={fs}:line_spacing=12:"
+              f"box=1:boxcolor={box_color}:boxborderw=20:"
+              f"borderw=2:bordercolor=black:"
+              "shadowx=3:shadowy=3:shadowcolor=black@0.50")
+
+    if ev.effect == "hook":
+        return f"drawtext={common}:x='(w-text_w)/2':y={y}:{enable}"
+    
     s = max(0.0, ev.start)
-    e = s + max(0.2, feature_duration)
     prog = f"(t-{s:.3f})/{slide_duration:.3f}"
     ease = f"(1-pow(1-{prog},3))"
     x = (f"'if(lt(t,{s:.3f}),-text_w-80,"
          f"if(lt(t,{s + slide_duration:.3f}),"
          f"(-text_w-80)+((w*0.08)+text_w+80)*{ease},w*0.08))'")
-    y = "'(h*0.72)-(text_h/2)'"
-    return (f"drawtext={common}:fontsize={font_size_feature}:"
-            f"x={x}:y={y}:enable='between(t,{s:.3f},{e:.3f})'")
+    
+    return f"drawtext={common}:x={x}:y={y}:{enable}"
 
 
 def _overlay_ffmpeg(
@@ -150,10 +173,28 @@ def _overlay_ffmpeg(
     font_path: Path, font_size_hook: int, font_size_feature: int,
     feature_duration: float, slide_duration: float, fps: int, crf: int, preset: str,
 ) -> None:
-    filters = [_build_drawtext(e, font_path=font_path, font_size_hook=font_size_hook,
-                               font_size_feature=font_size_feature,
-                               feature_duration=feature_duration,
-                               slide_duration=slide_duration) for e in events]
+    sorted_events = sorted(events, key=lambda e: e.start if e.effect == "feature" else 0.0)
+    filters = []
+    processed_features: list[tuple[float, float, int]] = [] # (start, end, y_offset)
+
+    for ev in sorted_events:
+        y_off = 0
+        if ev.effect == "feature":
+            start = max(0.0, ev.start)
+            end = start + max(0.2, feature_duration)
+            concurrent = 0
+            for s_old, e_old, _ in processed_features:
+                if not (start >= e_old or end <= s_old):
+                    concurrent += 1
+            y_off = concurrent * 85
+            processed_features.append((start, end, y_off))
+            
+        f = _build_drawtext(ev, font_path=font_path, font_size_hook=font_size_hook,
+                            font_size_feature=font_size_feature,
+                            feature_duration=feature_duration,
+                            slide_duration=slide_duration, y_offset=y_off)
+        filters.append(f)
+
     proc = subprocess.run(
         [ffmpeg_bin, "-y", "-i", str(src), "-vf", ",".join(filters),
          "-r", str(fps), "-c:v", "libx264", "-preset", preset,
@@ -176,14 +217,18 @@ def _overlay_moviepy(
 
     try:
         tmp_dir = Path(tempfile.mkdtemp(prefix="overlay_"))
-        for ev in events:
+        
+        # Sort events by start time to make stacking easier
+        sorted_events = sorted(events, key=lambda e: e.start if e.effect == "feature" else 0.0)
+        
+        for ev in sorted_events:
             if ev.effect == "hook":
                 img = render_text_img(text=ev.text, font_path=font_path,
                                        font_size=font_size_hook,
                                        max_width=int(base.w * 0.86),
                                        effect="hook")
                 p = tmp_dir / f"hook_{len(tmp_imgs):03d}.png"
-                img.save(p)
+                img.save(str(p))
                 tmp_imgs.append(p)
                 clip = ImageClip(str(p), transparent=True)
 
@@ -214,13 +259,28 @@ def _overlay_moviepy(
                                    max_width=int(base.w * 0.84),
                                    effect="feature")
             p = tmp_dir / f"feat_{len(tmp_imgs):03d}.png"
-            img.save(p)
+            img.save(str(p))
             tmp_imgs.append(p)
             clip = ImageClip(str(p), transparent=True)
             clip = clip.rotate(-3.5, expand=True)
 
             dur = min(max(0.2, feature_duration), base.duration - start)
-            y_pos = int(base.h * 0.72 - clip.h / 2)
+            
+            # Vertical stacking logic for concurrent features
+            concurrent_features = 0
+            for o in overlays:
+                if (getattr(o, "is_feature", False) and 
+                    not (start >= o.start + o.duration or start + dur <= o.start)):
+                    concurrent_features += 1
+            
+            # Offset Y by 80px for each concurrent feature
+            y_offset = concurrent_features * 85
+            y_pos = int(base.h * 0.72 - clip.h / 2) + y_offset
+            
+            # Clamp Y-pos to stay within visible area
+            if y_pos > base.h * 0.92:
+                y_pos = int(base.h * 0.72 - clip.h / 2) # Fallback to original if too many
+            
             tx = int(base.w * 0.08)
             entry = max(0.12, slide_duration)
 
@@ -236,7 +296,9 @@ def _overlay_moviepy(
                     return (x, float(yy))
                 return (float(tgt), float(yy))
 
-            overlays.append(clip.set_start(start).set_duration(dur).set_position(motion))
+            final_clip = clip.set_start(start).set_duration(dur).set_position(motion)
+            final_clip.is_feature = True
+            overlays.append(final_clip)
 
         comp = CompositeVideoClip([base, *overlays], size=base.size).set_duration(base.duration)
         comp.write_videofile(

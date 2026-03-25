@@ -481,7 +481,10 @@ class Renderer:
         tmp_dir = Path(tempfile.mkdtemp(prefix="unbox_text_"))
 
         try:
-            for ev in text_events:
+            # Sort events by start time
+            sorted_events = sorted(text_events, key=lambda e: e.start if e.event_type == "feature" else 0.0)
+            
+            for ev in sorted_events:
                 if ev.event_type == "hook":
                     img = render_text_img(
                         ev.text, font, font_size_hook,
@@ -526,10 +529,26 @@ class Renderer:
                 clip = ImageClip(str(p), transparent=True).rotate(-3.5, expand=True)
 
                 dur = min(2.5, base.duration - start)
+                if dur < 0.2: # Too short to show
+                    continue
+                    
+                # Vertical stacking logic for concurrent features
+                concurrent_features = 0
+                for o in overlays:
+                    if (getattr(o, "is_feature", False) and 
+                        not (start >= o.start + o.duration or start + dur <= o.start)):
+                        concurrent_features += 1
+                
+                y_stack_offset = concurrent_features * 85
+                
                 safe_top = int(self.height * TIKTOK_SAFE_TOP)
                 safe_bottom = int(self.height * (1 - TIKTOK_SAFE_BOTTOM))
                 feat_x = max(0, (self.width - clip.w) // 2)
-                feat_y = int((safe_top + safe_bottom) / 2 + 80)
+                feat_y = int((safe_top + safe_bottom) / 2 + 80) + y_stack_offset
+
+                # Clamp feat_y
+                if feat_y > safe_bottom - 100:
+                    feat_y = int((safe_top + safe_bottom) / 2 + 80)
 
                 def feat_pos(t, fx=feat_x, fy=feat_y, cw=clip.w):
                     if t < 0:
@@ -541,7 +560,9 @@ class Renderer:
                     y_bounce = int(fy - (1 - ease) * 40)
                     return (x, y_bounce)
 
-                overlays.append(clip.set_start(start).set_duration(dur).set_position(feat_pos))
+                final_clip = clip.set_start(start).set_duration(dur).set_position(feat_pos)
+                final_clip.is_feature = True
+                overlays.append(final_clip)
 
             comp = CompositeVideoClip([base, *overlays], size=base.size).set_duration(base.duration)
             comp.write_videofile(

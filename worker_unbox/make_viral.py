@@ -109,7 +109,7 @@ def make_viral(work_dir: str = ".", config: dict = None, preview: bool = False) 
         input_video=stage2, output_video=final, events=text_events,
         font_size_hook=78, font_size_feature=58,
         feature_duration=2.6, slide_duration=0.55,
-        fps=30, crf=19, preset="veryfast", backend="moviepy",
+        fps=30, crf=19, preset="veryfast", backend="auto",
     )
     stage2.unlink(missing_ok=True)
 
