@@ -277,8 +277,9 @@ class VideoProcessor:
             
             # Classification-based speed & filtering
             if seg.classification == "STATIC":
-                # Don't cut static completely, just speed it up (fast-forward boring parts)
-                speed = 2.0
+                # Cut static segments completely as requested by user
+                # speed = 2.0
+                continue        # Don't cut static completely, just speed it up (fast-forward boring parts)
             elif seg.classification == "REPETITIVE":
                 speed = SPEED_RAMP_FACTOR
             else: # DYNAMIC
