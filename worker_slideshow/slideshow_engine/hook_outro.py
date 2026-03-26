@@ -7,6 +7,7 @@ import numpy as np
 from PIL import Image
 from moviepy import ColorClip, CompositeVideoClip, ImageClip, TextClip, vfx
 from .config import FONT_PATH, H, MAX_PRODUCTS, MIN_PRODUCTS, W
+from .visuals import wrap_text_smart
 
 DEFAULT_FONT_PATH = FONT_PATH
 
@@ -93,8 +94,11 @@ def create_intro_hook(
         )
         image_layers.append(clip)
 
+    # Use wrap_text_smart to avoid word-splitting; W*0.86 allows safety margin for TextClip size W*0.92
+    wrapped_intro = wrap_text_smart(intro_text, FONT_PATH, 100, int(W * 0.86))
+
     hook_text = TextClip(
-        text=intro_text,
+        text=wrapped_intro,
         font=font_name,
         font_size=100,
         color="#FFD400",
@@ -158,8 +162,11 @@ def create_outro_cta(
     )
     logo = logo.with_position(("center", int(H * 0.26)))
 
+    # Use wrap_text_smart; W*0.84 allows safety margin for TextClip size W*0.90
+    wrapped_cta = wrap_text_smart(cta_text, FONT_PATH, 74, int(W * 0.84))
+
     cta_text = TextClip(
-        text=cta_text,
+        text=wrapped_cta,
         font=font_name,
         font_size=74,
         color="white",

@@ -133,7 +133,8 @@ def create_image_layers(
 
 def create_bottom_text_overlay(text: str, duration: float, font_path: Path) -> CompositeVideoClip:
     show_duration = max(0.2, duration - HOOK_DURATION)
-    wrapped_text = wrap_text_smart(text, font_path, 66, int(W * 0.88))
+    # Use int(W * 0.82) to give MoviePy TextClip some "breathing room" (W*0.88 size)
+    wrapped_text = wrap_text_smart(text, font_path, 66, int(W * 0.82))
 
     txt = TextClip(
         text=wrapped_text,
@@ -175,7 +176,8 @@ def create_hook_overlay(
     hook_stroke: int,
 ) -> CompositeVideoClip:
     # Add margin/interline to avoid glyph clipping at descenders.
-    wrapped_hook = wrap_text_smart(hook_text, font_path, 92, int(W * 0.93))
+    # Use int(W * 0.86) to give TextClip (W*0.93 size) some safety margin.
+    wrapped_hook = wrap_text_smart(hook_text, font_path, 92, int(W * 0.86))
     hook = TextClip(
         text=wrapped_hook,
         font=str(font_path),
