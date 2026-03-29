@@ -41,12 +41,17 @@ def _insert_log(db, job_id: int, message: str, level: str = "INFO") -> None:
 
 # ── yt-dlp Runner ────────────────────────────────────────────────────────────
 
-def _run_ytdlp(url: str, output_dir: str, format_type: str = "video") -> str:
+def _run_ytdlp(url: str, output_dir: str, format_type: str = "video", custom_filename: str = None) -> str:
     """
     Run yt-dlp to download a video or extract audio.
     Returns the path to the downloaded file.
     """
-    output_template = os.path.join(output_dir, "%(title).80s_%(id)s.%(ext)s")
+    if custom_filename:
+        # Sanitize filename and use it in template
+        safe_name = "".join([c for c in custom_filename if c.isalnum() or c in (" ", ".", "_", "-")]).strip()
+        output_template = os.path.join(output_dir, f"{safe_name}.%(ext)s")
+    else:
+        output_template = os.path.join(output_dir, "%(title).80s_%(id)s.%(ext)s")
     
     if format_type == "audio":
         cmd = [
@@ -111,6 +116,7 @@ def process_download(self, job_id: int, config_data: Dict[str, Any]):
     url = config_data.get("url")
     user_id = config_data.get("user_id")
     format_type = config_data.get("format", "video")
+    custom_filename = config_data.get("custom_filename")
 
     if not url:
         _update_job(db, job, status="FAILED", error_message="Missing 'url' in config_data")
@@ -126,7 +132,7 @@ def process_download(self, job_id: int, config_data: Dict[str, Any]):
         # Step 1: Download with yt-dlp
         _insert_log(db, job_id, "Running yt-dlp...")
         _update_job(db, job, progress_percent=10)
-        downloaded_path = _run_ytdlp(url, work_dir, format_type)
+        downloaded_path = _run_ytdlp(url, work_dir, format_type, custom_filename)
         file_name = os.path.basename(downloaded_path)
         file_size = os.path.getsize(downloaded_path)
         _insert_log(db, job_id, f"Downloaded: {file_name} ({file_size} bytes)")

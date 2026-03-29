@@ -13,6 +13,7 @@ export interface VideoJob {
   started_at: string | null;
   completed_at: string | null;
   created_at: string;
+  note: string | null;
 }
 
 export interface JobLog {
@@ -75,7 +76,12 @@ export function useJobs(autoRefresh: boolean = false, refreshIntervalMs: number 
     return res.data;
   };
 
+  const updateJob = async (id: number, note: string) => {
+    const res = await api.patch(`/api/jobs/${id}`, { note });
+    setJobs(prev => prev.map(j => j.id === id ? { ...j, note: res.data.note } : j));
+  };
+
   const hasProcessing = jobs.some(j => j.status === "PROCESSING");
 
-  return { jobs, loading, refreshing, error, fetchJobs, deleteJob, getDownloadUrl, getJobLogs, getJob, hasProcessing };
+  return { jobs, loading, refreshing, error, fetchJobs, deleteJob, getDownloadUrl, getJobLogs, getJob, updateJob, hasProcessing };
 }

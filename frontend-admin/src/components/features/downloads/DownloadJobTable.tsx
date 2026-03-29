@@ -58,16 +58,24 @@ export function DownloadJobTable({ jobs, onViewLogs, onDeleteJob, onDownloadResu
                   #{job.id}
                 </td>
                 <td className="px-6 py-4 max-w-[280px]">
-                  <a
-                    href={job.source_url}
-                    target="_blank"
-                    rel="noreferrer"
-                    className="flex items-center gap-2 text-indigo-300 hover:text-indigo-200 transition-colors group/link"
-                    title={job.source_url}
-                  >
-                    <Link2 className="w-3.5 h-3.5 shrink-0 opacity-50 group-hover/link:opacity-100" />
-                    <span className="truncate text-xs font-mono">{truncateUrl(job.source_url)}</span>
-                  </a>
+                    <a
+                      href={job.source_url}
+                      target="_blank"
+                      rel="noreferrer"
+                      className="flex flex-col gap-1 text-indigo-300 hover:text-indigo-200 transition-colors group/link"
+                      title={job.source_url}
+                    >
+                      {job.custom_filename && (
+                        <div className="text-white font-semibold text-sm truncate flex items-center gap-1.5">
+                          <Download className="w-3.5 h-3.5 text-emerald-400" />
+                          {job.custom_filename}
+                        </div>
+                      )}
+                      <div className="flex items-center gap-1.5 opacity-70 group-hover/link:opacity-100">
+                        <Link2 className="w-3.5 h-3.5 shrink-0" />
+                        <span className="truncate text-[10px] font-mono">{truncateUrl(job.source_url)}</span>
+                      </div>
+                    </a>
                 </td>
                 <td className="px-6 py-4 whitespace-nowrap">
                   {job.format_type === "audio" ? (

@@ -15,7 +15,7 @@ export default function ProjectDetails() {
   const { id } = useParams<{ id: string }>();
   const navigate = useNavigate();
   const { getProject } = useProjects();
-  const { jobs, loading: jobsLoading, refreshing, fetchJobs, deleteJob, getDownloadUrl, getJobLogs, hasProcessing } = useJobs(true, 5000, id);
+  const { jobs, loading: jobsLoading, refreshing, fetchJobs, deleteJob, getDownloadUrl, getJobLogs, updateJob, hasProcessing } = useJobs(true, 5000, id);
   
   const [project, setProject] = useState<Project | null>(null);
   const [loadingProj, setLoadingProj] = useState(true);
@@ -265,6 +265,7 @@ export default function ProjectDetails() {
               onDownloadJob={handleDownloadJob}
               onWatchJob={handleWatchJob}
               onCopyJob={handleCopyJob}
+              onUpdateNote={updateJob}
             />
           )}
         </Card>

@@ -23,6 +23,7 @@ def create_download_job(
         user_id=current_user.id,
         source_url=body.url,
         format_type=body.format,
+        custom_filename=body.custom_filename,
         status="PENDING",
         progress_percent=0,
     )
@@ -35,6 +36,7 @@ def create_download_job(
         "url": body.url,
         "format": body.format,
         "user_id": current_user.id,
+        "custom_filename": body.custom_filename,
     }
     try:
         celery_client.celery_app.send_task(

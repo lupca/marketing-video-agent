@@ -104,6 +104,10 @@ class JobResponse(BaseModel):
     completed_at: Optional[datetime] = None
     created_at: datetime
     updated_at: Optional[datetime] = None
+    note: Optional[str] = None
+
+class JobUpdate(BaseModel):
+    note: Optional[str] = None
 
 
 # ── Assets ────────────────────────────────────────────────────────────────────
@@ -139,6 +143,7 @@ class JobLogResponse(BaseModel):
 class DownloadJobCreate(BaseModel):
     url: str
     format: str = "video"
+    custom_filename: Optional[str] = None
 
     @field_validator("url")
     @classmethod
@@ -166,6 +171,7 @@ class DownloadJobResponse(BaseModel):
     progress_percent: int
     result_url: Optional[str] = None
     error_message: Optional[str] = None
+    custom_filename: Optional[str] = None
     started_at: Optional[datetime] = None
     completed_at: Optional[datetime] = None
     created_at: datetime

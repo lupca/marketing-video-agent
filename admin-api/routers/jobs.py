@@ -163,6 +163,23 @@ def delete_job(
     return {"status": "deleted", "id": job_id}
 
 
+@router.patch("/{job_id}", response_model=schemas.JobResponse)
+def update_job(
+    job_id: int,
+    job_update: schemas.JobUpdate,
+    db: Session = Depends(database.get_db),
+    current_user: models.User = Depends(auth_module.get_current_user),
+):
+    job = _get_user_job(job_id, db, current_user.id)
+    
+    if job_update.note is not None:
+        job.note = job_update.note
+        
+    db.commit()
+    db.refresh(job)
+    return job
+
+
 @router.get("/{job_id}/logs", response_model=List[schemas.JobLogResponse])
 def get_job_logs(
     job_id: int,

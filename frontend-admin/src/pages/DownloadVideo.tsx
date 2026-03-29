@@ -14,6 +14,7 @@ export default function DownloadVideo() {
   const { jobs, loading, refreshing, fetchJobs, deleteJob, getDownloadUrl, getJobLogs, hasActive } = useDownloadJobs(true, 5000);
 
   const [url, setUrl] = useState("");
+  const [customFilename, setCustomFilename] = useState("");
   const [downloadFormat, setDownloadFormat] = useState<"video" | "audio">("video");
   const [submitting, setSubmitting] = useState(false);
   const [statusMsg, setStatusMsg] = useState("");
@@ -40,9 +41,11 @@ export default function DownloadVideo() {
       await api.post("/api/downloads", {
         url: url.trim(),
         format: downloadFormat,
+        custom_filename: customFilename.trim() || undefined,
       });
 
       setUrl("");
+      setCustomFilename("");
       // Refresh list and scroll to table
       await fetchJobs(true);
       setTimeout(() => {
@@ -170,13 +173,32 @@ export default function DownloadVideo() {
           </div>
         </div>
 
+        {/* Custom Filename Input */}
+        <div className="space-y-4">
+          <div className="flex items-center gap-2 text-white">
+            <Code2 className="w-5 h-5 text-primary" />
+            <h3 className="text-lg font-semibold">2. Tên file lưu trữ (Tùy chọn)</h3>
+          </div>
+          <p className="text-sm text-muted-foreground">
+            Nếu để trống, hệ thống sẽ tự động lấy tên từ tiêu đề video gốc.
+          </p>
+          <input
+            type="text"
+            disabled={submitting}
+            placeholder="Ví dụ: video_review_san_pham_A"
+            value={customFilename}
+            onChange={(e) => setCustomFilename(e.target.value)}
+            className="w-full bg-black/40 border border-white/10 rounded-xl px-4 py-3.5 text-white focus:outline-none focus:ring-2 focus:ring-primary/50 focus:border-primary/50 transition-all placeholder:text-muted-foreground/50 font-mono text-sm"
+          />
+        </div>
+
         <div className="w-full h-px bg-white/10"></div>
 
         {/* URL Input */}
         <div className="space-y-4">
           <div className="flex items-center gap-2 text-white">
             <DownloadCloud className="w-5 h-5 text-primary" />
-            <h3 className="text-lg font-semibold">2. Đường dẫn Link</h3>
+            <h3 className="text-lg font-semibold">3. Đường dẫn Link</h3>
           </div>
           <p className="text-sm text-muted-foreground">
             Hỗ trợ link từ YouTube, TikTok, Facebook v.v. (Ví dụ: https://www.youtube.com/shorts/...)

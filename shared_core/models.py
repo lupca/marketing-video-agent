@@ -95,6 +95,7 @@ class VideoJob(Base):
     completed_at = Column(DateTime(timezone=True), nullable=True)
     created_at = Column(DateTime(timezone=True), server_default=func.now())
     updated_at = Column(DateTime(timezone=True), onupdate=func.now())
+    note = Column(Text, nullable=True)
 
     project = relationship("Project", back_populates="video_jobs")
     job_assets = relationship("JobAsset", back_populates="video_job", cascade="all, delete-orphan")
@@ -151,6 +152,7 @@ class DownloadJob(Base):
     error_message = Column(Text, nullable=True)
     started_at = Column(DateTime(timezone=True), nullable=True)
     completed_at = Column(DateTime(timezone=True), nullable=True)
+    custom_filename = Column(String, nullable=True)
     created_at = Column(DateTime(timezone=True), server_default=func.now())
 
     user = relationship("User")

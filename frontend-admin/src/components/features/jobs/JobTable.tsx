@@ -15,12 +15,13 @@ interface JobTableProps {
   onViewDetails: (job: VideoJob) => void;
   onDeleteJob: (id: number) => void;
   onDownloadJob: (id: number) => void;
+  onUpdateNote?: (id: number, note: string) => void;
   onWatchJob?: (id: number) => void;
   onCopyJob?: (job: VideoJob) => void;
   deletingId: number | null;
 }
 
-export function JobTable({ jobs, onViewDetails, onDeleteJob, onDownloadJob, onWatchJob, onCopyJob, deletingId }: JobTableProps) {
+export function JobTable({ jobs, onViewDetails, onDeleteJob, onDownloadJob, onUpdateNote, onWatchJob, onCopyJob, deletingId }: JobTableProps) {
   const [expandedError, setExpandedError] = useState<number | null>(null);
 
   if (jobs.length === 0) {
@@ -43,6 +44,7 @@ export function JobTable({ jobs, onViewDetails, onDeleteJob, onDownloadJob, onWa
             <th className="px-6 py-5 font-semibold tracking-wider">Status & Progress</th>
             <th className="px-6 py-5 font-semibold tracking-wider">Duration</th>
             <th className="px-6 py-5 font-semibold tracking-wider">Created</th>
+            <th className="px-6 py-5 font-semibold tracking-wider">Note</th>
             <th className="px-6 py-5 font-semibold tracking-wider text-right">Actions</th>
           </tr>
         </thead>
@@ -120,7 +122,7 @@ export function JobTable({ jobs, onViewDetails, onDeleteJob, onDownloadJob, onWa
                 <td className="px-6 py-4 whitespace-nowrap text-muted-foreground/80">
                   {job.started_at && job.completed_at ? (
                     <div className="flex items-center gap-1.5 text-xs">
-                      <Timer className="w-3.5 h-3.5 text-emerald-400" />
+                       <Timer className="w-3.5 h-3.5 text-emerald-400" />
                       <span className="text-white font-medium">{formatDuration(job.started_at, job.completed_at)}</span>
                     </div>
                   ) : job.started_at ? (
@@ -134,6 +136,24 @@ export function JobTable({ jobs, onViewDetails, onDeleteJob, onDownloadJob, onWa
                 </td>
                 <td className="px-6 py-4 whitespace-nowrap text-muted-foreground/80 text-xs">
                   {formatDate(job.created_at)}
+                </td>
+                <td className="px-6 py-4 min-w-[150px]">
+                  <input
+                    type="text"
+                    defaultValue={job.note || ""}
+                    placeholder="Ghi chú..."
+                    className="w-full bg-white/5 border border-white/10 rounded px-2 py-1 text-xs text-white/80 focus:outline-none focus:border-primary/50 transition-colors"
+                    onBlur={(e) => {
+                      if (onUpdateNote && e.target.value !== (job.note || "")) {
+                        onUpdateNote(job.id, e.target.value);
+                      }
+                    }}
+                    onKeyDown={(e) => {
+                      if (e.key === "Enter") {
+                        e.currentTarget.blur();
+                      }
+                    }}
+                  />
                 </td>
                 <td className="px-6 py-4 whitespace-nowrap text-right">
                   <div className="flex items-center justify-end gap-2 text-muted-foreground">

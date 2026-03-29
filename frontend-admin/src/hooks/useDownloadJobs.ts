@@ -10,6 +10,7 @@ export interface DownloadJob {
   progress_percent: number;
   result_url: string | null;
   error_message: string | null;
+  custom_filename: string | null;
   started_at: string | null;
   completed_at: string | null;
   created_at: string;

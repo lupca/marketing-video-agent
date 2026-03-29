@@ -12,7 +12,7 @@ import { Card } from "../components/ui/Card";
 
 export default function Dashboard() {
   const navigate = useNavigate();
-  const { jobs, loading, refreshing, fetchJobs, deleteJob, getDownloadUrl, getJobLogs, hasProcessing } = useJobs(true, 5000);
+  const { jobs, loading, refreshing, fetchJobs, deleteJob, getDownloadUrl, getJobLogs, updateJob, hasProcessing } = useJobs(true, 5000);
   
   const [selectedJob, setSelectedJob] = useState<VideoJob | null>(null);
   const [jobLogs, setJobLogs] = useState<JobLog[]>([]);
@@ -144,6 +144,7 @@ export default function Dashboard() {
             onDownloadJob={handleDownloadJob}
             onWatchJob={handleWatchJob}
             onCopyJob={handleCopyJob}
+            onUpdateNote={updateJob}
           />
         )}
       </Card>
