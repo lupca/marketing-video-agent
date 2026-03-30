@@ -24,5 +24,7 @@ celery_app.conf.update(
         "worker_review.tasks.*": {"queue": "review_queue"},
         "worker_unbox.tasks.*": {"queue": "unbox_queue"},
         "worker_download.tasks.*": {"queue": "download_queue"},
+        "worker_slideshow.tasks.*": {"queue": "slideshow_queue"},
+        "worker_promotion.tasks.*": {"queue": "promotion_queue"},
     },
 )

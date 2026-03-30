@@ -1,5 +1,5 @@
 import { useState, useRef, useEffect } from "react";
-import { DownloadCloud, AlertCircle, Send, RefreshCw, Terminal, Code2 } from "lucide-react";
+import { DownloadCloud, AlertCircle, Send, RefreshCw, Code2, Film, Music } from "lucide-react";
 import { format } from "date-fns";
 import api from "../lib/api";
 import { cn } from "../lib/utils";
@@ -19,6 +19,7 @@ export default function DownloadVideo() {
   const [submitting, setSubmitting] = useState(false);
   const [statusMsg, setStatusMsg] = useState("");
   const [error, setError] = useState<string | null>(null);
+  const [activeTab, setActiveTab] = useState<"all" | "video" | "audio">("all");
 
   // Logs modal state
   const [selectedJob, setSelectedJob] = useState<DownloadJob | null>(null);
@@ -113,11 +114,16 @@ export default function DownloadVideo() {
 
   const isFormValid = url.trim();
 
+  const displayJobs = jobs.filter(job => {
+    if (activeTab === "all") return true;
+    return job.format_type === activeTab;
+  });
+
   const stats = [
-    { label: "Tổng cộng", value: jobs.length, color: "text-white" },
-    { label: "Hoàn tất", value: jobs.filter(j => j.status === "SUCCESS").length, color: "text-emerald-400" },
-    { label: "Đang tải", value: jobs.filter(j => j.status === "PROCESSING").length, color: "text-blue-400" },
-    { label: "Thất bại", value: jobs.filter(j => j.status === "FAILED").length, color: "text-rose-400" },
+    { label: "Tổng cộng", value: displayJobs.length, color: "text-white" },
+    { label: "Hoàn tất", value: displayJobs.filter(j => j.status === "SUCCESS").length, color: "text-emerald-400" },
+    { label: "Đang tải", value: displayJobs.filter(j => j.status === "PROCESSING").length, color: "text-blue-400" },
+    { label: "Thất bại", value: displayJobs.filter(j => j.status === "FAILED").length, color: "text-rose-400" },
   ];
 
   return (
@@ -254,8 +260,41 @@ export default function DownloadVideo() {
           </Button>
         </div>
 
-        {/* Stats */}
+        {/* Tabs */}
         {jobs.length > 0 && (
+          <div className="flex items-center gap-2 bg-black/20 p-1.5 rounded-2xl w-fit border border-white/5 shadow-inner">
+            <button
+              onClick={() => setActiveTab("all")}
+              className={cn(
+                "px-5 py-2.5 rounded-xl text-sm font-semibold transition-all duration-200",
+                activeTab === "all" ? "bg-white/15 text-white shadow-sm ring-1 ring-white/20" : "text-muted-foreground hover:text-white hover:bg-white/5"
+              )}
+            >
+              Tất cả ({jobs.length})
+            </button>
+            <button
+              onClick={() => setActiveTab("video")}
+              className={cn(
+                "px-5 py-2.5 rounded-xl text-sm font-semibold transition-all duration-200 flex items-center gap-2",
+                activeTab === "video" ? "bg-cyan-500/20 text-cyan-400 shadow-sm ring-1 ring-cyan-500/30" : "text-muted-foreground hover:text-cyan-400/80 hover:bg-white/5"
+              )}
+            >
+              <Film className="w-4 h-4" /> Video MP4 ({jobs.filter(j => j.format_type === 'video').length})
+            </button>
+            <button
+              onClick={() => setActiveTab("audio")}
+              className={cn(
+                "px-5 py-2.5 rounded-xl text-sm font-semibold transition-all duration-200 flex items-center gap-2",
+                activeTab === "audio" ? "bg-amber-500/20 text-amber-500 shadow-sm ring-1 ring-amber-500/30" : "text-muted-foreground hover:text-amber-500/80 hover:bg-white/5"
+              )}
+            >
+              <Music className="w-4 h-4" /> Chỉ Nhạc MP3 ({jobs.filter(j => j.format_type === 'audio').length})
+            </button>
+          </div>
+        )}
+
+        {/* Stats */}
+        {displayJobs.length > 0 && (
           <div className="grid grid-cols-4 gap-4">
             {stats.map(stat => (
               <Card key={stat.label} className="p-5">
@@ -273,9 +312,19 @@ export default function DownloadVideo() {
               <RefreshCw className="w-6 h-6 animate-spin text-primary" />
               Đang tải danh sách...
             </div>
+          ) : jobs.length === 0 ? (
+            <div className="flex flex-col items-center justify-center p-12 text-muted-foreground gap-2">
+              <AlertCircle className="w-6 h-6 text-muted-foreground/50" />
+              <span>Chưa có lượt tải nào. Nhập URL phía trên để bắt đầu!</span>
+            </div>
+          ) : displayJobs.length === 0 ? (
+            <div className="flex flex-col items-center justify-center p-12 text-muted-foreground gap-2">
+              <AlertCircle className="w-6 h-6 text-muted-foreground/50" />
+              <span>Không có tải xuống nào ở định dạng này.</span>
+            </div>
           ) : (
             <DownloadJobTable
-              jobs={jobs}
+              jobs={displayJobs}
               deletingId={deletingId}
               onViewLogs={handleViewLogs}
               onDeleteJob={handleDeleteJob}

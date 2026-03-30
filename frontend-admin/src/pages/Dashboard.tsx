@@ -19,6 +19,7 @@ export default function Dashboard() {
   const [loadingLogs, setLoadingLogs] = useState(false);
   const [deletingId, setDeletingId] = useState<number | null>(null);
   const [watchUrl, setWatchUrl] = useState<string | null>(null);
+  const [activeTab, setActiveTab] = useState<string>("all");
 
   const handleRefresh = () => fetchJobs(true);
 
@@ -87,11 +88,39 @@ export default function Dashboard() {
     navigate(`/create-${path}?clone=${job.id}`);
   };
 
+  const jobTypes = Array.from(new Set(jobs.map(j => j.job_type))).sort();
+  const displayJobs = jobs.filter(job => activeTab === "all" || job.job_type === activeTab);
+
+  const formatJobType = (type: string) => {
+    switch (type) {
+      case 'unbox_viral': return "Viral Shorts";
+      case 'unbox': return "Unbox Standard";
+      case 'review': return "Review Details";
+      case 'slideshow': return "Slideshow";
+      case 'promotion': return "Viral Promotion";
+      default: return type.replace(/_/g, ' ').replace(/\b\w/g, c => c.toUpperCase());
+    }
+  };
+
+  const getJobTypeColor = (type: string, isActive: boolean) => {
+    if (isActive) {
+      switch (type) {
+        case 'review': return "bg-indigo-500/20 text-indigo-400 shadow-sm ring-1 ring-indigo-500/30";
+        case 'unbox': return "bg-cyan-500/20 text-cyan-400 shadow-sm ring-1 ring-cyan-500/30";
+        case 'unbox_viral': return "bg-amber-500/20 text-amber-500 shadow-sm ring-1 ring-amber-500/30";
+        case 'slideshow': return "bg-pink-500/20 text-pink-400 shadow-sm ring-1 ring-pink-500/30";
+        case 'promotion': return "bg-orange-500/20 text-orange-400 shadow-sm ring-1 ring-orange-500/30";
+        default: return "bg-primary/20 text-primary shadow-sm ring-1 ring-primary/30";
+      }
+    }
+    return "text-muted-foreground hover:text-white hover:bg-white/5";
+  };
+
   const stats = [
-    { label: "Total Jobs", value: jobs.length, color: "text-white" },
-    { label: "Success", value: jobs.filter(j => j.status === "SUCCESS").length, color: "text-emerald-400" },
-    { label: "Processing", value: jobs.filter(j => j.status === "PROCESSING").length, color: "text-blue-400" },
-    { label: "Failed", value: jobs.filter(j => j.status === "FAILED").length, color: "text-rose-400" },
+    { label: "Total Jobs", value: displayJobs.length, color: "text-white" },
+    { label: "Success", value: displayJobs.filter(j => j.status === "SUCCESS").length, color: "text-emerald-400" },
+    { label: "Processing", value: displayJobs.filter(j => j.status === "PROCESSING").length, color: "text-blue-400" },
+    { label: "Failed", value: displayJobs.filter(j => j.status === "FAILED").length, color: "text-rose-400" },
   ];
 
   return (
@@ -120,14 +149,42 @@ export default function Dashboard() {
         </div>
       </div>
 
-      <div className="grid grid-cols-4 gap-4">
-        {stats.map(stat => (
-          <Card key={stat.label} className="p-5">
-            <p className="text-xs font-semibold text-muted-foreground uppercase tracking-wider">{stat.label}</p>
-            <p className={cn("text-3xl font-bold mt-1", stat.color)}>{stat.value}</p>
-          </Card>
-        ))}
-      </div>
+      {jobs.length > 0 && jobTypes.length > 0 && (
+        <div className="flex flex-wrap items-center gap-2 bg-black/20 p-1.5 rounded-2xl w-fit border border-white/5 shadow-inner">
+          <button
+            onClick={() => setActiveTab("all")}
+            className={cn(
+              "px-5 py-2.5 rounded-xl text-sm font-semibold transition-all duration-200",
+              activeTab === "all" ? "bg-white/15 text-white shadow-sm ring-1 ring-white/20" : "text-muted-foreground hover:text-white hover:bg-white/5"
+            )}
+          >
+            All Types ({jobs.length})
+          </button>
+          {jobTypes.map(type => (
+            <button
+              key={type}
+              onClick={() => setActiveTab(type)}
+              className={cn(
+                "px-5 py-2.5 rounded-xl text-sm font-semibold transition-all duration-200",
+                getJobTypeColor(type, activeTab === type)
+              )}
+            >
+              {formatJobType(type)} ({jobs.filter(j => j.job_type === type).length})
+            </button>
+          ))}
+        </div>
+      )}
+
+      {displayJobs.length > 0 && (
+        <div className="grid grid-cols-4 gap-4">
+          {stats.map(stat => (
+            <Card key={stat.label} className="p-5">
+              <p className="text-xs font-semibold text-muted-foreground uppercase tracking-wider">{stat.label}</p>
+              <p className={cn("text-3xl font-bold mt-1", stat.color)}>{stat.value}</p>
+            </Card>
+          ))}
+        </div>
+      )}
 
       <Card className="overflow-hidden">
         {loading && jobs.length === 0 ? (
@@ -135,9 +192,17 @@ export default function Dashboard() {
             <RefreshCw className="w-6 h-6 animate-spin text-primary" />
             Connecting to Render Farm...
           </div>
+        ) : jobs.length === 0 ? (
+          <div className="flex flex-col items-center justify-center p-12 text-muted-foreground gap-2">
+            No video jobs found.
+          </div>
+        ) : displayJobs.length === 0 ? (
+          <div className="flex flex-col items-center justify-center p-12 text-muted-foreground gap-2">
+            No videos in this format.
+          </div>
         ) : (
           <JobTable
-            jobs={jobs}
+            jobs={displayJobs}
             deletingId={deletingId}
             onViewDetails={handleViewDetails}
             onDeleteJob={handleDeleteJob}

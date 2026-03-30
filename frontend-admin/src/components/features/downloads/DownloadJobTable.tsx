@@ -27,15 +27,6 @@ function truncateUrl(url: string, max = 50): string {
 export function DownloadJobTable({ jobs, onViewLogs, onDeleteJob, onDownloadResult, deletingId }: DownloadJobTableProps) {
   const [expandedError, setExpandedError] = useState<number | null>(null);
 
-  if (jobs.length === 0) {
-    return (
-      <div className="flex flex-col items-center justify-center p-12 text-muted-foreground gap-2">
-        <AlertCircle className="w-6 h-6 text-muted-foreground/50" />
-        <span>Chưa có lượt tải nào. Nhập URL phía trên để bắt đầu!</span>
-      </div>
-    );
-  }
-
   return (
     <div className="w-full overflow-x-auto">
       <table className="w-full text-sm text-left">

@@ -88,6 +88,16 @@ fi
 "$SLIDESHOW_VENV/bin/pip" install -r "$ROOT_DIR/worker_slideshow/requirements.txt" -q
 echo -e "${GREEN}  ✔ Worker Slideshow venv ready${NC}"
 
+# Worker Promotion venv
+PROMOTION_VENV="$ROOT_DIR/worker_promotion/venv"
+if [ ! -d "$PROMOTION_VENV" ]; then
+  echo -e "${YELLOW}  Creating Worker Promotion venv...${NC}"
+  python3 -m venv "$PROMOTION_VENV"
+fi
+"$PROMOTION_VENV/bin/pip" install --upgrade pip -q
+"$PROMOTION_VENV/bin/pip" install -r "$ROOT_DIR/worker_promotion/requirements.txt" -q
+echo -e "${GREEN}  ✔ Worker Promotion venv ready${NC}"
+
 # ----------------------------------------------------------
 # 3. Common env vars
 # ----------------------------------------------------------
@@ -142,6 +152,12 @@ SLIDESHOW_PID=$!
 cd "$ROOT_DIR"
 echo -e "${GREEN}  ✔ Worker Slideshow PID: $SLIDESHOW_PID${NC}"
 
+cd "$ROOT_DIR/worker_promotion"
+"$PROMOTION_VENV/bin/celery" -A celery_worker worker -Q promotion_queue --loglevel=info -c 2 &
+PROMOTION_PID=$!
+cd "$ROOT_DIR"
+echo -e "${GREEN}  ✔ Worker Promotion PID: $PROMOTION_PID${NC}"
+
 # ----------------------------------------------------------
 # 6. Start Frontend
 # ----------------------------------------------------------
@@ -171,7 +187,7 @@ echo -e "\n${YELLOW}Press Ctrl+C to stop all services${NC}\n"
 # ----------------------------------------------------------
 cleanup() {
   echo -e "\n${YELLOW}Shutting down all processes...${NC}"
-  kill $API_PID $REVIEW_PID $UNBOX_PID $DOWNLOAD_PID $SLIDESHOW_PID $FRONTEND_PID 2>/dev/null
+  kill $API_PID $REVIEW_PID $UNBOX_PID $DOWNLOAD_PID $SLIDESHOW_PID $PROMOTION_PID $FRONTEND_PID 2>/dev/null
   docker compose -f "$ROOT_DIR/docker-compose.dev.yml" down
   echo -e "${GREEN}✔ All stopped.${NC}"
   exit 0
