@@ -549,14 +549,33 @@ def generate_video(image_paths, output_path, config=None):
     total_frames = int(total_duration * FPS)
     print(f"🎬 {total_duration:.1f}s ({total_frames} frames) | {len(transitions)} transitions")
 
-    tmp_dir = tempfile.mkdtemp(prefix="videogen_")
-    print(f"⚙️  Rendering...")
+    if os.path.exists(BGM_PATH):
+        raw_path = tempfile.mktemp(suffix=".mp4", prefix="videogen_raw_")
+    else:
+        raw_path = output_path
+
+    print(f"⚙️  Rendering & Encoding directly to {raw_path}...")
+
+    ffmpeg_cmd = [
+        "ffmpeg", "-y", "-f", "rawvideo", "-vcodec", "rawvideo",
+        "-s", f"{W}x{H}", "-pix_fmt", "rgb24", "-r", str(FPS),
+        "-i", "-", "-c:v", "libx264", "-preset", "medium", "-crf", "18",
+        "-pix_fmt", "yuv420p", "-movflags", "+faststart", raw_path
+    ]
+    
+    # Start ffmpeg listening on standard input
+    ffmpeg_proc = subprocess.Popen(ffmpeg_cmd, stdin=subprocess.PIPE, stderr=subprocess.PIPE)
 
     frame_idx = 0
     for slide_i in range(num_slots):
         slide_dur = durations[slide_i]
         slide_frames = int(slide_dur * FPS)
         kb = kb_presets[slide_i]
+        
+        # Optimization: Pre-compute the target frame for the transition exactly once per slide
+        nf_static = None
+        if slide_i < num_slots - 1:
+            nf_static = apply_ken_burns(frames_data[slide_i+1], 0, durations[slide_i+1], kb_presets[slide_i+1], W, H)
 
         for f in range(slide_frames):
             t = f / FPS
@@ -567,40 +586,42 @@ def generate_video(image_paths, output_path, config=None):
                 tp = 1.0 - (time_to_end / trans_dur)
                 tn = transitions[slide_i] if slide_i < len(transitions) else "crossfade"
                 tf = TRANSITION_FUNCTIONS.get(tn, transition_crossfade)
-                nf = apply_ken_burns(frames_data[slide_i+1], 0, durations[slide_i+1], kb_presets[slide_i+1], W, H)
-                frame = tf(frame, nf, tp, W, H)
+                # Reuse the cached nf_static rather than recalculating it 18 times
+                frame = tf(frame, nf_static, tp, W, H)
 
-            Image.fromarray(frame).save(os.path.join(tmp_dir, f"frame_{frame_idx:06d}.png"), "PNG")
+            # Write raw bytes directly to ffmpeg pipe without hitting the disk
+            ffmpeg_proc.stdin.write(frame.tobytes())
+            
             frame_idx += 1
             if frame_idx % (FPS*2) == 0:
                 print(f"   {frame_idx/total_frames*100:.0f}%")
 
-    print(f"✅ {frame_idx} frames rendered")
-    print(f"🎥 Encoding...")
+    # Close pipe to signal EOF and wait for ffmpeg to finish encoding
+    ffmpeg_proc.stdin.close()
+    ffmpeg_proc.wait()
 
-    raw = os.path.join(tmp_dir, "raw.mp4")
-    subprocess.run([
-        "ffmpeg", "-y", "-framerate", str(FPS),
-        "-i", os.path.join(tmp_dir, "frame_%06d.png"),
-        "-c:v", "libx264", "-preset", "medium", "-crf", "18",
-        "-pix_fmt", "yuv420p", "-movflags", "+faststart", raw
-    ], capture_output=True, check=True)
+    if ffmpeg_proc.returncode != 0:
+        err = ffmpeg_proc.stderr.read().decode('utf-8')
+        print(f"⚠️ FFmpeg Error:\n{err}")
+        raise RuntimeError("FFmpeg encoding failed.")
+
+    print(f"✅ {frame_idx} frames rendered and encoded")
 
     if os.path.exists(BGM_PATH):
         print(f"🎵 Adding music...")
         vd = frame_idx / FPS
         subprocess.run([
-            "ffmpeg", "-y", "-i", raw, "-i", BGM_PATH,
+            "ffmpeg", "-y", "-i", raw_path, "-i", BGM_PATH,
             "-filter_complex",
             f"[1:a]atrim=0:{vd},afade=t=out:st={vd-1.5}:d=1.5,volume=0.7[a]",
             "-map", "0:v", "-map", "[a]",
             "-c:v", "copy", "-c:a", "aac", "-b:a", "192k",
             "-shortest", "-movflags", "+faststart", output_path
         ], capture_output=True, check=True)
-    else:
-        shutil.copy2(raw, output_path)
+        # Clean up the silent file
+        if os.path.exists(raw_path):
+            os.remove(raw_path)
 
-    shutil.rmtree(tmp_dir)
     sz = os.path.getsize(output_path) / 1024 / 1024
     print(f"🎉 Done! {output_path} ({sz:.1f} MB, {frame_idx/FPS:.1f}s, {W}x{H})")
 
