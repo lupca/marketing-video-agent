@@ -1,143 +1,138 @@
+"""
+Celery worker for Video Review jobs.
+Uses shared worker_base for common infrastructure.
+Algorithm logic (video_builder.build_video) is untouched.
+"""
+
 import os
 import json
-import tempfile
-import shutil
 import logging
-from datetime import datetime, timezone
 from typing import Dict, Any
 
-from celery import Celery
-from shared_core.database import SessionLocal
-from shared_core.models import VideoJob
+from shared_core.worker_base import create_celery_app, execute_video_task
 from shared_core.minio_utils import (
-    download_file_from_minio, upload_file_to_minio,
-    is_minio_path, get_object_name, ensure_bucket_exists
+    download_file_from_minio, is_minio_path, get_object_name,
+    get_minio_client, get_bucket_name,
 )
 
 from video_builder import build_video
 
 logger = logging.getLogger(__name__)
 
-REDIS_URL = os.getenv("REDIS_URL", "redis://localhost:6379/0")
-
-celery_app = Celery(
-    "worker_review",
-    broker=REDIS_URL,
-    backend=REDIS_URL
-)
-
-celery_app.conf.update(
-    task_serializer="json",
-    accept_content=["json"],
-    result_serializer="json",
-    timezone="Asia/Ho_Chi_Minh",
-    enable_utc=True,
-    worker_prefetch_multiplier=1,
-)
-
-def find_and_download_minio_assets(data: Any, work_dir: str):
-    """Recursively search for s3:// URLs in config and download them to work_dir."""
-    if isinstance(data, dict):
-        for k, v in data.items():
-            if isinstance(v, str) and is_minio_path(v):
-                obj_name = get_object_name(v)
-                local_path = os.path.join(work_dir, os.path.basename(obj_name))
-                download_file_from_minio(obj_name, local_path)
-                data[k] = local_path
-            else:
-                find_and_download_minio_assets(v, work_dir)
-    elif isinstance(data, list):
-        for i, item in enumerate(data):
-            if isinstance(item, str) and is_minio_path(item):
-                obj_name = get_object_name(item)
-                local_path = os.path.join(work_dir, os.path.basename(obj_name))
-                download_file_from_minio(obj_name, local_path)
-                data[i] = local_path
-            else:
-                find_and_download_minio_assets(item, work_dir)
+celery_app = create_celery_app("worker_review")
 
 
-def _update_job(db, job, **kwargs):
-    """Helper to update job fields and commit."""
-    for k, v in kwargs.items():
-        setattr(job, k, v)
-    db.commit()
+# ── Asset Download Helpers (review-specific) ─────────────────────────────────
+
+def _download_s3(s3_url: str, local_path: str) -> str:
+    """Download an s3:// URL to a local file path."""
+    obj_name = get_object_name(s3_url)
+    os.makedirs(os.path.dirname(local_path), exist_ok=True)
+    download_file_from_minio(obj_name, local_path)
+    logger.info("  ↓ Downloaded %s → %s", obj_name, local_path)
+    return local_path
 
 
-def _upload_output_files(job_id: int, output_video_path: str):
-    """Upload the rendered video (and related files) to MinIO and return s3 URLs."""
-    ensure_bucket_exists()
-    results = {}
+def _download_s3_folder(s3_prefix: str, local_dir: str) -> int:
+    """Download all objects under an s3 prefix to a local directory."""
+    obj_name_prefix = get_object_name(s3_prefix.rstrip("/") + "/")
+    os.makedirs(local_dir, exist_ok=True)
 
-    # Upload video
-    video_obj = f"outputs/review_job_{job_id}.mp4"
-    results["video_url"] = upload_file_to_minio(video_obj, output_video_path)
-    logger.info(f"  ✔ Uploaded video → {results['video_url']}")
+    client = get_minio_client()
+    bucket = get_bucket_name()
+    objects = client.list_objects(bucket, prefix=obj_name_prefix, recursive=True)
+    count = 0
+    for obj in objects:
+        filename = os.path.basename(obj.object_name)
+        if not filename:
+            continue
+        local_path = os.path.join(local_dir, filename)
+        download_file_from_minio(obj.object_name, local_path)
+        count += 1
+        logger.info("  ↓ Downloaded %s → %s", obj.object_name, local_path)
 
-    # Upload ASS subtitle if exists (same directory)
-    output_dir = os.path.dirname(output_video_path)
-    base_name = os.path.splitext(os.path.basename(output_video_path))[0]
-
-    ass_path = os.path.join(output_dir, f"{base_name}.ass")
-    if os.path.isfile(ass_path):
-        ass_obj = f"outputs/review_job_{job_id}.ass"
-        results["subtitle_url"] = upload_file_to_minio(ass_obj, ass_path)
-        logger.info(f"  ✔ Uploaded subtitle → {results['subtitle_url']}")
-
-    captions_ass = os.path.join(output_dir, f"{base_name}_captions.ass")
-    if os.path.isfile(captions_ass):
-        cap_obj = f"outputs/review_job_{job_id}_captions.ass"
-        results["captions_url"] = upload_file_to_minio(cap_obj, captions_ass)
-        logger.info(f"  ✔ Uploaded captions → {results['captions_url']}")
-
-    return results
+    if count == 0:
+        logger.warning("  ⚠ No files found under prefix: %s", obj_name_prefix)
+    return count
 
 
-@celery_app.task(name="worker_review.tasks.process_video", bind=True)
+# ── Prepare Working Directory ────────────────────────────────────────────────
+
+def prepare_working_directory(config_data: Dict[str, Any], work_dir: str) -> Dict[str, Any]:
+    """
+    Download all s3:// assets referenced in config_data to work_dir,
+    recreating the directory structure that video_builder expects.
+
+    Expected structure after download:
+        work_dir/
+        ├── raw/
+        │   ├── voice.mp3
+        │   ├── voice.txt
+        │   ├── bgm.mp3
+        │   ├── 1/   (segment clips)
+        │   ├── 2/
+        │   └── ...
+    """
+    raw_dir = os.path.join(work_dir, "raw")
+    os.makedirs(raw_dir, exist_ok=True)
+
+    # Deep copy to avoid mutating the original
+    config = json.loads(json.dumps(config_data))
+
+    assets = config.get("assets", {})
+    audio = assets.get("audio", {})
+
+    # 1. Download audio files
+    if audio.get("voiceover_path") and is_minio_path(audio["voiceover_path"]):
+        local = os.path.join(raw_dir, "voice.mp3")
+        _download_s3(audio["voiceover_path"], local)
+        audio["voiceover_path"] = "raw/voice.mp3"
+
+    if audio.get("voiceover_script") and is_minio_path(audio["voiceover_script"]):
+        local = os.path.join(raw_dir, "voice.txt")
+        _download_s3(audio["voiceover_script"], local)
+        audio["voiceover_script"] = "raw/voice.txt"
+
+    if audio.get("bgm_path") and is_minio_path(audio["bgm_path"]):
+        local = os.path.join(raw_dir, "bgm.mp3")
+        _download_s3(audio["bgm_path"], local)
+        audio["bgm_path"] = "raw/bgm.mp3"
+
+    # 2. Download video segment folders
+    video_folders = assets.get("video_folders", {})
+    new_video_folders = {}
+
+    for idx, (folder_key, folder_path) in enumerate(video_folders.items(), start=1):
+        local_segment_dir = os.path.join(raw_dir, str(idx))
+
+        if is_minio_path(folder_path):
+            _download_s3_folder(folder_path, local_segment_dir)
+        else:
+            local_segment_dir = folder_path
+
+        new_video_folders[folder_key] = f"raw/{idx}/"
+
+    assets["video_folders"] = new_video_folders
+
+    return config
+
+
+# ── Build Function Adapter ───────────────────────────────────────────────────
+
+def _build_review_video(local_config: Dict[str, Any], work_dir: str) -> str:
+    """Adapter: call build_video with the right signature."""
+    return build_video(local_config, preview=False)
+
+
+# ── Celery Task ──────────────────────────────────────────────────────────────
+
+@celery_app.task(name="worker_review.tasks.process_video", bind=True, max_retries=2)
 def process_video(self, job_id: int, config_data: Dict[str, Any]):
-    db = SessionLocal()
-    job = db.query(VideoJob).filter(VideoJob.id == job_id).first()
-    if not job:
-        db.close()
-        return
-
-    now = datetime.now(timezone.utc)
-    _update_job(db, job,
-                status="PROCESSING",
-                started_at=now,
-                progress_percent=5)
-
-    work_dir = tempfile.mkdtemp(prefix=f"job_{job_id}_")
-    try:
-        # Step 1: Download any s3 inputs
-        find_and_download_minio_assets(config_data, work_dir)
-        _update_job(db, job, progress_percent=10)
-
-        # Step 2: Build video
-        logger.info(f"[Job {job_id}] Starting video build...")
-        output_video_path = build_video(config_data, preview=False)
-        _update_job(db, job, progress_percent=80)
-
-        # Step 3: Upload output to MinIO
-        logger.info(f"[Job {job_id}] Uploading output to MinIO...")
-        upload_results = _upload_output_files(job_id, output_video_path)
-        _update_job(db, job, progress_percent=95)
-
-        # Step 4: Mark SUCCESS
-        _update_job(db, job,
-                    status="SUCCESS",
-                    result_url=upload_results["video_url"],
-                    progress_percent=100,
-                    completed_at=datetime.now(timezone.utc))
-
-        logger.info(f"[Job {job_id}] ✓ Complete → {upload_results['video_url']}")
-
-    except Exception as e:
-        logger.error(f"[Job {job_id}] ✗ Failed: {e}", exc_info=True)
-        _update_job(db, job,
-                    status="FAILED",
-                    error_message=str(e)[:500],
-                    completed_at=datetime.now(timezone.utc))
-    finally:
-        shutil.rmtree(work_dir, ignore_errors=True)
-        db.close()
+    execute_video_task(
+        job_id=job_id,
+        config_data=config_data,
+        job_type="review",
+        prepare_fn=prepare_working_directory,
+        build_fn=_build_review_video,
+        change_cwd=True,
+    )

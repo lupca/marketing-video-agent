@@ -1,128 +1,360 @@
-import { useState } from "react"
-import axios from "axios"
-import { useNavigate } from "react-router-dom"
-import { Loader2, Code2, Play, Settings2, FileJson, AlertCircle } from "lucide-react"
-import { cn } from "../lib/utils"
+import { useState, useEffect } from "react";
+import { useNavigate, useSearchParams } from "react-router-dom";
+import { CheckCircle2, Music, Film, Zap, Send, AlertCircle, Copy } from "lucide-react";
+import api from "../lib/api";
+import { cn } from "../lib/utils";
+import { useProjects } from "../hooks/useProjects";
+import { useAssets } from "../hooks/useAssets";
+import type { Segment, UploadedFile } from "../components/features/review/types";
+import { ProjectAudioStep } from "../components/features/review/ProjectAudioStep";
+import { SegmentEditorStep } from "../components/features/review/SegmentEditorStep";
+import { RenderSettingsStep } from "../components/features/review/RenderSettingsStep";
+import { ReviewSubmitStep } from "../components/features/review/ReviewSubmitStep";
+
+const STEPS = [
+  { id: 1, name: "Âm thanh & Dự án", icon: Music },
+  { id: 2, name: "Phân cảnh Video", icon: Film },
+  { id: 3, name: "Cài đặt Render", icon: Zap },
+  { id: 4, name: "Xem lại & Gửi", icon: Send },
+];
 
 export default function CreateReviewJob() {
-  const navigate = useNavigate()
-  const [jsonConfig, setJsonConfig] = useState<string>("{\n  \"metadata\": {\n    \"project_id\": \"review_\"\n  }\n}")
-  const [priority, setPriority] = useState<number>(0)
-  const [loading, setLoading] = useState(false)
-  const [error, setError] = useState<string | null>(null)
+  const navigate = useNavigate();
+  const [searchParams] = useSearchParams();
+  const cloneJobId = searchParams.get("clone");
+  const [step, setStep] = useState(1);
+  const [cloneLoading, setCloneLoading] = useState(!!cloneJobId);
 
-  const handleSubmit = async (e: React.FormEvent) => {
-    e.preventDefault()
-    setLoading(true)
-    setError(null)
-    
-    try {
-      const configData = JSON.parse(jsonConfig)
-      
-      const payload = {
-        job_type: "review",
-        priority,
-        config_data: configData
-      }
+  // Custom Hooks
+  const { projects, createProject } = useProjects();
+  const { uploadAsset } = useAssets();
 
-      await axios.post("http://localhost:8000/api/jobs", payload)
-      navigate("/")
-    } catch (err: any) {
-      console.error(err)
-      if (err instanceof SyntaxError) {
-        setError("Invalid JSON format. Please check your configuration.")
-      } else {
-        setError(err?.response?.data?.detail || err.message || "Failed to create job")
-      }
-    } finally {
-      setLoading(false)
+  // Step 1: Project & Audio
+  const [selectedProjectId, setSelectedProjectId] = useState("");
+  const [newProjectName, setNewProjectName] = useState("");
+  const [isCreatingProject, setIsCreatingProject] = useState(false);
+  const [voiceover, setVoiceover] = useState<UploadedFile | null>(null);
+  const [script, setScript] = useState<UploadedFile | null>(null);
+  const [bgm, setBgm] = useState<UploadedFile | null>(null);
+  const [language, setLanguage] = useState("vi");
+
+  useEffect(() => {
+    if (projects.length > 0 && !selectedProjectId) setSelectedProjectId(projects[0].id);
+    if (projects.length === 0) setIsCreatingProject(true);
+  }, [projects, selectedProjectId]);
+
+  // Step 2: Segments
+  const [segments, setSegments] = useState<Segment[]>([
+    {
+      name: "01_hook", label: "🎯 Hook", timeStart: 0, timeEnd: 5,
+      clips: [], textOverlay: "", highlightWords: "",
+      effects: ["camera_shake"], pacingMin: 0.5, pacingMax: 1.2,
     }
-  }
+  ]);
+
+  // Step 3: Render Settings
+  const [autoSubtitle, setAutoSubtitle] = useState(true);
+  const [fontSize, setFontSize] = useState(80);
+  const [textColor, setTextColor] = useState("yellow");
+  const [priority, setPriority] = useState(0);
+
+  // UI
+  const [loading, setLoading] = useState(false);
+  const [error, setError] = useState<string | null>(null);
+  const [uploadStatus, setUploadStatus] = useState("");
+
+  // Clone pre-fill: fetch original job data and populate form
+  useEffect(() => {
+    if (!cloneJobId) return;
+    let cancelled = false;
+    const loadClone = async () => {
+      try {
+        setCloneLoading(true);
+        const res = await api.get(`/api/jobs/${cloneJobId}`);
+        const job = res.data;
+        if (cancelled) return;
+
+        // Pre-fill project
+        if (job.project_id) {
+          setSelectedProjectId(job.project_id);
+          setIsCreatingProject(false);
+        }
+        if (job.priority !== undefined) setPriority(job.priority);
+
+        const cfg = job.config_data || {};
+
+        // Pre-fill audio assets
+        if (cfg.assets?.audio) {
+          const audio = cfg.assets.audio;
+          if (audio.voiceover_path) {
+            setVoiceover({
+              id: null, s3_url: audio.voiceover_path, uploading: false, progress: 0,
+              asset: { id: "", s3_url: audio.voiceover_path, file_name: audio.voiceover_path.split("/").pop() || "voiceover", file_size_bytes: 0, asset_type: "voiceover", mime_type: "audio/mpeg", created_at: "" },
+            });
+          }
+          if (audio.voiceover_script) {
+            setScript({
+              id: null, s3_url: audio.voiceover_script, uploading: false, progress: 0,
+              asset: { id: "", s3_url: audio.voiceover_script, file_name: audio.voiceover_script.split("/").pop() || "script", file_size_bytes: 0, asset_type: "script", mime_type: "text/plain", created_at: "" },
+            });
+          }
+          if (audio.voiceover_lang) setLanguage(audio.voiceover_lang);
+          if (audio.bgm_path) {
+            setBgm({
+              id: null, s3_url: audio.bgm_path, uploading: false, progress: 0,
+              asset: { id: "", s3_url: audio.bgm_path, file_name: audio.bgm_path.split("/").pop() || "bgm", file_size_bytes: 0, asset_type: "bgm", mime_type: "audio/mpeg", created_at: "" },
+            });
+          }
+        }
+
+        // Pre-fill segments from timeline_script
+        if (cfg.timeline_script && Array.isArray(cfg.timeline_script)) {
+          const clonedSegments: Segment[] = cfg.timeline_script.map((ts: any) => ({
+            name: ts.segment || ts.video_source || "segment",
+            label: ts.segment || "Segment",
+            timeStart: ts.time_range?.[0] || 0,
+            timeEnd: ts.time_range?.[1] || 5,
+            clips: [], // Clips need to be re-selected
+            textOverlay: ts.text_overlay || "",
+            highlightWords: (ts.highlight_words || []).join(", "),
+            effects: ts.visual_effects || [],
+            pacingMin: ts.pacing?.min_clip_duration || 0.5,
+            pacingMax: ts.pacing?.max_clip_duration || 1.2,
+          }));
+          setSegments(clonedSegments);
+        }
+
+        // Pre-fill render settings
+        if (cfg.render_settings) {
+          const rs = cfg.render_settings;
+          if (rs.auto_subtitle !== undefined) setAutoSubtitle(rs.auto_subtitle);
+          if (rs.text_style?.font_size) setFontSize(rs.text_style.font_size);
+          if (rs.text_style?.color) setTextColor(rs.text_style.color);
+        }
+      } catch (err) {
+        console.error("Failed to load cloned job:", err);
+      } finally {
+        if (!cancelled) setCloneLoading(false);
+      }
+    };
+    loadClone();
+    return () => { cancelled = true; };
+  }, [cloneJobId]);
+
+  const handleSubmit = async () => {
+    if (!isCreatingProject && !selectedProjectId) return setError("Vui lòng chọn dự án");
+    if (isCreatingProject && !newProjectName.trim()) return setError("Vui lòng nhập tên dự án mới");
+    if (!voiceover) return setError("Vui lòng chọn file voiceover");
+    if (!script) return setError("Vui lòng chọn file kịch bản");
+
+    setLoading(true);
+    setError(null);
+
+    try {
+      let targetProjectId = selectedProjectId;
+      if (isCreatingProject && newProjectName.trim()) {
+        setUploadStatus("Đang tạo dự án...");
+        const proj = await createProject(newProjectName.trim());
+        targetProjectId = proj.id;
+      }
+
+      const getAssetRef = async (uf: UploadedFile, type: string) => {
+        if (uf.file) return await uploadAsset(uf.file, type);
+        return { id: uf.id!, s3_url: uf.s3_url! };
+      };
+
+      setUploadStatus("Đang xử lý voiceover...");
+      const voRes = await getAssetRef(voiceover, "voiceover");
+      
+      setUploadStatus("Đang xử lý kịch bản...");
+      const scriptRes = await getAssetRef(script, "script");
+      
+      let bgmUrl = "";
+      let bgmId = "";
+      if (bgm) {
+        setUploadStatus("Đang xử lý nhạc nền...");
+        const res = await getAssetRef(bgm, "bgm");
+        bgmUrl = res.s3_url;
+        bgmId = res.id;
+      }
+
+      const allAssetIds = [voRes.id, scriptRes.id];
+      if (bgmId) allAssetIds.push(bgmId);
+
+      const videoFolders: Record<string, string> = {};
+      const timelineScript: any[] = [];
+
+      for (let i = 0; i < segments.length; i++) {
+        const seg = segments[i];
+        setUploadStatus(`Đang upload clips phân cảnh ${i + 1}/${segments.length}...`);
+
+        for (const clip of seg.clips) {
+          let resId = clip.id;
+          if (clip.file) {
+            const res = await uploadAsset(clip.file, "segment_clip", seg.name);
+            resId = res.id;
+          }
+          if (resId) allAssetIds.push(resId);
+        }
+
+        const folderPrefix = `s3://videos/assets/segments/${seg.name}/`;
+        videoFolders[seg.name] = folderPrefix;
+
+        timelineScript.push({
+          segment: seg.name,
+          time_range: [seg.timeStart, seg.timeEnd],
+          video_source: seg.name,
+          text_overlay: seg.textOverlay || undefined,
+          highlight_words: seg.highlightWords ? seg.highlightWords.split(",").map(w => w.trim()).filter(Boolean) : [],
+          visual_effects: seg.effects,
+          pacing: { min_clip_duration: seg.pacingMin, max_clip_duration: seg.pacingMax }
+        });
+      }
+
+      setUploadStatus("Đang tạo job...");
+      const configData = {
+        metadata: { project_id: targetProjectId },
+        assets: {
+          logo: { width: 160, x: 48, y: 160, opacity: 0.9 },
+          audio: {
+            voiceover_path: voRes.s3_url,
+            voiceover_script: scriptRes.s3_url,
+            voiceover_lang: language,
+            whisper_device: "cpu",
+            ...(bgmUrl ? { bgm_path: bgmUrl } : {}),
+          },
+          video_folders: videoFolders,
+        },
+        timeline_script: timelineScript,
+        render_settings: {
+          resolution: [1080, 1920],
+          auto_subtitle: autoSubtitle,
+          pacing: { min_clip_duration: 1.2, max_clip_duration: 1.8 },
+          text_style: { position: "center", font_size: fontSize, color: textColor, high_contrast_outline: true },
+        },
+      };
+
+      await api.post(`/api/jobs`, {
+        job_type: "review", project_id: targetProjectId, priority, config_data: configData, asset_ids: allAssetIds
+      });
+
+      navigate("/");
+    } catch (err: any) {
+      console.error(err);
+      setError(err?.response?.data?.detail || err.message || "Failed to create job");
+    } finally {
+      setLoading(false);
+      setUploadStatus("");
+    }
+  };
+
+  const canGoStep2 = (isCreatingProject ? newProjectName.trim() : selectedProjectId) && voiceover && script;
+  const canGoStep3 = segments.length > 0 && segments.every(s => s.clips.length > 0);
 
   return (
     <div className="max-w-5xl mx-auto p-8 lg:p-12 space-y-10">
-      
-      {/* Header */}
       <div className="space-y-2">
         <h2 className="text-4xl font-extrabold tracking-tight bg-clip-text text-transparent bg-gradient-to-r from-white to-white/60">
-          Create Review Video
+          Tạo Video Review
         </h2>
         <p className="text-muted-foreground text-lg">
-          Advanced JSON builder to orchestrate complex tech review videos using timeline scripting.
+          Upload nguyên liệu, lên kịch bản phân cảnh, và dựng video tự động theo phong cách viral.
         </p>
       </div>
 
-      <form onSubmit={handleSubmit} className="glass-panel p-6 lg:p-10 flex flex-col space-y-8 min-h-[600px] animate-in fade-in slide-in-from-bottom-8 duration-700">
-        
-        <div className="flex items-center gap-3 border-b border-white/10 pb-4">
-          <div className="p-2.5 rounded-xl bg-primary/20 text-primary border border-primary/30 shadow-[0_0_15px_rgba(124,58,237,0.3)]">
-            <Code2 className="w-5 h-5" />
+      {cloneJobId && (
+        <div className="glass-panel p-4 flex items-center gap-3 bg-amber-500/10 border border-amber-500/20 rounded-xl animate-in fade-in">
+          <Copy className="w-5 h-5 text-amber-400 shrink-0" />
+          <div>
+            <p className="text-sm font-medium text-amber-300">Bản sao từ Job #{cloneJobId}</p>
+            <p className="text-xs text-amber-400/70">Chỉnh sửa nội dung bên dưới rồi gửi để tạo video mới.</p>
           </div>
-          <h3 className="text-xl font-semibold text-white">Blueprint Configuration</h3>
         </div>
+      )}
 
-        <div className="flex items-center gap-4 bg-white/5 p-4 rounded-xl border border-white/10">
-          <label className="text-white text-sm font-semibold uppercase tracking-wider text-muted-foreground mr-4">Compute Priority</label>
-          <button 
-            type="button" 
-            onClick={() => setPriority(0)} 
-            className={cn("px-5 py-2 rounded-xl transition-all text-sm font-medium", priority === 0 ? "bg-white/10 border border-white/30 text-white shadow-sm" : "border border-transparent text-muted-foreground hover:bg-white/5")} 
-          >
-            Normal
-          </button>
-          <button 
-            type="button" 
-            onClick={() => setPriority(1)} 
-            className={cn("px-5 py-2 rounded-xl transition-all text-sm font-medium", priority === 1 ? "bg-orange-500/20 border border-orange-500/50 text-orange-400 shadow-[0_0_15px_rgba(249,115,22,0.2)]" : "border border-transparent text-muted-foreground hover:bg-orange-500/10 hover:text-orange-400/70")} 
-          >
-            High Priority
-          </button>
+      {cloneLoading ? (
+        <div className="glass-panel p-16 flex flex-col items-center justify-center gap-4 text-muted-foreground">
+          <div className="w-8 h-8 border-2 border-primary border-t-transparent rounded-full animate-spin"></div>
+          <p>Đang tải dữ liệu từ Job #{cloneJobId}...</p>
+        </div>
+      ) : (
+
+      <div className="glass-panel p-6 lg:p-10 flex flex-col space-y-10">
+        <div className="flex items-center justify-between w-full border-b border-white/10 pb-8">
+          {STEPS.map((s, idx) => (
+            <div key={s.id} className="flex items-center">
+              <div className={cn("flex items-center gap-3 transition-all duration-300", step >= s.id ? "text-primary" : "text-muted-foreground")}>
+                <div className={cn(
+                  "flex items-center justify-center w-10 h-10 rounded-full border-2 transition-all duration-300",
+                  step > s.id ? "bg-primary border-primary text-white" :
+                    step === s.id ? "border-primary bg-primary/20 shadow-[0_0_15px_rgba(124,58,237,0.4)]" : "border-muted-foreground/30"
+                )}>
+                  {step > s.id ? <CheckCircle2 className="w-5 h-5" /> : <s.icon className="w-5 h-5" />}
+                </div>
+                <span className={cn("font-medium text-sm hidden lg:block", step >= s.id ? "text-white" : "text-muted-foreground")}>{s.name}</span>
+              </div>
+              {idx < STEPS.length - 1 && <div className="w-8 lg:w-16 h-px bg-white/10 mx-3"></div>}
+            </div>
+          ))}
         </div>
 
         {error && (
-          <div className="p-4 bg-red-500/10 text-red-400 rounded-xl border border-red-500/20 backdrop-blur-sm flex items-start gap-3">
+          <div className="p-4 bg-red-500/10 text-red-400 rounded-xl border border-red-500/20 flex items-start gap-3 animate-in fade-in">
             <AlertCircle className="w-5 h-5 shrink-0 mt-0.5" />
             <p>{error}</p>
           </div>
         )}
 
-        <div className="flex-1 flex flex-col space-y-4">
-          <div className="flex items-center justify-between">
-            <label className="text-xs font-semibold text-muted-foreground uppercase tracking-wider flex items-center gap-2">
-              <FileJson className="w-4 h-4" /> JSON Payload
-            </label>
-            <div className="flex items-center gap-2">
-              <span className="flex items-center rounded-full bg-green-400/10 px-2.5 py-0.5 text-xs font-medium text-green-400 border border-green-400/20">
-                <Settings2 className="w-3 h-3 mr-1" /> MinIO / S3 Ready
-              </span>
-            </div>
-          </div>
-          
-          <div className="relative group flex-1 flex flex-col">
-            <div className="absolute inset-0 bg-gradient-to-br from-primary/10 via-transparent to-transparent opacity-0 group-hover:opacity-100 transition-opacity duration-500 rounded-xl pointer-events-none"></div>
-            <textarea 
-              className="flex-1 min-h-[400px] w-full rounded-xl border border-white/10 bg-[#0c0c14] font-mono text-sm sm:text-[15px] p-6 text-indigo-100 focus:outline-none focus:ring-2 focus:ring-primary/50 transition-all custom-scrollbar placeholder:text-muted-foreground/30 shadow-inner"
-              value={jsonConfig}
-              onChange={(e) => setJsonConfig(e.target.value)}
-              spellCheck={false}
-              placeholder={'{\n  "metadata": {\n     "title": "Review"\n  }\n}'}
-            />
-          </div>
-          <p className="text-xs text-muted-foreground/60">
-            S3 object URLs must be provided in the assets directory mapped configuration.
-          </p>
-        </div>
+        {step === 1 && (
+          <ProjectAudioStep
+            projects={projects}
+            selectedProjectId={selectedProjectId}
+            setSelectedProjectId={setSelectedProjectId}
+            isCreatingProject={isCreatingProject}
+            setIsCreatingProject={setIsCreatingProject}
+            newProjectName={newProjectName}
+            setNewProjectName={setNewProjectName}
+            voiceover={voiceover} setVoiceover={setVoiceover}
+            script={script} setScript={setScript}
+            bgm={bgm} setBgm={setBgm}
+            language={language} setLanguage={setLanguage}
+            onNext={() => setStep(2)}
+            canGoNext={!!canGoStep2}
+          />
+        )}
 
-        <div className="pt-6 border-t border-white/10 flex justify-end">
-          <button 
-            type="submit" 
-            disabled={loading}
-            className="glowing-button text-white px-10 py-3 rounded-xl font-medium flex items-center gap-2 disabled:opacity-50 disabled:cursor-not-allowed"
-          >
-            {loading ? <><Loader2 className="mr-2 h-5 w-5 animate-spin"/> Validating...</> : <><Play className="w-5 h-5"/> Execute Job Blueprint</>}
-          </button>
-        </div>
-      </form>
+        {step === 2 && (
+          <SegmentEditorStep
+            segments={segments} setSegments={setSegments}
+            onPrev={() => setStep(1)}
+            onNext={() => setStep(3)}
+            canGoNext={canGoStep3}
+          />
+        )}
+
+        {step === 3 && (
+          <RenderSettingsStep
+            autoSubtitle={autoSubtitle} setAutoSubtitle={setAutoSubtitle}
+            priority={priority} setPriority={setPriority}
+            fontSize={fontSize} setFontSize={setFontSize}
+            textColor={textColor} setTextColor={setTextColor}
+            onPrev={() => setStep(2)}
+            onNext={() => setStep(4)}
+          />
+        )}
+
+        {step === 4 && (
+          <ReviewSubmitStep
+            projects={projects} selectedProjectId={selectedProjectId}
+            isCreatingProject={isCreatingProject} newProjectName={newProjectName}
+            voiceover={voiceover} script={script} bgm={bgm} language={language}
+            segments={segments} autoSubtitle={autoSubtitle} priority={priority}
+            loading={loading} uploadStatus={uploadStatus}
+            onPrev={() => setStep(3)} onSubmit={handleSubmit}
+          />
+        )}
+      </div>
+      )}
     </div>
-  )
+  );
 }

@@ -6,7 +6,7 @@ router = APIRouter(prefix="/video-unbox", tags=["Video Unbox"])
 @router.post("/preview")
 def preview_unbox(config: dict):
     try:
-        result = make_viral(config, preview=True)
+        result = make_viral(config=config, preview=True)
         return {"status": "success", "preview": result}
     except Exception as e:
         raise HTTPException(status_code=500, detail=str(e))
@@ -15,7 +15,7 @@ def preview_unbox(config: dict):
 def render_unbox(config: dict):
     """Trigger a synchronous full render (for small/quick jobs)."""
     try:
-        result = make_viral(config, preview=False)
+        result = make_viral(config=config, preview=False)
         return {"status": "success", "output": result}
     except Exception as e:
         raise HTTPException(status_code=500, detail=str(e))

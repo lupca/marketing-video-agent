@@ -1,15 +1,95 @@
-from pydantic import BaseModel
-from typing import Optional, Dict, Any
+"""
+Pydantic schemas for request/response validation.
+"""
+
+from pydantic import BaseModel, ConfigDict, EmailStr, field_validator
+from typing import Optional, Dict, Any, List
 from datetime import datetime
+
+# ── Allowed job types ─────────────────────────────────────────────────────────
+
+VALID_JOB_TYPES = {"review", "unbox", "unbox_viral", "slideshow", "promotion"}
+
+
+
+# ── Auth ──────────────────────────────────────────────────────────────────────
+
+class Token(BaseModel):
+    access_token: str
+    token_type: str
+    user_id: str
+    email: str
+
+
+class UserCreate(BaseModel):
+    email: EmailStr
+    password: str
+
+    @field_validator("password")
+    @classmethod
+    def password_min_length(cls, v: str) -> str:
+        if len(v) < 6:
+            raise ValueError("Password must be at least 6 characters")
+        return v
+
+
+class UserResponse(BaseModel):
+    model_config = ConfigDict(from_attributes=True)
+
+    id: str
+    email: str
+    role: str
+    is_active: bool
+    created_at: datetime
+
+
+# ── Projects ─────────────────────────────────────────────────────────────────
+
+class ProjectCreate(BaseModel):
+    name: str
+    description: Optional[str] = None
+
+    @field_validator("name")
+    @classmethod
+    def name_not_empty(cls, v: str) -> str:
+        if not v.strip():
+            raise ValueError("Project name cannot be empty")
+        return v.strip()
+
+
+class ProjectResponse(BaseModel):
+    model_config = ConfigDict(from_attributes=True)
+
+    id: str
+    name: str
+    description: Optional[str] = None
+    user_id: str
+    created_at: datetime
+    updated_at: Optional[datetime] = None
+    jobs_count: int = 0
+
+
+# ── Jobs ──────────────────────────────────────────────────────────────────────
 
 class JobCreate(BaseModel):
     job_type: str
     config_data: Dict[str, Any]
-    project_id: Optional[str] = None
+    project_id: str
     template_id: Optional[str] = None
     priority: Optional[int] = 0
+    asset_ids: List[str] = []
+
+    @field_validator("job_type")
+    @classmethod
+    def validate_job_type(cls, v: str) -> str:
+        if v not in VALID_JOB_TYPES:
+            raise ValueError(f"job_type must be one of: {', '.join(sorted(VALID_JOB_TYPES))}")
+        return v
+
 
 class JobResponse(BaseModel):
+    model_config = ConfigDict(from_attributes=True)
+
     id: int
     job_type: str
     project_id: Optional[str] = None
@@ -25,6 +105,167 @@ class JobResponse(BaseModel):
     completed_at: Optional[datetime] = None
     created_at: datetime
     updated_at: Optional[datetime] = None
+    note: Optional[str] = None
 
-    class Config:
-        from_attributes = True
+class JobUpdate(BaseModel):
+    note: Optional[str] = None
+
+
+# ── Assets ────────────────────────────────────────────────────────────────────
+
+class AssetResponse(BaseModel):
+    model_config = ConfigDict(from_attributes=True)
+
+    id: str
+    asset_type: Optional[str] = None
+    file_name: str
+    file_size_bytes: int
+    s3_url: str
+    presigned_url: Optional[str] = None
+    mime_type: Optional[str] = None
+    full_path: Optional[str] = None
+    created_at: datetime
+
+
+# ── Job Logs ──────────────────────────────────────────────────────────────────
+
+class JobLogResponse(BaseModel):
+    model_config = ConfigDict(from_attributes=True)
+
+    id: int
+    job_id: int
+    log_level: str
+    message: str
+    created_at: datetime
+
+
+# ── Download Jobs ─────────────────────────────────────────────────────────────
+
+class DownloadJobCreate(BaseModel):
+    url: str
+    format: str = "video"
+    custom_filename: Optional[str] = None
+
+    @field_validator("url")
+    @classmethod
+    def url_not_empty(cls, v: str) -> str:
+        if not v.strip():
+            raise ValueError("URL cannot be empty")
+        return v.strip()
+
+    @field_validator("format")
+    @classmethod
+    def format_valid(cls, v: str) -> str:
+        if v not in ("video", "audio"):
+            raise ValueError("format must be 'video' or 'audio'")
+        return v
+
+
+class DownloadJobResponse(BaseModel):
+    model_config = ConfigDict(from_attributes=True)
+
+    id: int
+    user_id: str
+    source_url: str
+    format_type: str
+    status: str
+    progress_percent: int
+    result_url: Optional[str] = None
+    error_message: Optional[str] = None
+    custom_filename: Optional[str] = None
+    started_at: Optional[datetime] = None
+    completed_at: Optional[datetime] = None
+    created_at: datetime
+
+
+class DownloadJobLogResponse(BaseModel):
+    model_config = ConfigDict(from_attributes=True)
+
+    id: int
+    job_id: int
+    log_level: str
+    message: str
+    created_at: datetime
+
+
+# ── Templates ─────────────────────────────────────────────────────────────────
+
+class TemplateCreate(BaseModel):
+    """Schema for creating a new template."""
+    name: str
+    job_type: str
+    default_config_data: dict
+    is_active: bool = True
+
+    @field_validator("job_type")
+    @classmethod
+    def validate_job_type(cls, v: str) -> str:
+        if v not in VALID_JOB_TYPES:
+            raise ValueError(f"job_type must be one of: {', '.join(sorted(VALID_JOB_TYPES))}")
+        return v
+
+
+class TemplateResponse(BaseModel):
+    model_config = ConfigDict(from_attributes=True)
+
+    id: str
+    name: str
+    job_type: str
+    default_config_data: dict
+    is_active: bool
+
+
+# ── Workers ───────────────────────────────────────────────────────────────────
+
+class WorkerNodeResponse(BaseModel):
+    model_config = ConfigDict(from_attributes=True)
+
+    id: str
+    hostname: str
+    ip_address: Optional[str] = None
+    status: str
+    current_job_id: Optional[int] = None
+    last_heartbeat: datetime
+
+
+# ── Pagination ────────────────────────────────────────────────────────────────
+
+class PaginatedResponse(BaseModel):
+    """Generic wrapper for paginated list responses."""
+    items: List[Any]
+    total: int
+    skip: int
+    limit: int
+
+
+# ── Agent ───────────────────────────────────────────────────────────────────
+
+class AgentSessionCreate(BaseModel):
+    keyword: str
+    video_count: int = 1
+    config: Optional[Dict[str, Any]] = None
+
+class AgentSessionResponse(BaseModel):
+    model_config = ConfigDict(from_attributes=True)
+    
+    id: str
+    user_id: str
+    keyword: str
+    video_count: int
+    status: str
+    summary: Optional[str] = None
+    created_at: datetime
+    completed_at: Optional[datetime] = None
+
+class AgentLogResponse(BaseModel):
+    model_config = ConfigDict(from_attributes=True)
+    
+    id: int
+    session_id: str
+    step: str
+    tool_name: Optional[str] = None
+    input_data: Optional[Dict[str, Any]] = None
+    output_data: Optional[Dict[str, Any]] = None
+    llm_reasoning: Optional[str] = None
+    log_level: str
+    created_at: datetime

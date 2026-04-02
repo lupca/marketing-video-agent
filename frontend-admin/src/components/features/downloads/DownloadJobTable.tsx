@@ -1,0 +1,199 @@
+import React, { useState } from "react";
+import { CheckCircle2, Clock, AlertCircle, ChevronDown, ChevronUp, Timer, Download, ExternalLink, Eye, Trash2, Link2, Music, Film } from "lucide-react";
+import { cn } from "../../../lib/utils";
+import { formatDuration, formatDate } from "../../../lib/format";
+import type { DownloadJob } from "../../../hooks/useDownloadJobs";
+
+interface DownloadJobTableProps {
+  jobs: DownloadJob[];
+  onViewLogs: (job: DownloadJob) => void;
+  onDeleteJob: (id: number) => void;
+  onDownloadResult: (id: number) => void;
+  deletingId: number | null;
+}
+
+function truncateUrl(url: string, max = 50): string {
+  if (url.length <= max) return url;
+  // Show domain + start of path
+  try {
+    const u = new URL(url);
+    const short = u.hostname + u.pathname;
+    return short.length > max ? short.slice(0, max) + "…" : short;
+  } catch {
+    return url.slice(0, max) + "…";
+  }
+}
+
+export function DownloadJobTable({ jobs, onViewLogs, onDeleteJob, onDownloadResult, deletingId }: DownloadJobTableProps) {
+  const [expandedError, setExpandedError] = useState<number | null>(null);
+
+  return (
+    <div className="w-full overflow-x-auto">
+      <table className="w-full text-sm text-left">
+        <thead className="bg-black/40 text-xs uppercase text-muted-foreground border-b border-white/10">
+          <tr>
+            <th className="px-6 py-5 font-semibold tracking-wider">#</th>
+            <th className="px-6 py-5 font-semibold tracking-wider">Source URL</th>
+            <th className="px-6 py-5 font-semibold tracking-wider">Format</th>
+            <th className="px-6 py-5 font-semibold tracking-wider">Status & Progress</th>
+            <th className="px-6 py-5 font-semibold tracking-wider">Duration</th>
+            <th className="px-6 py-5 font-semibold tracking-wider">Created</th>
+            <th className="px-6 py-5 font-semibold tracking-wider text-right">Actions</th>
+          </tr>
+        </thead>
+        <tbody className="divide-y divide-white/5">
+          {jobs.map((job) => (
+            <React.Fragment key={job.id}>
+              <tr className="hover:bg-white/[0.02] transition-colors group">
+                <td className="px-6 py-4 whitespace-nowrap font-medium text-white/90">
+                  #{job.id}
+                </td>
+                <td className="px-6 py-4 max-w-[280px]">
+                    <a
+                      href={job.source_url}
+                      target="_blank"
+                      rel="noreferrer"
+                      className="flex flex-col gap-1 text-indigo-300 hover:text-indigo-200 transition-colors group/link"
+                      title={job.source_url}
+                    >
+                      {job.custom_filename && (
+                        <div className="text-white font-semibold text-sm truncate flex items-center gap-1.5">
+                          <Download className="w-3.5 h-3.5 text-emerald-400" />
+                          {job.custom_filename}
+                        </div>
+                      )}
+                      <div className="flex items-center gap-1.5 opacity-70 group-hover/link:opacity-100">
+                        <Link2 className="w-3.5 h-3.5 shrink-0" />
+                        <span className="truncate text-[10px] font-mono">{truncateUrl(job.source_url)}</span>
+                      </div>
+                    </a>
+                </td>
+                <td className="px-6 py-4 whitespace-nowrap">
+                  {job.format_type === "audio" ? (
+                    <span className="inline-flex items-center gap-1.5 px-2.5 py-1 rounded-md bg-amber-500/10 border border-amber-500/20 text-xs font-medium text-amber-300">
+                      <Music className="w-3 h-3" /> MP3
+                    </span>
+                  ) : (
+                    <span className="inline-flex items-center gap-1.5 px-2.5 py-1 rounded-md bg-cyan-500/10 border border-cyan-500/20 text-xs font-medium text-cyan-300">
+                      <Film className="w-3 h-3" /> MP4
+                    </span>
+                  )}
+                </td>
+                <td className="px-6 py-4 whitespace-nowrap min-w-[220px]">
+                  <div className="flex flex-col gap-2">
+                    <div className="flex items-center justify-between">
+                      <div className="flex items-center gap-2">
+                        {job.status === "SUCCESS" && (
+                          <span className="inline-flex items-center rounded-full border border-emerald-500/30 px-3 py-1 text-xs font-semibold bg-emerald-500/10 text-emerald-400 shadow-[0_0_10px_rgba(16,185,129,0.2)]">
+                            <CheckCircle2 className="mr-1.5 h-3.5 w-3.5" /> Hoàn tất
+                          </span>
+                        )}
+                        {job.status === "PROCESSING" && (
+                          <span className="inline-flex items-center rounded-full border border-blue-500/30 px-3 py-1 text-xs font-semibold bg-blue-500/10 text-blue-400 shadow-[0_0_10px_rgba(59,130,246,0.2)]">
+                            <Clock className="mr-1.5 h-3.5 w-3.5 animate-spin" /> Đang tải
+                          </span>
+                        )}
+                        {job.status === "PENDING" && (
+                          <span className="inline-flex items-center rounded-full border border-gray-500/30 px-3 py-1 text-xs font-semibold bg-gray-500/10 text-gray-400">
+                            Chờ xử lý
+                          </span>
+                        )}
+                        {job.status === "FAILED" && (
+                          <button
+                            onClick={() => setExpandedError(expandedError === job.id ? null : job.id)}
+                            className="inline-flex items-center rounded-full border border-rose-500/30 px-3 py-1 text-xs font-semibold bg-rose-500/10 text-rose-400 shadow-[0_0_10px_rgba(244,63,94,0.2)] cursor-pointer hover:bg-rose-500/20 transition-colors"
+                          >
+                            <AlertCircle className="mr-1.5 h-3.5 w-3.5" /> Lỗi
+                            {expandedError === job.id ? <ChevronUp className="ml-1 h-3 w-3" /> : <ChevronDown className="ml-1 h-3 w-3" />}
+                          </button>
+                        )}
+                      </div>
+                      <span className="text-xs text-muted-foreground font-mono">{job.progress_percent || 0}%</span>
+                    </div>
+                    {(job.status === "PROCESSING" || job.status === "SUCCESS") && (
+                      <div className="w-full h-1.5 bg-white/5 rounded-full overflow-hidden">
+                        <div
+                          className={cn(
+                            "h-full transition-all duration-1000",
+                            job.status === "SUCCESS" ? "bg-emerald-500" : "bg-blue-500 shadow-[0_0_10px_rgba(59,130,246,0.8)]"
+                          )}
+                          style={{ width: `${job.status === "SUCCESS" ? 100 : job.progress_percent || 0}%` }}
+                        ></div>
+                      </div>
+                    )}
+                  </div>
+                </td>
+                <td className="px-6 py-4 whitespace-nowrap text-muted-foreground/80">
+                  {job.started_at && job.completed_at ? (
+                    <div className="flex items-center gap-1.5 text-xs">
+                      <Timer className="w-3.5 h-3.5 text-emerald-400" />
+                      <span className="text-white font-medium">{formatDuration(job.started_at, job.completed_at)}</span>
+                    </div>
+                  ) : job.started_at ? (
+                    <div className="flex items-center gap-1.5 text-xs">
+                      <Clock className="w-3.5 h-3.5 text-blue-400 animate-spin" />
+                      <span className="text-blue-400">Đang tải...</span>
+                    </div>
+                  ) : (
+                    <span className="text-xs text-muted-foreground/50">—</span>
+                  )}
+                </td>
+                <td className="px-6 py-4 whitespace-nowrap text-muted-foreground/80 text-xs">
+                  {formatDate(job.created_at)}
+                </td>
+                <td className="px-6 py-4 whitespace-nowrap text-right">
+                  <div className="flex items-center justify-end gap-2 text-muted-foreground">
+                    {job.result_url && (
+                      <>
+                        <button
+                          onClick={() => onDownloadResult(job.id)}
+                          className="inline-flex items-center justify-center rounded-lg bg-white/5 hover:bg-white/10 text-white/60 hover:text-white border border-white/10 transition-all h-8 w-8"
+                          title="Tải file"
+                        >
+                          <Download className="h-4 w-4" />
+                        </button>
+                        <a
+                          href={job.source_url}
+                          target="_blank"
+                          rel="noreferrer"
+                          className="inline-flex items-center justify-center rounded-lg bg-white/5 hover:bg-white/10 text-white/60 hover:text-white border border-white/10 transition-all h-8 w-8"
+                          title="Mở link gốc"
+                        >
+                          <ExternalLink className="h-4 w-4" />
+                        </a>
+                      </>
+                    )}
+                    <div className="w-px h-4 bg-white/10 mx-1"></div>
+                    <button
+                      onClick={() => onViewLogs(job)}
+                      className="p-1.5 rounded-lg hover:bg-indigo-500/10 hover:text-indigo-400 transition-colors"
+                      title="Xem logs"
+                    >
+                      <Eye className="h-4 w-4" />
+                    </button>
+                    <button
+                      onClick={() => onDeleteJob(job.id)}
+                      disabled={deletingId === job.id}
+                      className="p-1.5 rounded-lg hover:bg-rose-500/10 hover:text-rose-400 transition-colors disabled:opacity-50"
+                      title="Xóa"
+                    >
+                      <Trash2 className="h-4 w-4" />
+                    </button>
+                  </div>
+                </td>
+              </tr>
+              {/* Error Detail Row */}
+              {job.status === "FAILED" && expandedError === job.id && job.error_message && (
+                <tr className="border-0">
+                  <td colSpan={7} className="px-6 py-3 bg-rose-500/5 border-l-2 border-rose-500/40">
+                    <p className="text-xs text-rose-300 font-mono break-all whitespace-pre-wrap">{job.error_message}</p>
+                  </td>
+                </tr>
+              )}
+            </React.Fragment>
+          ))}
+        </tbody>
+      </table>
+    </div>
+  );
+}

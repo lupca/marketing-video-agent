@@ -1,50 +1,130 @@
-import { useEffect, useState } from "react"
-import axios from "axios"
-import { format } from "date-fns"
-import { PlayCircle, AlertCircle, Clock, CheckCircle2, LayoutDashboard, RefreshCw } from "lucide-react"
-import { cn } from "../lib/utils"
-
-interface VideoJob {
-  id: number
-  job_type: string
-  status: "PENDING" | "PROCESSING" | "SUCCESS" | "FAILED"
-  priority: number
-  progress_percent: number
-  result_url: string | null
-  error_message: string | null
-  created_at: string
-}
+import { useState, useEffect } from "react";
+import { useNavigate } from "react-router-dom";
+import { LayoutDashboard, RefreshCw } from "lucide-react";
+import { cn } from "../lib/utils";
+import { useJobs } from "../hooks/useJobs";
+import type { VideoJob, JobLog } from "../hooks/useJobs";
+import { JobTable } from "../components/features/jobs/JobTable";
+import { JobDetailsModal } from "../components/features/jobs/JobDetailsModal";
+import { VideoPlayerModal } from "../components/features/jobs/VideoPlayerModal";
+import { Button } from "../components/ui/Button";
+import { Card } from "../components/ui/Card";
 
 export default function Dashboard() {
-  const [jobs, setJobs] = useState<VideoJob[]>([])
-  const [loading, setLoading] = useState(true)
-  const [refreshing, setRefreshing] = useState(false)
+  const navigate = useNavigate();
+  const { jobs, loading, refreshing, fetchJobs, deleteJob, getDownloadUrl, getJobLogs, updateJob, hasProcessing } = useJobs(true, 5000);
+  
+  const [selectedJob, setSelectedJob] = useState<VideoJob | null>(null);
+  const [jobLogs, setJobLogs] = useState<JobLog[]>([]);
+  const [loadingLogs, setLoadingLogs] = useState(false);
+  const [deletingId, setDeletingId] = useState<number | null>(null);
+  const [watchUrl, setWatchUrl] = useState<string | null>(null);
+  const [activeTab, setActiveTab] = useState<string>("all");
 
-  const fetchJobs = async () => {
+  const handleRefresh = () => fetchJobs(true);
+
+  const handleViewDetails = async (job: VideoJob) => {
+    setSelectedJob(job);
+    setLoadingLogs(true);
+    setJobLogs([]);
     try {
-      const res = await axios.get("http://localhost:8000/api/jobs")
-      setJobs(res.data)
+      const logs = await getJobLogs(job.id);
+      setJobLogs(logs);
     } catch (e) {
-      console.error(e)
+      console.error(e);
     } finally {
-      setLoading(false)
-      setRefreshing(false)
+      setLoadingLogs(false);
     }
-  }
-
-  const handleRefresh = () => {
-    setRefreshing(true)
-    fetchJobs()
-  }
+  };
 
   useEffect(() => {
-    fetchJobs()
-    const interval = setInterval(fetchJobs, 10000)
-    return () => clearInterval(interval)
-  }, [])
+    let interval: any;
+    if (selectedJob && selectedJob.status === "PROCESSING") {
+      interval = setInterval(async () => {
+        try {
+          const logs = await getJobLogs(selectedJob.id);
+          setJobLogs(logs);
+        } catch (e) {}
+      }, 3000);
+    }
+    return () => clearInterval(interval);
+  }, [selectedJob, getJobLogs]);
+
+  const handleDeleteJob = async (id: number) => {
+    if (!confirm("Permanently delete this job and its resources?")) return;
+    setDeletingId(id);
+    try {
+      await deleteJob(id);
+    } catch (e) {
+      console.error(e);
+      alert("Failed to delete job");
+    } finally {
+      setDeletingId(null);
+    }
+  };
+
+  const handleDownloadJob = async (id: number) => {
+    try {
+      const url = await getDownloadUrl(id);
+      if (url) window.open(url, "_blank");
+    } catch (e: any) {
+      console.error(e);
+      alert(e?.response?.data?.detail || "Lỗi khi tải URL (Check API/MinIO)");
+    }
+  };
+
+  const handleWatchJob = async (id: number) => {
+    try {
+      const url = await getDownloadUrl(id);
+      if (url) setWatchUrl(url);
+    } catch (e: any) {
+      console.error(e);
+      alert(e?.response?.data?.detail || "Failed to get watch URL");
+    }
+  };
+
+  const handleCopyJob = (job: VideoJob) => {
+    const path = job.job_type === "unbox_viral" ? "viral" : job.job_type;
+    navigate(`/create-${path}?clone=${job.id}`);
+  };
+
+  const jobTypes = Array.from(new Set(jobs.map(j => j.job_type))).sort();
+  const displayJobs = jobs.filter(job => activeTab === "all" || job.job_type === activeTab);
+
+  const formatJobType = (type: string) => {
+    switch (type) {
+      case 'unbox_viral': return "Viral Shorts";
+      case 'unbox': return "Unbox Standard";
+      case 'review': return "Review Details";
+      case 'slideshow': return "Slideshow";
+      case 'promotion': return "Viral Promotion";
+      default: return type.replace(/_/g, ' ').replace(/\b\w/g, c => c.toUpperCase());
+    }
+  };
+
+  const getJobTypeColor = (type: string, isActive: boolean) => {
+    if (isActive) {
+      switch (type) {
+        case 'review': return "bg-indigo-500/20 text-indigo-400 shadow-sm ring-1 ring-indigo-500/30";
+        case 'unbox': return "bg-cyan-500/20 text-cyan-400 shadow-sm ring-1 ring-cyan-500/30";
+        case 'unbox_viral': return "bg-amber-500/20 text-amber-500 shadow-sm ring-1 ring-amber-500/30";
+        case 'slideshow': return "bg-pink-500/20 text-pink-400 shadow-sm ring-1 ring-pink-500/30";
+        case 'promotion': return "bg-orange-500/20 text-orange-400 shadow-sm ring-1 ring-orange-500/30";
+        default: return "bg-primary/20 text-primary shadow-sm ring-1 ring-primary/30";
+      }
+    }
+    return "text-muted-foreground hover:text-white hover:bg-white/5";
+  };
+
+  const stats = [
+    { label: "Total Jobs", value: displayJobs.length, color: "text-white" },
+    { label: "Success", value: displayJobs.filter(j => j.status === "SUCCESS").length, color: "text-emerald-400" },
+    { label: "Processing", value: displayJobs.filter(j => j.status === "PROCESSING").length, color: "text-blue-400" },
+    { label: "Failed", value: displayJobs.filter(j => j.status === "FAILED").length, color: "text-rose-400" },
+  ];
 
   return (
-    <div className="max-w-7xl mx-auto p-8 lg:p-12 space-y-10">
+    <div className="max-w-7xl mx-auto p-8 lg:p-12 space-y-10 animate-in fade-in duration-500">
       <div className="flex items-center justify-between">
         <div className="space-y-2">
           <h2 className="text-4xl font-extrabold tracking-tight bg-clip-text text-transparent bg-gradient-to-r from-white to-white/60 flex items-center gap-3">
@@ -54,133 +134,101 @@ export default function Dashboard() {
             Monitor rendering farm clusters and automated video generation queues.
           </p>
         </div>
-        
-        <button 
-          onClick={handleRefresh}
-          className="flex items-center gap-2 px-4 py-2 rounded-xl bg-white/5 hover:bg-white/10 border border-white/10 text-white transition-all text-sm font-medium"
-        >
-          <RefreshCw className={cn("w-4 h-4", refreshing && "animate-spin")} /> 
-          Refresh status
-        </button>
-      </div>
 
-      <div className="glass-panel overflow-hidden animate-in fade-in slide-in-from-bottom-8 duration-700">
-        <div className="w-full overflow-x-auto">
-          <table className="w-full text-sm text-left">
-            <thead className="bg-black/40 text-xs uppercase text-muted-foreground border-b border-white/10">
-              <tr>
-                <th className="px-6 py-5 font-semibold tracking-wider">Job ID</th>
-                <th className="px-6 py-5 font-semibold tracking-wider">Type</th>
-                <th className="px-6 py-5 font-semibold tracking-wider">Priority</th>
-                <th className="px-6 py-5 font-semibold tracking-wider">Status & Progress</th>
-                <th className="px-6 py-5 font-semibold tracking-wider">Created At</th>
-                <th className="px-6 py-5 font-semibold tracking-wider text-right">Result</th>
-              </tr>
-            </thead>
-            <tbody className="divide-y divide-white/5">
-              {loading && jobs.length === 0 ? (
-                <tr>
-                  <td colSpan={5} className="px-6 py-12 text-center text-muted-foreground">
-                    <div className="flex flex-col items-center justify-center gap-3">
-                      <RefreshCw className="w-6 h-6 animate-spin text-primary" />
-                      Connecting to Render Farm...
-                    </div>
-                  </td>
-                </tr>
-              ) : jobs.length === 0 ? (
-                <tr>
-                  <td colSpan={6} className="px-6 py-12 text-center text-muted-foreground">
-                    <div className="flex flex-col items-center justify-center gap-2">
-                      <AlertCircle className="w-6 h-6 text-muted-foreground/50" />
-                      No video jobs found in the queue.
-                    </div>
-                  </td>
-                </tr>
-              ) : (
-                jobs.map((job) => (
-                  <tr key={job.id} className="hover:bg-white/[0.02] transition-colors group">
-                    <td className="px-6 py-4 whitespace-nowrap font-medium text-white/90">
-                      #{job.id}
-                    </td>
-                    <td className="px-6 py-4 whitespace-nowrap">
-                      <span className="inline-flex items-center px-2.5 py-1 rounded-md bg-white/5 border border-white/10 text-xs font-medium text-indigo-300 capitalize tracking-wide">
-                        {job.job_type}
-                      </span>
-                    </td>
-                    <td className="px-6 py-4 whitespace-nowrap">
-                      {job.priority > 0 ? (
-                        <span className="inline-flex items-center px-2 py-1 rounded border border-orange-500/30 text-[10px] font-bold text-orange-400 uppercase">
-                          High
-                        </span>
-                      ) : (
-                        <span className="inline-flex items-center px-2 py-1 rounded border border-white/10 text-[10px] font-medium text-muted-foreground uppercase">
-                          Normal
-                        </span>
-                      )}
-                    </td>
-                    <td className="px-6 py-4 whitespace-nowrap min-w-[200px]">
-                      <div className="flex flex-col gap-2">
-                        <div className="flex items-center justify-between">
-                          <div className="flex items-center gap-2">
-                            {job.status === "SUCCESS" && (
-                              <span className="inline-flex items-center rounded-full border border-emerald-500/30 px-3 py-1 text-xs font-semibold bg-emerald-500/10 text-emerald-400 shadow-[0_0_10px_rgba(16,185,129,0.2)]">
-                                <CheckCircle2 className="mr-1.5 h-3.5 w-3.5"/> SUCCESS
-                              </span>
-                            )}
-                            {job.status === "PROCESSING" && (
-                              <span className="inline-flex items-center rounded-full border border-blue-500/30 px-3 py-1 text-xs font-semibold bg-blue-500/10 text-blue-400 shadow-[0_0_10px_rgba(59,130,246,0.2)]">
-                                <Clock className="mr-1.5 h-3.5 w-3.5 animate-spin"/> {job.status}
-                              </span>
-                            )}
-                            {job.status === "PENDING" && (
-                              <span className="inline-flex items-center rounded-full border border-gray-500/30 px-3 py-1 text-xs font-semibold bg-gray-500/10 text-gray-400">
-                                PENDING
-                              </span>
-                            )}
-                            {job.status === "FAILED" && (
-                              <span className="inline-flex items-center rounded-full border border-rose-500/30 px-3 py-1 text-xs font-semibold bg-rose-500/10 text-rose-400 shadow-[0_0_10px_rgba(244,63,94,0.2)]" title={job.error_message || "Error"}>
-                                <AlertCircle className="mr-1.5 h-3.5 w-3.5"/> FAILED
-                              </span>
-                            )}
-                          </div>
-                          <span className="text-xs text-muted-foreground font-mono">{job.progress_percent || 0}%</span>
-                        </div>
-                        {job.status === "PROCESSING" && (
-                          <div className="w-full h-1.5 bg-white/5 rounded-full overflow-hidden">
-                            <div className="h-full bg-blue-500 shadow-[0_0_10px_rgba(59,130,246,0.8)] transition-all duration-1000" style={{ width: `${job.progress_percent || 0}%` }}></div>
-                          </div>
-                        )}
-                        {job.status === "SUCCESS" && (
-                          <div className="w-full h-1.5 bg-white/5 rounded-full overflow-hidden">
-                            <div className="h-full bg-emerald-500 transition-all duration-1000" style={{ width: '100%' }}></div>
-                          </div>
-                        )}
-                      </div>
-                    </td>
-                    <td className="px-6 py-4 whitespace-nowrap text-muted-foreground/80">
-                      {format(new Date(job.created_at), "yyyy-MM-dd HH:mm")}
-                    </td>
-                    <td className="px-6 py-4 whitespace-nowrap text-right">
-                      {job.result_url ? (
-                        <a 
-                          href={job.result_url.replace("s3://videos/", "http://localhost:9001/browser/videos/")} 
-                          target="_blank" 
-                          rel="noreferrer" 
-                          className="inline-flex items-center justify-center rounded-full bg-emerald-500/10 hover:bg-emerald-500/20 text-emerald-400 border border-emerald-500/30 transition-all h-9 w-9 shadow-[0_0_15px_rgba(16,185,129,0.2)] hover:shadow-[0_0_20px_rgba(16,185,129,0.4)] group-hover:scale-110"
-                        >
-                          <PlayCircle className="h-5 w-5" />
-                        </a>
-                      ) : (
-                        <span className="text-muted-foreground/50 pr-4">-</span>
-                      )}
-                    </td>
-                  </tr>
-                ))
-              )}
-            </tbody>
-          </table>
+        <div className="flex items-center gap-3">
+          {hasProcessing && (
+            <div className="flex items-center gap-2 px-3 py-1.5 rounded-full bg-blue-500/10 border border-blue-500/20">
+              <div className="w-2 h-2 rounded-full bg-blue-400 animate-pulse shadow-[0_0_8px_rgba(59,130,246,0.8)]"></div>
+              <span className="text-xs text-blue-400 font-medium">Rendering</span>
+            </div>
+          )}
+          <Button onClick={handleRefresh} variant="secondary" isLoading={refreshing}>
+            {!refreshing && <RefreshCw className="w-4 h-4 mr-2" />}
+            Refresh
+          </Button>
         </div>
       </div>
+
+      {jobs.length > 0 && jobTypes.length > 0 && (
+        <div className="flex flex-wrap items-center gap-2 bg-black/20 p-1.5 rounded-2xl w-fit border border-white/5 shadow-inner">
+          <button
+            onClick={() => setActiveTab("all")}
+            className={cn(
+              "px-5 py-2.5 rounded-xl text-sm font-semibold transition-all duration-200",
+              activeTab === "all" ? "bg-white/15 text-white shadow-sm ring-1 ring-white/20" : "text-muted-foreground hover:text-white hover:bg-white/5"
+            )}
+          >
+            All Types ({jobs.length})
+          </button>
+          {jobTypes.map(type => (
+            <button
+              key={type}
+              onClick={() => setActiveTab(type)}
+              className={cn(
+                "px-5 py-2.5 rounded-xl text-sm font-semibold transition-all duration-200",
+                getJobTypeColor(type, activeTab === type)
+              )}
+            >
+              {formatJobType(type)} ({jobs.filter(j => j.job_type === type).length})
+            </button>
+          ))}
+        </div>
+      )}
+
+      {displayJobs.length > 0 && (
+        <div className="grid grid-cols-4 gap-4">
+          {stats.map(stat => (
+            <Card key={stat.label} className="p-5">
+              <p className="text-xs font-semibold text-muted-foreground uppercase tracking-wider">{stat.label}</p>
+              <p className={cn("text-3xl font-bold mt-1", stat.color)}>{stat.value}</p>
+            </Card>
+          ))}
+        </div>
+      )}
+
+      <Card className="overflow-hidden">
+        {loading && jobs.length === 0 ? (
+          <div className="flex flex-col items-center justify-center p-12 text-muted-foreground gap-3">
+            <RefreshCw className="w-6 h-6 animate-spin text-primary" />
+            Connecting to Render Farm...
+          </div>
+        ) : jobs.length === 0 ? (
+          <div className="flex flex-col items-center justify-center p-12 text-muted-foreground gap-2">
+            No video jobs found.
+          </div>
+        ) : displayJobs.length === 0 ? (
+          <div className="flex flex-col items-center justify-center p-12 text-muted-foreground gap-2">
+            No videos in this format.
+          </div>
+        ) : (
+          <JobTable
+            jobs={displayJobs}
+            deletingId={deletingId}
+            onViewDetails={handleViewDetails}
+            onDeleteJob={handleDeleteJob}
+            onDownloadJob={handleDownloadJob}
+            onWatchJob={handleWatchJob}
+            onCopyJob={handleCopyJob}
+            onUpdateNote={updateJob}
+          />
+        )}
+      </Card>
+
+      {selectedJob && (
+        <JobDetailsModal
+          job={selectedJob}
+          logs={jobLogs}
+          loadingLogs={loadingLogs}
+          onClose={() => setSelectedJob(null)}
+        />
+      )}
+      
+      {watchUrl && (
+        <VideoPlayerModal 
+          url={watchUrl} 
+          onClose={() => setWatchUrl(null)} 
+        />
+      )}
     </div>
-  )
+  );
 }

@@ -1,12 +1,16 @@
-import os
-from celery import Celery
+"""
+Celery client for the Admin API to dispatch tasks to workers.
+"""
 
-REDIS_URL = os.getenv("REDIS_URL", "redis://localhost:6379/0")
+from celery import Celery
+from shared_core.config import get_settings
+
+_cfg = get_settings()
 
 celery_app = Celery(
     "video_jobs",
-    broker=REDIS_URL,
-    backend=REDIS_URL
+    broker=_cfg.redis.url,
+    backend=_cfg.redis.url,
 )
 
 celery_app.conf.update(
@@ -15,4 +19,14 @@ celery_app.conf.update(
     result_serializer="json",
     timezone="Asia/Ho_Chi_Minh",
     enable_utc=True,
+    # Route tasks to correct queues
+    task_routes={
+        "worker_review.tasks.*": {"queue": "review_queue"},
+        "worker_unbox.tasks.*": {"queue": "unbox_queue"},
+        "worker_download.tasks.*": {"queue": "download_queue"},
+        "worker_slideshow.tasks.*": {"queue": "slideshow_queue"},
+        "worker_promotion.tasks.*": {"queue": "promotion_queue"},
+        "worker_agent.tasks.*": {"queue": "agent_queue"},
+        "worker_research.tasks.*": {"queue": "research_queue"},
+    },
 )
