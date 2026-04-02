@@ -169,3 +169,36 @@ class DownloadJobLog(Base):
     created_at = Column(DateTime(timezone=True), server_default=func.now())
 
     download_job = relationship("DownloadJob", back_populates="logs")
+
+
+class AgentSession(Base):
+    __tablename__ = "agent_sessions"
+    
+    id = Column(String, primary_key=True, default=generate_uuid)
+    user_id = Column(String, ForeignKey("users.id", ondelete="CASCADE"), nullable=False)
+    keyword = Column(String, nullable=False)
+    video_count = Column(Integer, default=1)
+    status = Column(String, default="PENDING")  # PENDING, RUNNING, COMPLETED, FAILED
+    summary = Column(Text, nullable=True)  # kết quả tổng hợp từ Agent
+    config = Column(FlexibleJSON, nullable=True)  # cấu hình tùy chọn
+    created_at = Column(DateTime(timezone=True), server_default=func.now())
+    completed_at = Column(DateTime(timezone=True), nullable=True)
+    
+    user = relationship("User")
+    logs = relationship("AgentLog", back_populates="session", cascade="all, delete-orphan")
+
+
+class AgentLog(Base):
+    __tablename__ = "agent_logs"
+    
+    id = Column(BigInteger, primary_key=True, autoincrement=True)
+    session_id = Column(String, ForeignKey("agent_sessions.id", ondelete="CASCADE"), index=True)
+    step = Column(String, nullable=False)         # "search", "download", "analyze", "decide", "generate"
+    tool_name = Column(String, nullable=True)
+    input_data = Column(FlexibleJSON, nullable=True)
+    output_data = Column(FlexibleJSON, nullable=True)
+    llm_reasoning = Column(Text, nullable=True)    # LLM reasoning trace
+    log_level = Column(String, default="INFO")
+    created_at = Column(DateTime(timezone=True), server_default=func.now())
+    
+    session = relationship("AgentSession", back_populates="logs")

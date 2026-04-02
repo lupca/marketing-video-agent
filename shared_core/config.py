@@ -58,6 +58,18 @@ class MinIOConfig:
 
 
 @dataclass(frozen=True)
+class OllamaConfig:
+    base_url: str = ""
+    model_name: str = ""
+
+    def __post_init__(self):
+        if not self.base_url:
+            object.__setattr__(self, "base_url", os.getenv("OLLAMA_BASE_URL", "http://localhost:11434"))
+        if not self.model_name:
+            object.__setattr__(self, "model_name", os.getenv("OLLAMA_MODEL", "qwen3:4b-instruct-2507-q4_K_M"))
+
+
+@dataclass(frozen=True)
 class AuthConfig:
     secret_key: str = ""
     algorithm: str = "HS256"
@@ -77,6 +89,7 @@ class AppConfig:
     redis: RedisConfig = field(default_factory=RedisConfig)
     minio: MinIOConfig = field(default_factory=MinIOConfig)
     auth: AuthConfig = field(default_factory=AuthConfig)
+    ollama: OllamaConfig = field(default_factory=OllamaConfig)
 
 
 @lru_cache(maxsize=1)

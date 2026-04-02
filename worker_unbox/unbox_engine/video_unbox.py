@@ -281,6 +281,8 @@ class VideoProcessor:
                 # speed = 2.0
                 continue        # Don't cut static completely, just speed it up (fast-forward boring parts)
             elif seg.classification == "REPETITIVE":
+                if duration < 0.2:
+                    continue
                 speed = SPEED_RAMP_FACTOR
             else: # DYNAMIC
                 if duration < min_dynamic_sec:

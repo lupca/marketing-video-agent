@@ -1,5 +1,5 @@
 import { BrowserRouter as Router, Routes, Route, Link, useLocation, Navigate } from "react-router-dom";
-import { LayoutDashboard, Video, Zap, LogOut, User as UserIcon, FolderHeart, Database, Activity, Wand2, BookOpen, DownloadCloud, Sparkles } from "lucide-react";
+import { LayoutDashboard, Video, Zap, LogOut, User as UserIcon, FolderHeart, Database, Activity, Wand2, BookOpen, DownloadCloud, Sparkles, Bot } from "lucide-react";
 import Dashboard from "./pages/Dashboard";
 import CreateUnboxJob from "./pages/CreateUnboxJob";
 import CreateUnboxViralJob from "./pages/CreateUnboxViralJob";
@@ -12,6 +12,7 @@ import ProjectDetails from "./pages/ProjectDetails";
 import Assets from "./pages/Assets";
 import SystemHealth from "./pages/SystemHealth";
 import Guides from "./pages/Guides";
+import AgentStudio from "./pages/AgentStudio";
 import Login from "./pages/Login";
 import Register from "./pages/Register";
 import { AuthProvider, useAuth } from "./context/AuthContext";
@@ -46,6 +47,7 @@ function Sidebar() {
     { name: "Slideshow", path: "/create-slideshow", icon: Zap },
     { name: "Promotion Viral", path: "/create-promotion", icon: Sparkles },
     { name: "Content Guides", path: "/guides", icon: BookOpen },
+    { name: "Agent Studio", path: "/agent-studio", icon: Bot },
     { name: "System Health", path: "/health", icon: Activity },
   ];
 
@@ -129,6 +131,7 @@ function MainLayout() {
           <Route path="/projects/:id" element={<ProjectDetails />} />
           <Route path="/assets" element={<Assets />} />
           <Route path="/guides" element={<Guides />} />
+          <Route path="/agent-studio" element={<AgentStudio />} />
           <Route path="/health" element={<SystemHealth />} />
         </Routes>
       </main>

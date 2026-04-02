@@ -17,6 +17,7 @@ from routers.assets import router as assets_router
 from routers.jobs import router as jobs_router
 from routers.downloads import router as downloads_router
 from routers.system import router as system_router
+from routers.agent import router as agent_router
 
 # ── Logging ───────────────────────────────────────────────────────────────────
 
@@ -61,3 +62,4 @@ app.include_router(assets_router)
 app.include_router(jobs_router)
 app.include_router(downloads_router)
 app.include_router(system_router)
+app.include_router(agent_router)

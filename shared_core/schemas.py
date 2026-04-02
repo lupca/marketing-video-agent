@@ -236,3 +236,36 @@ class PaginatedResponse(BaseModel):
     total: int
     skip: int
     limit: int
+
+
+# ── Agent ───────────────────────────────────────────────────────────────────
+
+class AgentSessionCreate(BaseModel):
+    keyword: str
+    video_count: int = 1
+    config: Optional[Dict[str, Any]] = None
+
+class AgentSessionResponse(BaseModel):
+    model_config = ConfigDict(from_attributes=True)
+    
+    id: str
+    user_id: str
+    keyword: str
+    video_count: int
+    status: str
+    summary: Optional[str] = None
+    created_at: datetime
+    completed_at: Optional[datetime] = None
+
+class AgentLogResponse(BaseModel):
+    model_config = ConfigDict(from_attributes=True)
+    
+    id: int
+    session_id: str
+    step: str
+    tool_name: Optional[str] = None
+    input_data: Optional[Dict[str, Any]] = None
+    output_data: Optional[Dict[str, Any]] = None
+    llm_reasoning: Optional[str] = None
+    log_level: str
+    created_at: datetime

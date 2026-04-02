@@ -98,6 +98,34 @@ fi
 "$PROMOTION_VENV/bin/pip" install -r "$ROOT_DIR/worker_promotion/requirements.txt" -q
 echo -e "${GREEN}  ✔ Worker Promotion venv ready${NC}"
 
+# Worker Research venv
+RESEARCH_VENV="$ROOT_DIR/worker_research/venv"
+if [ ! -d "$RESEARCH_VENV" ]; then
+  echo -e "${YELLOW}  Creating Worker Research venv...${NC}"
+  python3 -m venv "$RESEARCH_VENV"
+fi
+"$RESEARCH_VENV/bin/pip" install --upgrade pip -q
+"$RESEARCH_VENV/bin/pip" install -r "$ROOT_DIR/worker_research/requirements.txt" -q
+echo -e "${GREEN}  ✔ Worker Research venv ready${NC}"
+
+# Worker Agent venv
+AGENT_VENV="$ROOT_DIR/worker_agent/venv"
+if [ ! -d "$AGENT_VENV" ]; then
+  echo -e "${YELLOW}  Creating Worker Agent venv...${NC}"
+  # smolagents requires Python 3.10+
+  if command -v python3.11 >/dev/null 2>&1; then
+    python3.11 -m venv "$AGENT_VENV"
+  elif command -v python3.10 >/dev/null 2>&1; then
+    python3.10 -m venv "$AGENT_VENV"
+  else
+    echo -e "${RED}  ERROR: Worker Agent requires Python 3.10+. Please install it (e.g., brew install python@3.11)${NC}"
+    exit 1
+  fi
+fi
+"$AGENT_VENV/bin/pip" install --upgrade pip -q
+"$AGENT_VENV/bin/pip" install -r "$ROOT_DIR/worker_agent/requirements.txt" -q
+echo -e "${GREEN}  ✔ Worker Agent venv ready${NC}"
+
 # ----------------------------------------------------------
 # 3. Common env vars
 # ----------------------------------------------------------
@@ -129,34 +157,46 @@ echo -e "${GREEN}  ✔ API PID: $API_PID${NC}"
 echo -e "\n${GREEN}[4/5]${NC} Starting Celery Workers..."
 
 cd "$ROOT_DIR/worker_review"
-"$REVIEW_VENV/bin/celery" -A celery_worker worker -Q review_queue --loglevel=info -c 2 &
+"$REVIEW_VENV/bin/celery" -A celery_worker worker -Q review_queue -n worker_review@%h --loglevel=info -c 2 &
 REVIEW_PID=$!
 cd "$ROOT_DIR"
 echo -e "${GREEN}  ✔ Worker Review PID: $REVIEW_PID${NC}"
 
 cd "$ROOT_DIR/worker_unbox"
-"$UNBOX_VENV/bin/celery" -A celery_worker worker -Q unbox_queue --loglevel=info -c 2 &
+"$UNBOX_VENV/bin/celery" -A celery_worker worker -Q unbox_queue -n worker_unbox@%h --loglevel=info -c 2 &
 UNBOX_PID=$!
 cd "$ROOT_DIR"
 echo -e "${GREEN}  ✔ Worker Unbox PID: $UNBOX_PID${NC}"
 
 cd "$ROOT_DIR/worker_download"
-"$DOWNLOAD_VENV/bin/celery" -A celery_worker worker -Q download_queue --loglevel=info -c 3 &
+"$DOWNLOAD_VENV/bin/celery" -A celery_worker worker -Q download_queue -n worker_download@%h --loglevel=info -c 3 &
 DOWNLOAD_PID=$!
 cd "$ROOT_DIR"
 echo -e "${GREEN}  ✔ Worker Download PID: $DOWNLOAD_PID${NC}"
 
 cd "$ROOT_DIR/worker_slideshow"
-"$SLIDESHOW_VENV/bin/celery" -A celery_worker worker -Q slideshow_queue --loglevel=info -c 2 &
+"$SLIDESHOW_VENV/bin/celery" -A celery_worker worker -Q slideshow_queue -n worker_slideshow@%h --loglevel=info -c 2 &
 SLIDESHOW_PID=$!
 cd "$ROOT_DIR"
 echo -e "${GREEN}  ✔ Worker Slideshow PID: $SLIDESHOW_PID${NC}"
 
 cd "$ROOT_DIR/worker_promotion"
-"$PROMOTION_VENV/bin/celery" -A celery_worker worker -Q promotion_queue --loglevel=info -c 2 &
+"$PROMOTION_VENV/bin/celery" -A celery_worker worker -Q promotion_queue -n worker_promotion@%h --loglevel=info -c 2 &
 PROMOTION_PID=$!
 cd "$ROOT_DIR"
 echo -e "${GREEN}  ✔ Worker Promotion PID: $PROMOTION_PID${NC}"
+
+cd "$ROOT_DIR/worker_research"
+"$RESEARCH_VENV/bin/celery" -A celery_worker worker -Q research_queue -n worker_research@%h --loglevel=info -c 2 &
+RESEARCH_PID=$!
+cd "$ROOT_DIR"
+echo -e "${GREEN}  ✔ Worker Research PID: $RESEARCH_PID${NC}"
+
+cd "$ROOT_DIR/worker_agent"
+"$AGENT_VENV/bin/celery" -A celery_worker worker -Q agent_queue -n worker_agent@%h --loglevel=info -c 1 &
+AGENT_PID=$!
+cd "$ROOT_DIR"
+echo -e "${GREEN}  ✔ Worker Agent PID: $AGENT_PID${NC}"
 
 # ----------------------------------------------------------
 # 6. Start Frontend
@@ -187,7 +227,7 @@ echo -e "\n${YELLOW}Press Ctrl+C to stop all services${NC}\n"
 # ----------------------------------------------------------
 cleanup() {
   echo -e "\n${YELLOW}Shutting down all processes...${NC}"
-  kill $API_PID $REVIEW_PID $UNBOX_PID $DOWNLOAD_PID $SLIDESHOW_PID $PROMOTION_PID $FRONTEND_PID 2>/dev/null
+  kill $API_PID $REVIEW_PID $UNBOX_PID $DOWNLOAD_PID $SLIDESHOW_PID $PROMOTION_PID $RESEARCH_PID $AGENT_PID $FRONTEND_PID 2>/dev/null
   docker compose -f "$ROOT_DIR/docker-compose.dev.yml" down
   echo -e "${GREEN}✔ All stopped.${NC}"
   exit 0
