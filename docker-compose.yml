@@ -54,6 +54,13 @@ services:
       - minio
     restart: always
 
+  worker_base:
+    build:
+      context: .
+      dockerfile: worker_base/Dockerfile.base
+    image: video-worker-base
+    command: ["echo", "Base image built"]
+
   worker_review:
     build:
       context: .
@@ -75,6 +82,7 @@ services:
       - db
       - redis
       - minio
+      - worker_base
     restart: always
 
   worker_unbox:
@@ -96,6 +104,7 @@ services:
       - db
       - redis
       - minio
+      - worker_base
     restart: always
 
   worker_slideshow:
@@ -117,6 +126,7 @@ services:
       - db
       - redis
       - minio
+      - worker_base
     restart: always
 
   worker_download:
@@ -135,6 +145,7 @@ services:
       - db
       - redis
       - minio
+      - worker_base
     restart: always
 
   worker_promotion:
@@ -153,6 +164,7 @@ services:
       - db
       - redis
       - minio
+      - worker_base
     restart: always
 
 

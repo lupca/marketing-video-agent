@@ -1,5 +1,5 @@
 import { useEffect, useRef, useState } from "react";
-import { X, Bot, Terminal, Loader2 } from "lucide-react";
+import { X, Terminal, Loader2 } from "lucide-react";
 import { cn } from "../../../lib/utils";
 import api from "../../../lib/api";
 
