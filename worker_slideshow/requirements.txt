@@ -1,3 +1,4 @@
 # --- Worker Infrastructure ---
+moviepy>=2.0
 pydantic>=2.4.0
 python-dotenv>=1.0.0

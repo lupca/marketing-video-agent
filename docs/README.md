@@ -33,7 +33,7 @@ docker-compose up -d --build
 **Các dịch vụ sẽ chạy tại local:**
 - **Frontend Admin**: `http://localhost:5173`
 - **Admin API (Swagger UI)**: `http://localhost:8000/docs`
-- **Database (PostgreSQL)**: Port `5432`
+- **Database (PostgreSQL)**: Port ``
 - **Redis (Message Broker)**: Port `6379`
 - **MinIO (Storage)**: `http://localhost:9001` (Admin port) / `http://localhost:9000` (API)
 - **Celery Workers**: Chạy ngầm trong container `worker-review` và `worker-unbox`

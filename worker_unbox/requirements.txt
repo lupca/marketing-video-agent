@@ -1,4 +1,5 @@
 # Unbox Viral - CV & Detection
+moviepy==1.0.3
 ultralytics>=8.1.0
 opencv-python>=4.8.0
 opencv-contrib-python>=4.8.0
