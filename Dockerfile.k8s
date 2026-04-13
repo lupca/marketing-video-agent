@@ -1,0 +1,40 @@
+# Dockerfile for building complete application image
+# This includes the API and all workers in one image
+
+FROM python:3.11-slim
+
+WORKDIR /app
+
+# Install system dependencies
+RUN apt-get update && apt-get install -y \
+    build-essential \
+    git \
+    ffmpeg \
+    libsm6 \
+    libxext6 \
+    libxrender-dev \
+    wget \
+    curl \
+    && rm -rf /var/lib/apt/lists/*
+
+# Copy project files
+COPY . /app
+
+# Install Python dependencies
+RUN pip install --no-cache-dir -r requirements.txt && \
+    pip install --no-cache-dir -r admin-api/requirements.txt && \
+    pip install --no-cache-dir -r worker_agent/requirements.txt && \
+    pip install --no-cache-dir -r worker_review/requirements.txt && \
+    pip install --no-cache-dir -r worker_unbox/requirements.txt && \
+    pip install --no-cache-dir -r worker_slideshow/requirements.txt && \
+    pip install --no-cache-dir -r worker_download/requirements.txt && \
+    pip install --no-cache-dir -r worker_promotion/requirements.txt
+
+# Create models directory
+RUN mkdir -p /models/huggingface /models/torch /models/cache
+
+# Expose ports
+EXPOSE 8000
+
+# Default command (API)
+CMD ["python", "-m", "uvicorn", "admin_api.main:app", "--host", "0.0.0.0", "--port", "8000"]
