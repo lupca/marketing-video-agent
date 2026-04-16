@@ -1,0 +1,39 @@
+# Documentation  
+README.md
+*.md
+
+# Git
+.git
+.gitignore
+
+# IDE
+.vscode
+.idea
+*.swp
+*.swo
+*~
+
+# OS
+.DS_Store
+Thumbs.db
+
+# Python
+__pycache__
+*.pyc
+*.pyo
+*.egg-info
+.pytest_cache
+.venv
+venv
+
+# Testing
+.coverage
+htmlcov
+
+# Environment
+.env.local
+.env.*.local
+
+# Misc
+temp
+tmp

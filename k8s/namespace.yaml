@@ -1,6 +1,0 @@
-apiVersion: v1
-kind: Namespace
-metadata:
-  name: video-creator
-  labels:
-    app: marketing-video-agent
