@@ -18,6 +18,7 @@ from routers.jobs import router as jobs_router
 from routers.downloads import router as downloads_router
 from routers.system import router as system_router
 from routers.agent import router as agent_router
+from routers.worker_config import router as worker_config_router
 
 # ── Logging ───────────────────────────────────────────────────────────────────
 
@@ -31,9 +32,20 @@ logger = logging.getLogger(__name__)
 
 models.Base.metadata.create_all(bind=database.engine)
 
+from contextlib import asynccontextmanager
+import worker_spawner
+
+@asynccontextmanager
+async def lifespan(app: FastAPI):
+    # Startup logic can go here
+    yield
+    # Shutdown logic: Kill all managed workers
+    logger.info("Lifespan: Shutting down all managed workers...")
+    worker_spawner.shutdown_all()
+
 # ── App ───────────────────────────────────────────────────────────────────────
 
-app = FastAPI(title="Video Creator Platform API")
+app = FastAPI(title="Video Creator Platform API", lifespan=lifespan)
 
 # CORS
 app.add_middleware(
@@ -63,3 +75,4 @@ app.include_router(jobs_router)
 app.include_router(downloads_router)
 app.include_router(system_router)
 app.include_router(agent_router)
+app.include_router(worker_config_router)

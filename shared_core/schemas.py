@@ -269,3 +269,38 @@ class AgentLogResponse(BaseModel):
     llm_reasoning: Optional[str] = None
     log_level: str
     created_at: datetime
+
+
+# ── Worker Configuration (Selective Startup) ──────────────────────────────────
+
+class WorkerConfigBase(BaseModel):
+    is_enabled: bool = False
+    min_replicas: int = 0
+    max_replicas: int = 3
+    priority: int = 0
+    config_data: Optional[Dict[str, Any]] = None
+
+class WorkerConfigUpdate(WorkerConfigBase):
+    """Schema for updating an existing worker config."""
+    pass
+
+class WorkerConfigResponse(WorkerConfigBase):
+    """Schema for worker config responses."""
+    model_config = ConfigDict(from_attributes=True)
+
+    id: str
+    worker_type: str
+    created_at: datetime
+    updated_at: Optional[datetime] = None
+    last_modified_by: Optional[str] = None
+
+class WorkerStatusSummary(BaseModel):
+    """Summary of worker statuses for the dashboard."""
+    total_workers: int
+    enabled_workers: int
+    disabled_workers: int
+    configs: List[WorkerConfigResponse]
+
+class WorkerBatchUpdateRequest(BaseModel):
+    """Request schema for batch updating multiple worker configs."""
+    updates: Dict[str, bool]  # worker_type -> is_enabled

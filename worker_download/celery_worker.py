@@ -21,7 +21,7 @@ from shared_core.minio_utils import ensure_bucket_exists, upload_file_to_minio
 
 logger = logging.getLogger(__name__)
 
-celery_app = create_celery_app("worker_download")
+celery_app = create_celery_app("worker_download", worker_type="download")
 
 
 # ── DB Helpers (use DownloadJob / DownloadJobLog) ─────────────────────────────

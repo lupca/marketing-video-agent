@@ -19,7 +19,7 @@ from celery.signals import worker_ready, worker_shutting_down
 
 from shared_core.config import get_settings
 from shared_core.database import SessionLocal
-from shared_core.models import VideoJob, JobLog, WorkerNode
+from shared_core.models import VideoJob, JobLog, WorkerNode, WorkerConfig
 from shared_core.minio_utils import ensure_bucket_exists, upload_file_to_minio
 
 logger = logging.getLogger(__name__)
@@ -28,11 +28,56 @@ logger = logging.getLogger(__name__)
 # ── Celery App Factory ────────────────────────────────────────────────────────
 
 _worker_app_name = "Unknown Worker"
+_worker_type = None    # Set by create_celery_app, used by heartbeat for self-termination
 
-def create_celery_app(name: str) -> Celery:
+def is_worker_enabled(worker_type: str) -> bool:
+    """
+    Check if a specific worker type is enabled in the database.
+    Default to True (fail-open) if database connection fails.
+    """
+    try:
+        with SessionLocal() as db:
+            config = db.query(WorkerConfig).filter(WorkerConfig.worker_type == worker_type).first()
+            if config is None:
+                # If not in DB, it's considered disabled until initialized
+                return False
+            return config.is_enabled
+    except Exception as e:
+        logger.error(f"Failed to check enablement for {worker_type}: {e}")
+        return True # Fail-open: allow running if DB is down
+
+
+def log_worker_startup_info(worker_type: str):
+    """Log whether the worker is starting in enabled or disabled mode."""
+    enabled = is_worker_enabled(worker_type)
+    if enabled:
+        logger.info(f"🚀 Worker '{worker_type}' is ENABLED. Processing tasks normally.")
+    else:
+        logger.warning(f"⚠️  Worker '{worker_type}' is DISABLED in config!")
+        logger.warning("Worker will start but will NOT process any tasks if ENFORCE_WORKER_ENABLED=true.")
+
+
+def create_celery_app(name: str, worker_type: str = None) -> Celery:
     """Create a Celery app with standard configuration."""
-    global _worker_app_name
+    global _worker_app_name, _worker_type
     _worker_app_name = name
+    _worker_type = worker_type
+    
+    # ── NEW: Kiểm tra worker enablement ──
+    if worker_type:
+        is_enabled = is_worker_enabled(worker_type)
+        log_worker_startup_info(worker_type)
+        
+        # Nếu ENFORCE_WORKER_ENABLED=true, dừng startup khi disabled
+        enforce = os.getenv("ENFORCE_WORKER_ENABLED", "false").lower() == "true"
+        if enforce and not is_enabled:
+            logger.critical(f"❌ FATAL: Worker '{worker_type}' is disabled and ENFORCE_WORKER_ENABLED is set.")
+            raise RuntimeError(
+                f"❌ Worker '{worker_type}' is DISABLED and ENFORCE_WORKER_ENABLED=true. "
+                f"Cannot start."
+            )
+    # ── END NEW ──
+    
     cfg = get_settings()
     app = Celery(name, broker=cfg.redis.url, backend=cfg.redis.url)
     app.conf.update(
@@ -58,29 +103,45 @@ _stop_heartbeat = threading.Event()
 _current_job_id = None
 _supported_types = []  # Optionally set by specific workers
 
+
 def _heartbeat_loop():
     while not _stop_heartbeat.is_set():
         try:
-            db = SessionLocal()
-            worker = db.query(WorkerNode).filter(WorkerNode.id == WORKER_ID).first()
-            now = datetime.now(timezone.utc)
-            if not worker:
-                worker = WorkerNode(
-                    id=WORKER_ID,
-                    hostname=f"[{_worker_app_name}] {HOSTNAME}",
-                    supported_types=_supported_types,
-                    status="ONLINE",
-                    current_job_id=_current_job_id,
-                    last_heartbeat=now
-                )
-                db.add(worker)
-            else:
-                worker.hostname = f"[{_worker_app_name}] {HOSTNAME}"
-                worker.status = "ONLINE"
-                worker.current_job_id = _current_job_id
-                worker.last_heartbeat = now
-            db.commit()
-            db.close()
+        try:
+            # Check if this worker has been disabled — if so, shut down gracefully
+            if _worker_type:
+                try:
+                    with SessionLocal() as db:
+                        config = db.query(WorkerConfig).filter(WorkerConfig.worker_type == _worker_type).first()
+                        if config and not config.is_enabled:
+                            logger.critical(f"🛑 Worker '{_worker_type}' has been DISABLED. Shutting down...")
+                            import signal
+                            os.kill(os.getpid(), signal.SIGTERM)
+                            return
+                except (ProcessLookupError, OSError):
+                    return # Already dying
+                except Exception as e:
+                    logger.error(f"Error in heartbeat kill check: {e}")
+
+            with SessionLocal() as db:
+                worker = db.query(WorkerNode).filter(WorkerNode.id == WORKER_ID).first()
+                now = datetime.now(timezone.utc)
+                if not worker:
+                    worker = WorkerNode(
+                        id=WORKER_ID,
+                        hostname=f"[{_worker_app_name}] {HOSTNAME}",
+                        supported_types=_supported_types,
+                        status="ONLINE",
+                        current_job_id=_current_job_id,
+                        last_heartbeat=now
+                    )
+                    db.add(worker)
+                else:
+                    worker.hostname = f"[{_worker_app_name}] {HOSTNAME}"
+                    worker.status = "ONLINE"
+                    worker.current_job_id = _current_job_id
+                    worker.last_heartbeat = now
+                    db.commit()
         except Exception as e:
             logger.error(f"Heartbeat failed: {e}")
         

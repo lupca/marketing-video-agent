@@ -20,7 +20,7 @@ from slideshow_engine.data_input import load_from_dict
 
 logger = logging.getLogger(__name__)
 
-celery_app = create_celery_app("worker_slideshow")
+celery_app = create_celery_app("worker_slideshow", worker_type="slideshow")
 
 
 # ── Prepare Assets (slideshow-specific) ────────────────────────────────────────

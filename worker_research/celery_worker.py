@@ -18,7 +18,7 @@ from video_analyzer import analyze_video
 
 logger = logging.getLogger(__name__)
 
-celery_app = create_celery_app("worker_research")
+celery_app = create_celery_app("worker_research", worker_type="research")
 
 @celery_app.task(name="worker_research.tasks.search_videos")
 def search_videos(keyword: str, count: int = 10, exclude_ids: Optional[List[str]] = None):

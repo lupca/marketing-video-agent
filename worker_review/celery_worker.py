@@ -19,7 +19,7 @@ from video_builder import build_video
 
 logger = logging.getLogger(__name__)
 
-celery_app = create_celery_app("worker_review")
+celery_app = create_celery_app("worker_review", worker_type="review")
 
 
 # ── Asset Download Helpers (review-specific) ─────────────────────────────────

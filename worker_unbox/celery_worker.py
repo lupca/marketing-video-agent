@@ -18,7 +18,7 @@ from unbox_viral import make_unbox_viral
 
 logger = logging.getLogger(__name__)
 
-celery_app = create_celery_app("worker_unbox")
+celery_app = create_celery_app("worker_unbox", worker_type="unbox")
 
 
 # ── Prepare Assets (unbox-specific) ──────────────────────────────────────────

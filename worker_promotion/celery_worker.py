@@ -16,7 +16,7 @@ from video_generator import generate_video
 
 logger = logging.getLogger(__name__)
 
-celery_app = create_celery_app("worker_promotion")
+celery_app = create_celery_app("worker_promotion", worker_type="promotion")
 
 
 # ── Prepare Assets (promotion-specific) ──────────────────────────────────────

@@ -20,9 +20,25 @@ def get_workers(
     db: Session = Depends(database.get_db),
     current_user: models.User = Depends(auth_module.get_current_user),
 ):
-    if current_user.role not in ("admin", "creator"):
-        raise HTTPException(status_code=403, detail="Not permitted")
-    return db.query(models.WorkerNode).order_by(models.WorkerNode.last_heartbeat.desc()).all()
+    from datetime import datetime, timezone, timedelta
+    
+    # ── NEW: Cleanup & Trạng thái OFFLINE ──
+    now = datetime.now(timezone.utc)
+    offline_cutoff = now - timedelta(seconds=30)
+    cleanup_cutoff = now - timedelta(hours=24)
+    
+    # Xóa các worker đã mất tích hơn 24h
+    db.query(models.WorkerNode).filter(models.WorkerNode.last_heartbeat < cleanup_cutoff).delete()
+    db.commit()
+    
+    # Lấy danh sách và xử lý logic offline ảo
+    workers = db.query(models.WorkerNode).order_by(models.WorkerNode.last_heartbeat.desc()).all()
+    
+    for w in workers:
+        if w.status == "ONLINE" and w.last_heartbeat < offline_cutoff:
+            w.status = "OFFLINE"
+    
+    return workers
 
 
 @router.get("/templates", response_model=List[schemas.TemplateResponse])

@@ -202,3 +202,22 @@ class AgentLog(Base):
     created_at = Column(DateTime(timezone=True), server_default=func.now())
     
     session = relationship("AgentSession", back_populates="logs")
+
+
+class WorkerConfig(Base):
+    """
+    Configuration for selective worker enablement and scaling.
+    Allows administrators to enable/disable worker types via API.
+    """
+    __tablename__ = "worker_configs"
+    
+    id = Column(String, primary_key=True, default=generate_uuid)
+    worker_type = Column(String, unique=True, index=True, nullable=False)  # review, unbox, research, agent, etc.
+    is_enabled = Column(Boolean, default=False)
+    min_replicas = Column(Integer, default=0)
+    max_replicas = Column(Integer, default=3)
+    priority = Column(Integer, default=0)
+    config_data = Column(FlexibleJSON, nullable=True)
+    last_modified_by = Column(String, nullable=True)  # User ID who last changed this
+    created_at = Column(DateTime(timezone=True), server_default=func.now())
+    updated_at = Column(DateTime(timezone=True), onupdate=func.now())

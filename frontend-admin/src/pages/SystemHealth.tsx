@@ -5,6 +5,7 @@ import { Activity, Server, FileCode, CheckCircle2, Clock, PlaySquare, Plus } fro
 import { cn } from "../lib/utils"
 import { Modal } from "../components/ui/Modal"
 import { Button } from "../components/ui/Button"
+import { WorkerConfigPanel } from "../components/features/workers/WorkerConfigPanel"
 
 interface WorkerNode {
   id: string
@@ -96,6 +97,8 @@ export default function SystemHealth() {
           </p>
         </div>
       </div>
+
+      <WorkerConfigPanel />
 
       <div className="grid grid-cols-1 lg:grid-cols-2 gap-8">
         
