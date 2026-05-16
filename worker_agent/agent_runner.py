@@ -139,23 +139,41 @@ def _make_step_callback(session_id: str):
     return _log_step
 
 
+def _get_global_model_setting(key: str) -> str | None:
+    """Read a model setting from the system_settings table."""
+    try:
+        from shared_core.database import SessionLocal as InternalSessionLocal
+        from shared_core.models import SystemSetting
+        with InternalSessionLocal() as db:
+            setting = db.query(SystemSetting).filter(SystemSetting.key == "model_settings").first()
+            if setting and setting.value and isinstance(setting.value, dict):
+                return setting.value.get(key)
+    except Exception:
+        pass
+    return None
+
+
 # ── Agent Factory ─────────────────────────────────────────────────────────────
 
-def create_agent(session_id: str = None, mode: str = "full"):
+def create_agent(session_id: str = None, mode: str = "full",
+                 base_url: str = None, model_name: str = None):
     """
     Create a CodeAgent configured for local Ollama LLM.
     
-    smolagents v1.24 API:
-      - `instructions` → injected into the system prompt template via {{custom_instructions}}
-      - `step_callbacks` → called after each agent step for logging/monitoring
-      - `max_steps` → forwarded to MultiStepAgent via **kwargs
+    Priority: 
+    1. Per-session override (passed as arguments)
+    2. Global DB settings (system_settings table)
+    3. Environment variables (config.py)
     """
     settings = get_settings()
     
+    effective_base_url = base_url or _get_global_model_setting("base_url") or settings.ollama.base_url
+    effective_model = model_name or _get_global_model_setting("model_name") or settings.ollama.model_name
+    
     # Configure Ollama through OpenAI compatible endpoint
     model = OpenAIServerModel(
-        model_id=settings.ollama.model_name,
-        api_base=f"{settings.ollama.base_url.rstrip('/')}/v1",
+        model_id=effective_model,
+        api_base=f"{effective_base_url.rstrip('/')}/v1",
         api_key="ollama",  # dummy key for Ollama
     )
     
@@ -217,10 +235,17 @@ def run_agent_session_impl(session_id: str):
         db.commit()
 
         mode = "full"
+        model_settings = {}
         if session.config and isinstance(session.config, dict):
             mode = session.config.get("mode", "full")
+            model_settings = session.config.get("model_settings", {})
 
-        agent = create_agent(session_id=session_id, mode=mode)
+        agent = create_agent(
+            session_id=session_id, 
+            mode=mode,
+            base_url=model_settings.get("base_url"),
+            model_name=model_settings.get("model_name"),
+        )
         
         # Build prompt
         if mode == "research_only":

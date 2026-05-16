@@ -31,8 +31,8 @@ docker-compose up -d --build
 ```
 
 **Các dịch vụ sẽ chạy tại local:**
-- **Frontend Admin**: `http://localhost:5173`
-- **Admin API (Swagger UI)**: `http://localhost:8000/docs`
+- **Frontend Admin**: `http://localhost:9173`
+- **Admin API (Swagger UI)**: `http://localhost:9100/docs`
 - **Database (PostgreSQL)**: Port ``
 - **Redis (Message Broker)**: Port `6379`
 - **MinIO (Storage)**: `http://localhost:9001` (Admin port) / `http://localhost:9000` (API)

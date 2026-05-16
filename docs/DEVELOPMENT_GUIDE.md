@@ -15,7 +15,7 @@ python3 -m venv worker_unbox/.venv
 # Kích hoạt Local Script
 ./dev.sh
 ```
-`dev.sh` sẽ gọi `docker-compose up -d db redis minio` để chạy Infrastructure, tiếp theo nó sẽ cài Dependencies tự động (nếu thiếu) và kích hoạt song song API (port 8000), 2 Celery Workers và Frontend. 
+`dev.sh` sẽ gọi `docker-compose up -d db redis minio` để chạy Infrastructure, tiếp theo nó sẽ cài Dependencies tự động (nếu thiếu) và kích hoạt song song API (port 9100), 2 Celery Workers và Frontend. 
 
 Để tắt toàn bộ tiến trình:
 ```bash

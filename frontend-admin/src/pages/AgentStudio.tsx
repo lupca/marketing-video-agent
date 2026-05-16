@@ -1,11 +1,12 @@
 import { useState, useEffect } from "react";
-import { Bot, Youtube, Plus, Activity, Filter, Target, CalendarDays, RefreshCw } from "lucide-react";
+import { Bot, Youtube, Plus, Activity, Filter, Target, CalendarDays, RefreshCw, ChevronDown, ChevronUp, Cpu } from "lucide-react";
 import { Button } from "../components/ui/Button";
 import { Card } from "../components/ui/Card";
 import { AgentLogsDialog } from "../components/features/agent/AgentLogsDialog";
 import type { AgentSession } from "../components/features/agent/AgentLogsDialog";
 import { cn } from "../lib/utils";
 import api from "../lib/api";
+import { useModelSettings } from "../hooks/useModelSettings";
 
 export default function AgentStudio() {
   const [sessions, setSessions] = useState<AgentSession[]>([]);
@@ -18,6 +19,12 @@ export default function AgentStudio() {
   const [videoCount, setVideoCount] = useState(1);
   const [mode, setMode] = useState("full");
   const [submitting, setSubmitting] = useState(false);
+
+  // Model settings
+  const { settings: globalSettings } = useModelSettings();
+  const [showAdvanced, setShowAdvanced] = useState(false);
+  const [baseUrl, setBaseUrl] = useState("");
+  const [modelName, setModelName] = useState("");
 
   const fetchSessions = async (hideLoading = false) => {
     if (!hideLoading) setLoading(true);
@@ -46,14 +53,26 @@ export default function AgentStudio() {
 
     setSubmitting(true);
     try {
+      const config: any = { mode: mode };
+      
+      // Only include model settings if user explicitly typed something
+      if (baseUrl || modelName) {
+        config.model_settings = {
+          base_url: baseUrl || undefined,
+          model_name: modelName || undefined
+        };
+      }
+
       const resp = await api.post('/api/agent/sessions', {
         keyword,
         video_count: videoCount,
-        config: { mode: mode }
+        config: config
       });
       setKeyword("");
       setVideoCount(1);
       setMode("full");
+      setBaseUrl("");
+      setModelName("");
       // Add the new session directly to top of list
       setSessions((prev) => [resp.data, ...prev]);
     } catch (e: any) {
@@ -154,6 +173,59 @@ export default function AgentStudio() {
                 </select>
               </div>
 
+              {/* Advanced Model Settings */}
+              <div className="pt-2">
+                <button
+                  type="button"
+                  onClick={() => setShowAdvanced(!showAdvanced)}
+                  className="flex items-center gap-2 text-xs font-semibold text-zinc-500 hover:text-indigo-400 transition-colors uppercase tracking-wider"
+                >
+                  {showAdvanced ? <ChevronUp className="w-3 h-3" /> : <ChevronDown className="w-3 h-3" />}
+                  Model Settings (Advanced)
+                  {(!baseUrl && !modelName) ? (
+                    <span className="text-[10px] lowercase text-zinc-600 font-normal">
+                      (using {globalSettings?.source === 'database' ? 'system default' : 'env default'})
+                    </span>
+                  ) : (
+                    <span className="text-[10px] lowercase text-indigo-500 font-normal">(overridden)</span>
+                  )}
+                </button>
+
+                {showAdvanced && (
+                  <div className="mt-4 p-4 rounded-xl bg-black/60 border border-white/5 space-y-4 animate-in slide-in-from-top-2 duration-300">
+                    <div className="space-y-1.5">
+                      <label className="text-[11px] font-bold text-zinc-400 uppercase tracking-tight flex items-center gap-1.5">
+                        <Cpu className="w-3 h-3 text-indigo-500" /> Base URL
+                      </label>
+                      <input
+                        type="text"
+                        value={baseUrl}
+                        onChange={(e) => setBaseUrl(e.target.value)}
+                        placeholder={globalSettings?.base_url || "e.g. http://localhost:11434"}
+                        className="w-full px-3 py-2 bg-zinc-900/50 border border-white/10 rounded-lg focus:ring-1 focus:ring-indigo-500 focus:border-transparent text-xs transition-all text-white placeholder:text-zinc-700"
+                      />
+                    </div>
+
+                    <div className="space-y-1.5">
+                      <label className="text-[11px] font-bold text-zinc-400 uppercase tracking-tight flex items-center gap-1.5">
+                        <Bot className="w-3 h-3 text-indigo-500" /> Model Name
+                      </label>
+                      <input
+                        type="text"
+                        value={modelName}
+                        onChange={(e) => setModelName(e.target.value)}
+                        placeholder={globalSettings?.model_name || "e.g. qwen3:4b"}
+                        className="w-full px-3 py-2 bg-zinc-900/50 border border-white/10 rounded-lg focus:ring-1 focus:ring-indigo-500 focus:border-transparent text-xs transition-all text-white placeholder:text-zinc-700"
+                      />
+                    </div>
+                    
+                    <p className="text-[10px] text-zinc-500 italic leading-relaxed">
+                      * Leave blank to use system defaults. These settings only apply to this session.
+                    </p>
+                  </div>
+                )}
+              </div>
+
               <Button 
                 type="submit" 
                 className="w-full py-6 mt-4 bg-indigo-600 hover:bg-indigo-500 text-base shadow-[0_0_20px_rgba(79,70,229,0.3)] transition-all"
@@ -164,6 +236,8 @@ export default function AgentStudio() {
               </Button>
             </form>
           </Card>
+          
+          <GlobalModelSettingsCard />
         </div>
 
         {/* Sessions List */}
@@ -238,5 +312,89 @@ export default function AgentStudio() {
         />
       )}
     </div>
+  );
+}
+
+function GlobalModelSettingsCard() {
+  const { settings, updating, error, updateSettings } = useModelSettings();
+  const [baseUrl, setBaseUrl] = useState("");
+  const [modelName, setModelName] = useState("");
+  const [isEditing, setIsEditing] = useState(false);
+
+  useEffect(() => {
+    if (settings) {
+      setBaseUrl(settings.base_url);
+      setModelName(settings.model_name);
+    }
+  }, [settings]);
+
+  const handleSave = async () => {
+    try {
+      await updateSettings(baseUrl, modelName);
+      setIsEditing(false);
+    } catch (e) {
+      // Error handled by hook
+    }
+  };
+
+  if (!settings) return null;
+
+  return (
+    <Card className="p-6 bg-black/40 border-white/5 space-y-4">
+      <div className="flex items-center justify-between">
+        <h3 className="text-sm font-bold text-white flex items-center gap-2 uppercase tracking-widest">
+          <Cpu className="w-4 h-4 text-indigo-400" />
+          System Model Defaults
+        </h3>
+        <Button 
+          variant="ghost" 
+          size="sm" 
+          className="h-7 text-[10px] uppercase"
+          onClick={() => isEditing ? handleSave() : setIsEditing(true)}
+          isLoading={updating}
+        >
+          {isEditing ? "Save Changes" : "Edit Defaults"}
+        </Button>
+      </div>
+
+      <div className="grid grid-cols-2 gap-4">
+        <div className="space-y-1">
+          <label className="text-[10px] text-zinc-500 uppercase font-bold">Base URL</label>
+          {isEditing ? (
+            <input 
+              className="w-full bg-black/60 border border-white/10 rounded px-2 py-1 text-xs text-white"
+              value={baseUrl}
+              onChange={e => setBaseUrl(e.target.value)}
+            />
+          ) : (
+            <div className="text-xs text-zinc-300 font-mono truncate bg-white/5 px-2 py-1 rounded">{settings.base_url}</div>
+          )}
+        </div>
+        <div className="space-y-1">
+          <label className="text-[10px] text-zinc-500 uppercase font-bold">Model Name</label>
+          {isEditing ? (
+            <input 
+              className="w-full bg-black/60 border border-white/10 rounded px-2 py-1 text-xs text-white"
+              value={modelName}
+              onChange={e => setModelName(e.target.value)}
+            />
+          ) : (
+            <div className="text-xs text-zinc-300 font-mono truncate bg-white/5 px-2 py-1 rounded">{settings.model_name}</div>
+          )}
+        </div>
+      </div>
+
+      {error && <p className="text-[10px] text-red-400">{error}</p>}
+      
+      {!isEditing && (
+        <div className="flex items-center gap-2 text-[10px] text-zinc-600">
+          <span className={cn(
+            "w-1.5 h-1.5 rounded-full",
+            settings.source === "database" ? "bg-indigo-500" : "bg-emerald-500"
+          )} />
+          Configured via {settings.source === "database" ? "Database" : "Environment Variables"}
+        </div>
+      )}
+    </Card>
   );
 }

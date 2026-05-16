@@ -41,7 +41,7 @@ output "frontend_image_id" {
 output "port_forward_commands" {
   description = "Commands to port-forward services"
   value = {
-    api      = "kubectl port-forward -n ${kubernetes_namespace.video_creator.metadata[0].name} svc/api 8000:8000"
+    api      = "kubectl port-forward -n ${kubernetes_namespace.video_creator.metadata[0].name} svc/api 9100:9100"
     frontend = "kubectl port-forward -n ${kubernetes_namespace.video_creator.metadata[0].name} svc/frontend 3000:80"
     minio    = "kubectl port-forward -n ${kubernetes_namespace.video_creator.metadata[0].name} svc/minio 9000:9000"
   }
@@ -50,7 +50,7 @@ output "port_forward_commands" {
 output "access_urls" {
   description = "Application access URLs"
   value = {
-    api      = "http://localhost:8000/docs"
+    api      = "http://localhost:9100/docs"
     frontend = "http://localhost:3000"
     minio    = "http://localhost:9000"
   }

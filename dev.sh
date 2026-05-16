@@ -144,9 +144,9 @@ echo -e "${GREEN}  ✔ Env vars exported${NC}"
 # ----------------------------------------------------------
 # 4. Start Admin API
 # ----------------------------------------------------------
-echo -e "\n${GREEN}[3/5]${NC} Starting Admin API on :8000..."
+echo -e "\n${GREEN}[3/5]${NC} Starting Admin API on :9100..."
 cd "$ROOT_DIR/admin-api"
-"$API_VENV/bin/uvicorn" main:app --host 0.0.0.0 --port 8000 --reload &
+"$API_VENV/bin/uvicorn" main:app --host 0.0.0.0 --port 9100 --reload &
 API_PID=$!
 cd "$ROOT_DIR"
 echo -e "${GREEN}  ✔ API PID: $API_PID${NC}"
@@ -201,9 +201,9 @@ echo -e "${GREEN}  ✔ Worker Agent PID: $AGENT_PID${NC}"
 # ----------------------------------------------------------
 # 6. Start Frontend
 # ----------------------------------------------------------
-echo -e "\n${GREEN}[5/5]${NC} Starting Frontend on :5173..."
+echo -e "\n${GREEN}[5/5]${NC} Starting Frontend on :9173..."
 cd "$ROOT_DIR/frontend-admin"
-npm run dev &
+npm run dev -- --port 9173 &
 FRONTEND_PID=$!
 cd "$ROOT_DIR"
 echo -e "${GREEN}  ✔ Frontend PID: $FRONTEND_PID${NC}"
@@ -214,8 +214,8 @@ echo -e "${GREEN}  ✔ Frontend PID: $FRONTEND_PID${NC}"
 echo -e "\n${CYAN}━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━${NC}"
 echo -e "${CYAN}  All services are running!${NC}"
 echo -e "${CYAN}━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━${NC}"
-echo -e "  ${GREEN}Frontend:${NC}      http://localhost:5173"
-echo -e "  ${GREEN}API Docs:${NC}      http://localhost:8000/docs"
+echo -e "  ${GREEN}Frontend:${NC}      http://localhost:9173"
+echo -e "  ${GREEN}API Docs:${NC}      http://localhost:9100/docs"
 echo -e "  ${GREEN}MinIO Console:${NC} http://localhost:9001"
 echo -e "  ${GREEN}Postgres:${NC}      localhost:5432"
 echo -e "  ${GREEN}Redis:${NC}         localhost:6379"

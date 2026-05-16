@@ -17,4 +17,4 @@ ENV PYTHONPATH=/app
 COPY shared_core/ ./shared_core/
 COPY admin-api/ ./admin-api/
 
-CMD ["bash", "-c", "cd admin-api && uvicorn main:app --host 0.0.0.0 --port 8000"]
+CMD ["bash", "-c", "cd admin-api && uvicorn main:app --host 0.0.0.0 --port 9100"]

@@ -317,8 +317,8 @@ terraform force-unlock <lock-id>
 ## 🔗 Port-Forward
 
 ```bash
-# API (8000)
-kubectl port-forward -n video-creator svc/api 8000:8000
+# API (9100)
+kubectl port-forward -n video-creator svc/api 9100:9100
 
 # Frontend (3000)
 kubectl port-forward -n video-creator svc/frontend 3000:80
@@ -328,7 +328,7 @@ kubectl port-forward -n video-creator svc/minio 9000:9000
 ```
 
 Access:
-- **API**: http://localhost:8000/docs
+- **API**: http://localhost:9100/docs
 - **Frontend**: http://localhost:3000
 - **MinIO**: http://localhost:9000
 

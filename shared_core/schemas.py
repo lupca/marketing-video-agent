@@ -304,3 +304,15 @@ class WorkerStatusSummary(BaseModel):
 class WorkerBatchUpdateRequest(BaseModel):
     """Request schema for batch updating multiple worker configs."""
     updates: Dict[str, bool]  # worker_type -> is_enabled
+
+
+# ── System Settings ───────────────────────────────────────────────────────────
+
+class ModelSettingsUpdate(BaseModel):
+    base_url: str = ""
+    model_name: str = ""
+
+class ModelSettingsResponse(BaseModel):
+    base_url: str
+    model_name: str
+    source: str  # "database" | "environment" | "default"

@@ -84,7 +84,7 @@ Chỉnh sửa `terraform.tfvars` để thay đổi:
 
 ```bash
 # API
-kubectl port-forward -n video-creator svc/api 8000:8000
+kubectl port-forward -n video-creator svc/api 9100:9100
 
 # Frontend
 kubectl port-forward -n video-creator svc/frontend 3000:80
@@ -94,7 +94,7 @@ kubectl port-forward -n video-creator svc/minio 9000:9000
 ```
 
 Sau đó truy cập:
-- **API**: http://localhost:8000/docs
+- **API**: http://localhost:9100/docs
 - **Frontend**: http://localhost:3000
 - **MinIO**: http://localhost:9000
 

@@ -308,7 +308,7 @@ for WORKER in "${WORKER_LIST[@]}"; do
 done
 
 echo -e "\n${GREEN}✔ All services started!${NC}"
-echo -e "${CYAN}API: http://localhost:8000${NC}"
+echo -e "${CYAN}API: http://localhost:9100${NC}"
 echo -e "${CYAN}MinIO: http://localhost:9001${NC}"
 echo -e "\nPress Ctrl+C to stop all services"
 wait
@@ -369,7 +369,7 @@ services:
       dockerfile: admin-api/Dockerfile
     container_name: video_api
     ports:
-      - "8000:8000"
+      - "9100:9100"
     environment:
       - DATABASE_URL=postgresql://admin:password123@db:5432/video_creator
       - REDIS_URL=redis://redis:6379/0

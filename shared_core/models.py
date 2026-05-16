@@ -204,6 +204,7 @@ class AgentLog(Base):
     session = relationship("AgentSession", back_populates="logs")
 
 
+
 class WorkerConfig(Base):
     """
     Configuration for selective worker enablement and scaling.
@@ -221,3 +222,16 @@ class WorkerConfig(Base):
     last_modified_by = Column(String, nullable=True)  # User ID who last changed this
     created_at = Column(DateTime(timezone=True), server_default=func.now())
     updated_at = Column(DateTime(timezone=True), onupdate=func.now())
+
+
+class SystemSetting(Base):
+    """
+    Generic key-value store for system-level configurations.
+    Example key: 'model_settings', value: {"base_url": "...", "model_name": "..."}
+    """
+    __tablename__ = "system_settings"
+    
+    key = Column(String, primary_key=True)
+    value = Column(FlexibleJSON, nullable=True)
+    updated_at = Column(DateTime(timezone=True), server_default=func.now(), onupdate=func.now())
+    updated_by = Column(String, nullable=True)

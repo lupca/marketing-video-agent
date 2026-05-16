@@ -11,7 +11,7 @@ Hệ thống quản lý Video Platform được cung cấp một Admin API xây 
 
 ## 2. API Endpoints Chính
 
-Swagger UI Documents trực quan: `http://localhost:8000/docs` 
+Swagger UI Documents trực quan: `http://localhost:9100/docs` 
 
 ### 🟢 Router `Auth` (`/api/auth`)
 - `POST /api/auth/register`: Đăng ký tài khoản hệ thống (yêu cầu Password độ dài tối thiểu 6 ký tự).

@@ -3,7 +3,7 @@ import requests
 import json
 import sys
 
-API_URL = "http://localhost:8000"
+API_URL = "http://localhost:9100"
 
 def test_full_flow():
     # 1. Check API health

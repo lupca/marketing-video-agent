@@ -65,3 +65,58 @@ def create_template(
     db.commit()
     db.refresh(db_template)
     return db_template
+
+
+@router.get("/system/model-settings", response_model=schemas.ModelSettingsResponse)
+def get_model_settings(
+    db: Session = Depends(database.get_db),
+    current_user: models.User = Depends(auth_module.get_current_user),
+):
+    """Lấy cấu hình model LLM hiện tại (Ollama/OpenAI compatible)."""
+    from shared_core.config import get_settings
+    settings = get_settings()
+    
+    # Ưu tiên: Database > Environment Variables > Default hardcoded
+    db_setting = db.query(models.SystemSetting).filter(models.SystemSetting.key == "model_settings").first()
+    
+    if db_setting and db_setting.value:
+        return {
+            "base_url": db_setting.value.get("base_url", settings.ollama.base_url),
+            "model_name": db_setting.value.get("model_name", settings.ollama.model_name),
+            "source": "database"
+        }
+    
+    return {
+        "base_url": settings.ollama.base_url,
+        "model_name": settings.ollama.model_name,
+        "source": "environment"
+    }
+
+
+@router.put("/system/model-settings", response_model=schemas.ModelSettingsResponse)
+def update_model_settings(
+    update: schemas.ModelSettingsUpdate,
+    db: Session = Depends(database.get_db),
+    current_user: models.User = Depends(auth_module.get_current_user),
+):
+    """Cập nhật cấu hình model LLM toàn hệ thống."""
+    db_setting = db.query(models.SystemSetting).filter(models.SystemSetting.key == "model_settings").first()
+    
+    if not db_setting:
+        db_setting = models.SystemSetting(key="model_settings")
+        db.add(db_setting)
+    
+    db_setting.value = {
+        "base_url": update.base_url,
+        "model_name": update.model_name
+    }
+    db_setting.updated_by = current_user.id
+    
+    db.commit()
+    db.refresh(db_setting)
+    
+    return {
+        "base_url": db_setting.value["base_url"],
+        "model_name": db_setting.value["model_name"],
+        "source": "database"
+    }

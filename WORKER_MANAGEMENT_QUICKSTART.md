@@ -168,21 +168,21 @@ python init_worker_configs.py
 
 ```bash
 # Get login token
-TOKEN=$(curl -s -X POST http://localhost:8000/api/auth/login \
+TOKEN=$(curl -s -X POST http://localhost:9100/api/auth/login \
   -H "Content-Type: application/json" \
   -d '{"email":"a@a.com","password":"123456"}' \
   | jq -r '.access_token')
 
 # Check all worker configs
-curl http://localhost:8000/api/worker-config \
+curl http://localhost:9100/api/worker-config \
   -H "Authorization: Bearer $TOKEN" | jq
 
 # Enable review worker
-curl -X POST http://localhost:8000/api/worker-config/review/enable \
+curl -X POST http://localhost:9100/api/worker-config/review/enable \
   -H "Authorization: Bearer $TOKEN"
 
 # Batch update
-curl -X POST http://localhost:8000/api/worker-config/batch/update \
+curl -X POST http://localhost:9100/api/worker-config/batch/update \
   -H "Authorization: Bearer $TOKEN" \
   -H "Content-Type: application/json" \
   -d '{

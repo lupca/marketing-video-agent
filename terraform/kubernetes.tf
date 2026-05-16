@@ -349,7 +349,7 @@ resource "kubernetes_deployment" "api" {
           image_pull_policy = "Never"
 
           port {
-            container_port = 8000
+            container_port = 9100
           }
 
           env_from {
@@ -378,7 +378,7 @@ resource "kubernetes_deployment" "api" {
           liveness_probe {
             http_get {
               path = "/docs"
-              port = 8000
+              port = 9100
             }
             initial_delay_seconds = 30
             period_seconds        = 10
@@ -387,7 +387,7 @@ resource "kubernetes_deployment" "api" {
           readiness_probe {
             http_get {
               path = "/docs"
-              port = 8000
+              port = 9100
             }
             initial_delay_seconds = 5
             period_seconds        = 5
@@ -411,8 +411,8 @@ resource "kubernetes_service" "api" {
     }
 
     port {
-      port        = 8000
-      target_port = 8000
+      port        = 9100
+      target_port = 9100
     }
 
     type = "LoadBalancer"
