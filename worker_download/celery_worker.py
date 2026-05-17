@@ -18,6 +18,7 @@ from shared_core.worker_base import create_celery_app
 from shared_core.database import SessionLocal
 from shared_core.models import DownloadJob, DownloadJobLog, Asset
 from shared_core.minio_utils import ensure_bucket_exists, upload_file_to_minio
+from shared_core.gpu_utils import ensure_h264_mp4
 
 logger = logging.getLogger(__name__)
 
@@ -133,6 +134,12 @@ def process_download(self, job_id: int, config_data: Dict[str, Any]):
         _insert_log(db, job_id, "Running yt-dlp...")
         _update_job(db, job, progress_percent=10)
         downloaded_path = _run_ytdlp(url, work_dir, format_type, custom_filename)
+        
+        # Normalize video to H.264 MP4 if format is video
+        if format_type == "video":
+            _insert_log(db, job_id, "Checking video codec & normalizing to H.264 MP4 if needed...")
+            downloaded_path = ensure_h264_mp4(downloaded_path)
+            
         file_name = os.path.basename(downloaded_path)
         file_size = os.path.getsize(downloaded_path)
         _insert_log(db, job_id, f"Downloaded: {file_name} ({file_size} bytes)")
