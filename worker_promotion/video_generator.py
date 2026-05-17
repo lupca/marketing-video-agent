@@ -8,6 +8,12 @@
 """
 
 import os, sys, glob, subprocess, tempfile, shutil, math, random
+
+try:
+    from shared_core.gpu_utils import get_ffmpeg_encoder_args
+except ImportError:
+    def get_ffmpeg_encoder_args(crf: int = 20, preset: str = "veryfast") -> list[str]:
+        return ["-c:v", "libx264", "-preset", preset, "-crf", str(crf)]
 from PIL import Image, ImageFilter, ImageEnhance, ImageDraw
 import numpy as np
 
@@ -556,10 +562,11 @@ def generate_video(image_paths, output_path, config=None):
 
     print(f"⚙️  Rendering & Encoding directly to {raw_path}...")
 
+    enc_args = get_ffmpeg_encoder_args(crf=18, preset="medium")
     ffmpeg_cmd = [
         "ffmpeg", "-y", "-f", "rawvideo", "-vcodec", "rawvideo",
         "-s", f"{W}x{H}", "-pix_fmt", "rgb24", "-r", str(FPS),
-        "-i", "-", "-c:v", "libx264", "-preset", "medium", "-crf", "18",
+        "-i", "-", *enc_args,
         "-pix_fmt", "yuv420p", "-movflags", "+faststart", raw_path
     ]
     

@@ -13,6 +13,14 @@ import subprocess
 from pathlib import Path
 from typing import Iterable, List, Optional, Sequence, Union
 
+try:
+    from shared_core.gpu_utils import detect_ffmpeg_hw_encoder, get_ffmpeg_encoder_args
+except ImportError:
+    def detect_ffmpeg_hw_encoder() -> str:
+        return "libx264"
+    def get_ffmpeg_encoder_args(crf: int = 20, preset: str = "veryfast") -> list[str]:
+        return ["-c:v", "libx264", "-preset", preset, "-crf", str(crf)]
+
 import cv2
 import numpy as np
 
@@ -264,14 +272,15 @@ class VideoViralEngine:
             f":d=1:s={self.target_width}x{self.target_height}"
             f":fps={self.fps}"
         )
+        enc_args = get_ffmpeg_encoder_args(crf=self.crf, preset=self.preset)
         self._run([
             self.ffmpeg_bin, "-y",
             "-ss", f"{scene.start:.3f}", "-t", f"{scene.duration:.3f}",
             "-i", str(scene.source),
             "-map", "0:v:0",
             "-vf", vf,
-            "-c:v", "libx264", "-preset", self.preset,
-            "-crf", str(self.crf), "-pix_fmt", "yuv420p",
+            *enc_args,
+            "-pix_fmt", "yuv420p",
             "-an", "-threads", "0", str(out),
         ])
 
@@ -367,11 +376,12 @@ class VideoViralEngine:
                 writer.write(f)
         finally:
             writer.release()
+        enc_args = get_ffmpeg_encoder_args(crf=self.crf, preset=self.preset)
         self._run([
             self.ffmpeg_bin, "-y",
             "-i", str(tmp_raw),
-            "-c:v", "libx264", "-preset", self.preset,
-            "-crf", str(self.crf), "-pix_fmt", "yuv420p",
+            *enc_args,
+            "-pix_fmt", "yuv420p",
             "-r", str(self.fps),
             "-movflags", "+faststart",
             "-an",
@@ -401,13 +411,14 @@ class VideoViralEngine:
                 offset = offset + durations[i] - xfade_duration
             prev_label = out_label
         filter_complex = ";".join(filter_parts)
+        enc_args = get_ffmpeg_encoder_args(crf=self.crf, preset=self.preset)
         self._run([
             self.ffmpeg_bin, "-y",
             *inputs,
             "-filter_complex", filter_complex,
             "-map", "[vout]",
-            "-c:v", "libx264", "-preset", self.preset,
-            "-crf", str(self.crf), "-pix_fmt", "yuv420p",
+            *enc_args,
+            "-pix_fmt", "yuv420p",
             "-r", str(self.fps),
             "-movflags", "+faststart",
             "-an",

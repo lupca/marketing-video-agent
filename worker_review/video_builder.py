@@ -17,6 +17,12 @@ import logging
 from pathlib import Path
 from typing import Any, Dict, List, Tuple
 
+try:
+    from shared_core.gpu_utils import detect_ffmpeg_hw_encoder
+except ImportError:
+    def detect_ffmpeg_hw_encoder() -> str:
+        return "libx264"
+
 from subtitle_burner import SubtitleBurner
 from video_pipeline import make_logo_overlay
 from caption_maker import CaptionMaker
@@ -190,15 +196,20 @@ class VideoBuilder:
         # ── Render ───────────────────────────────────────────────────────
         raw_path = out_path.parent / f"{project_id}_raw.mp4"
         logger.info(f"\nRendering → {raw_path}")
-        final.write_videofile(
-            str(raw_path),
-            fps=30,
-            codec="libx264",
-            audio_codec="aac",
-            preset="ultrafast",
-            threads=4,
-            logger="bar",
-        )
+        hw_codec = detect_ffmpeg_hw_encoder()
+        write_kwargs = {
+            "fps": 30,
+            "codec": hw_codec,
+            "audio_codec": "aac",
+            "threads": 4,
+            "logger": "bar",
+        }
+        if hw_codec == "h264_nvenc":
+            write_kwargs["ffmpeg_params"] = ["-preset", "p4", "-rc", "vbr", "-cq", "23"]
+        else:
+            write_kwargs["preset"] = "ultrafast"
+            
+        final.write_videofile(str(raw_path), **write_kwargs)
 
         self._cleanup()
 
@@ -235,7 +246,7 @@ class VideoBuilder:
                     logger.info("\nGenerating Hormozi captions (WhisperX alignment) …")
                     maker = CaptionMaker(
                         language=audio_cfg.get("voiceover_lang", "vi"),
-                        device=audio_cfg.get("whisper_device", "cpu"),
+                        device=audio_cfg.get("whisper_device", "auto"),
                     )
                     maker.generate_ass(vo_abs, script_abs, cap_ass)
                     logger.info("Burning captions onto final video …")

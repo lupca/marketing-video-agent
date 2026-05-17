@@ -35,6 +35,12 @@ import sys
 from pathlib import Path
 from typing import Dict, List, Optional
 
+try:
+    from shared_core.gpu_utils import get_ffmpeg_encoder_args
+except ImportError:
+    def get_ffmpeg_encoder_args(crf: int = 20, preset: str = "veryfast") -> list[str]:
+        return ["-c:v", "libx264", "-preset", preset, "-crf", str(crf)]
+
 import numpy as np
 from PIL import Image, ImageDraw, ImageFont
 
@@ -460,13 +466,12 @@ class SubtitleBurner:
         if os.name == "nt":
             filter_path = filter_path.replace(":", "\\:")
 
+        enc_args = get_ffmpeg_encoder_args(crf=23, preset="fast")
         cmd = [
             "ffmpeg", "-y",
             "-i", input_mp4,
             "-vf", f"ass={filter_path}",
-            "-c:v", "libx264",
-            "-preset", "fast",
-            "-crf", "23",
+            *enc_args,
             "-c:a", "copy",
             output_mp4,
         ]

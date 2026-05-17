@@ -48,15 +48,17 @@ MAX_PRODUCTS = 10
 def detect_encoder(max_workers: int = 1) -> Tuple[str, int]:
     """Return (codec_name, ffmpeg_threads) based on platform capabilities.
 
-    On macOS with VideoToolbox the hardware encoder offloads CPU so we can
-    run more concurrent renders.  Falls back to libx264 with thread count
-    scaled to leave room for *max_workers* processes.
+    On platforms with GPU-accelerated encoders (like NVENC on NVIDIA or
+    VideoToolbox on macOS) the hardware encoder offloads CPU so we can
+    run more concurrent renders. Falls back to libx264.
     """
     try:
         result = subprocess.run(
             ["ffmpeg", "-hide_banner", "-encoders"],
             capture_output=True, text=True, timeout=5,
         )
+        if "h264_nvenc" in result.stdout:
+            return "h264_nvenc", 0  # 0 = auto
         if "h264_videotoolbox" in result.stdout:
             return "h264_videotoolbox", 0  # 0 = auto
     except (FileNotFoundError, subprocess.TimeoutExpired):
@@ -69,7 +71,7 @@ def detect_encoder(max_workers: int = 1) -> Tuple[str, int]:
 def default_max_workers() -> int:
     """Sensible default concurrent workers for this machine."""
     codec, _ = detect_encoder(1)
-    if codec == "h264_videotoolbox":
+    if codec in ("h264_videotoolbox", "h264_nvenc"):
         return 3
     return 2
 
@@ -136,8 +138,15 @@ class RenderContext:
     logo_file: Path
     arrow_file: Path
     output_file: Path
-    codec: str = "libx264"
-    ffmpeg_threads: int = 4
+    codec: str = None
+    ffmpeg_threads: int = None
+
+    def __post_init__(self) -> None:
+        detected_codec, detected_threads = detect_encoder()
+        if self.codec is None:
+            self.codec = detected_codec
+        if self.ffmpeg_threads is None:
+            self.ffmpeg_threads = detected_threads
 
     # --- factories -----------------------------------------------------------
 

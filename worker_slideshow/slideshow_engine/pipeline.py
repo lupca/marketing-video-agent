@@ -195,13 +195,15 @@ def _build_single_variant(
     final_video = final_video.with_audio(mixed_audio)
 
     _progress(80, "encoding")
-    final_video.write_videofile(
-        output_file,
-        fps=FPS,
-        codec=codec,
-        audio_codec="aac",
-        threads=ffmpeg_threads,
-    )
+    write_kwargs = {
+        "fps": FPS,
+        "codec": codec,
+        "audio_codec": "aac",
+        "threads": ffmpeg_threads,
+    }
+    if codec == "h264_nvenc":
+        write_kwargs["ffmpeg_params"] = ["-preset", "p4", "-rc", "vbr", "-cq", "20"]
+    final_video.write_videofile(output_file, **write_kwargs)
 
     _progress(100, "done")
     return output_file

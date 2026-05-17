@@ -36,6 +36,16 @@ import sys
 from pathlib import Path
 from typing import Dict, List, Optional
 
+try:
+    from shared_core.gpu_utils import get_ffmpeg_encoder_args, detect_torch_device
+except ImportError:
+    # CLI mode fallback or fallback to CPU
+    def get_ffmpeg_encoder_args(crf: int = 20, preset: str = "veryfast") -> list[str]:
+        return ["-c:v", "libx264", "-preset", preset, "-crf", str(crf)]
+    
+    def detect_torch_device() -> str:
+        return "cpu"
+
 logging.basicConfig(
     level=logging.INFO,
     format="%(asctime)s [%(levelname)s] %(message)s",
@@ -164,12 +174,15 @@ class CaptionMaker:
         highlight_words: Optional[List[str]] = None,
         max_words_per_chunk: int = 3,
         language: str = "vi",
-        device: str = "cpu",
+        device: str = "auto",
     ) -> None:
         self.highlight_words = highlight_words if highlight_words is not None else DEFAULT_HIGHLIGHT_WORDS
         self.max_words = max_words_per_chunk
         self.language  = language
-        self.device    = device
+        if device == "auto":
+            self.device = detect_torch_device()
+        else:
+            self.device = device
 
     # ── Step 1: WhisperX forced alignment ─────────────────────────────────────
 
@@ -471,13 +484,12 @@ class CaptionMaker:
         else:
             filter_path = abs_ass
 
+        enc_args = get_ffmpeg_encoder_args(crf=23, preset="fast")
         cmd = [
             "ffmpeg", "-y",
             "-i", video_in,
             "-vf", f"ass={filter_path}",
-            "-c:v", "libx264",
-            "-preset", "fast",
-            "-crf", "23",
+            *enc_args,
             "-c:a", "copy",
             video_out,
         ]
@@ -505,7 +517,7 @@ def make_caption_ass(
     ass_path: str,
     highlight_words: Optional[List[str]] = None,
     language: str = "vi",
-    device: str = "cpu",
+    device: str = "auto",
 ) -> str:
     """Align + chunk + write ASS.  Returns ass_path."""
     maker = CaptionMaker(
@@ -535,7 +547,7 @@ def _parse_args() -> argparse.Namespace:
     p.add_argument("--output",   default=None,   help="Output MP4 path (requires --video)")
     p.add_argument("--ass",      default=None,   help="Output .ass path  (default: next to audio)")
     p.add_argument("--lang",     default="vi",   help="Language code (default: vi)")
-    p.add_argument("--device",   default="cpu",  help="Torch device: cpu | cuda | mps")
+    p.add_argument("--device",   default="auto",  help="Torch device: auto | cpu | cuda | mps")
     p.add_argument(
         "--keywords", nargs="*", default=None,
         help="Custom highlight keywords (space-separated, e.g. ASTROX SMASH)"

@@ -107,7 +107,6 @@ _supported_types = []  # Optionally set by specific workers
 def _heartbeat_loop():
     while not _stop_heartbeat.is_set():
         try:
-        try:
             # Check if this worker has been disabled — if so, shut down gracefully
             if _worker_type:
                 try:

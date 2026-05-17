@@ -324,6 +324,8 @@ class Renderer:
                 [self._ffmpeg, "-hide_banner", "-encoders"],
                 capture_output=True, text=True,
             )
+            if "h264_nvenc" in proc.stdout:
+                return "h264_nvenc"
             if "h264_videotoolbox" in proc.stdout:
                 return "h264_videotoolbox"
         except Exception:
@@ -568,13 +570,25 @@ class Renderer:
                 overlays.append(final_clip)
 
             comp = CompositeVideoClip([base, *overlays], size=base.size).set_duration(base.duration)
-            comp.write_videofile(
-                str(out), fps=self.fps, codec="libx264",
-                audio_codec="aac", preset="veryfast",
-                ffmpeg_params=["-crf", str(self.crf), "-movflags", "+faststart"],
-                threads=max(1, (os.cpu_count() or 4) // 2),
-                verbose=False, logger=None,
-            )
+            write_kwargs = {
+                "fps": self.fps,
+                "codec": self._hw_encoder,
+                "audio_codec": "aac",
+                "threads": max(1, (os.cpu_count() or 4) // 2),
+                "verbose": False,
+                "logger": None,
+            }
+            if self._hw_encoder == "h264_nvenc":
+                write_kwargs["ffmpeg_params"] = [
+                    "-preset", "p4", "-rc", "vbr", "-cq", str(self.crf), "-movflags", "+faststart"
+                ]
+            elif self._hw_encoder == "h264_videotoolbox":
+                write_kwargs["ffmpeg_params"] = ["-movflags", "+faststart"]
+            else:
+                write_kwargs["preset"] = "veryfast"
+                write_kwargs["ffmpeg_params"] = ["-crf", str(self.crf), "-movflags", "+faststart"]
+                
+            comp.write_videofile(str(out), **write_kwargs)
         finally:
             for c in overlays:
                 try:
@@ -614,6 +628,14 @@ class Renderer:
         return 1.0 + t_rev * t_rev * ((s + 1) * t_rev + s)
 
     def _get_encoder_args(self) -> List[str]:
+        if self._hw_encoder == "h264_nvenc":
+            return [
+                "-c:v", "h264_nvenc",
+                "-preset", "p4",
+                "-rc", "vbr",
+                "-cq", str(self.crf),
+                "-profile:v", "high",
+            ]
         if self._hw_encoder == "h264_videotoolbox":
             return [
                 "-c:v", "h264_videotoolbox",

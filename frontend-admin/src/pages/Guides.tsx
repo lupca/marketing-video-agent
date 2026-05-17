@@ -165,157 +165,207 @@ Lưu ý: Pacing đoạn quan trọng cao trào hãy rát cực ngắn (0.4-0.9),
 // We need an icon for Bot (missing from imports). I'll use FileText or replace it. I'll import Bot at the top actually in the final code.
 // Replacing Bot with Zap above.
 
-const ContentUnboxWorker = () => (
-  <div className="space-y-6 text-gray-300 leading-relaxed font-light">
-    <div className="rounded-xl border border-cyan-500/30 bg-cyan-500/10 p-6 shadow-sm shadow-cyan-900/20">
-      <h1 className="flex items-center gap-3 text-3xl font-bold bg-gradient-to-r from-cyan-400 to-emerald-400 bg-clip-text text-transparent mb-4">
-        <Zap className="w-8 h-8 text-cyan-400" />
-        Hướng Dẫn: Plugin Video Unbox
-      </h1>
-      <p className="text-lg text-white/80">
-        Công cụ <strong className="font-semibold text-white">Worker Unbox</strong> là giải pháp tối ưu cho dạng Video Viral không lời, tập trung vào hình ảnh và âm nhạc. Với cơ chế <strong className="text-cyan-400">Beat-drop Sync</strong>, nó có thể tạo ra nhiều loại nội dung triệu view chứ không chỉ dừng lại ở việc mở hộp sản phẩm.
-      </p>
-    </div>
+const ContentUnboxWorker = () => {
+  const [unboxType, setUnboxType] = useState<'compare' | 'basic' | 'viral'>('compare');
 
-    <div className="pl-2">
-      <SectionHeading icon={Target}>1. Các loại Video Viral phù hợp nhất</SectionHeading>
-      <div className="grid grid-cols-1 md:grid-cols-2 gap-4 mb-8">
-        {[
-          { title: "📦 Product Unboxing", desc: "Mở hộp, bóc seal, khám phá phụ kiện với âm nhạc percussive (như EDM, Phonk)." },
-          { title: "✨ Lifestyle Showcase", desc: "Quay sản phẩm/trang phục ở nhiều góc độ nghệ thuật trong bối cảnh thực tế (Cinematic B-roll)." },
-          { title: "🔄 Transformation / BTS", desc: "Video Before/After, quá trình hoàn thiện sản phẩm hoặc dọn dẹp setup cực nhanh." },
-          { title: "🏖️ Recap & Highlights", desc: "Tóm tắt chuyến đi, sự kiện hoặc các khoảnh khắc ấn tượng bám nhịp theo bài hát sôi động." },
-          { title: "🛠️ Workflow / ASMR", desc: "Các bước thực hiện một quy trình (nấu ăn, DIY) với các cú máy cận cảnh sắc nét." },
-          { title: "🔥 Action / Sports", desc: "Những pha Highlight thể thao, tập luyện phối hợp với hiệu ứng Zoom mạnh trên từng nhịp drop." },
-        ].map((item, idx) => (
-          <div key={idx} className="p-4 rounded-xl bg-white/5 border border-white/10 flex flex-col gap-1">
-            <h4 className="font-bold text-white text-base">{item.title}</h4>
-            <p className="text-xs text-muted-foreground">{item.desc}</p>
-          </div>
-        ))}
-      </div>
-      <SectionHeading icon={Settings}>2. Cơ chế Hoạt Động Kỹ Thuật</SectionHeading>
-      <p className="mb-4">
-        Đây là một Engine render sử dụng <strong className="text-white">FFmpeg</strong> xử lý luồng Video kết hợp thư viện <code className="text-cyan-400 bg-cyan-400/10 px-1.5 py-0.5 rounded">librosa</code> xử lý Audio.
-      </p>
-
-      <ul className="space-y-4 mb-8">
-        {[
-          { title: "Phát hiện Beat (Beat-drop detect)", desc: "librosa phân tích File âm thanh MP3 đầu vào để tạo danh sách mốc thời gian beat-drop mạnh." },
-          { title: "Cắt mượt & Loại bỏ Silence", desc: "Tìm ngưỡng im lặng silence_db trong các File Clip thô .mov, auto cắt bỏ đoạn chết (Trim đầu/cuối), và chuẩn hóa khung hình dọc 1080x1920@30fps." },
-          { title: "Lên Kế Hoạch Scene (Scene Planning)", desc: "Cắt scene (cảnh) bám theo Beat hoặc Random planning trong khoảng Min/Max [scene_min_seconds, scene_max_seconds]." },
-          { title: "Nối Scene bằng Hiệu Ứng", desc: "xfade để thay đổi qua lại giữa cảnh. Hỗ trợ luân phiên hiệu ứng như fade, slideleft liên tục. Hiệu ứng Ken Burns (Zoom trượt êm ái x/y) chạy mặc định tạo nhịp độ sống động." },
-          { title: "Overlay Text (Chữ Tốc Độ)", desc: "Render nội dung chữ (Hook, Lợi ích Feature) bằng FFmpeg drawtext đè nháy ngay điểm quan trọng." },
-        ].map((item, idx) => (
-          <li key={idx} className="flex gap-4 p-4 rounded-xl bg-white/5 border border-white/10 hover:bg-white/10 transition-colors">
-            <div className="flex items-center justify-center w-8 h-8 rounded-full bg-cyan-500/20 text-cyan-400 font-bold flex-shrink-0">
-              {idx + 1}
-            </div>
-            <div>
-              <h4 className="font-semibold text-white mb-1">{item.title}</h4>
-              <p className="text-sm text-gray-400">{item.desc}</p>
-            </div>
-          </li>
-        ))}
-      </ul>
-
-      <div className="my-8 h-px bg-white/10" />
-
-      <SectionHeading icon={Target}>3. Dữ liệu Input & Config</SectionHeading>
-      <p>
-        Dữ liệu do API truyền xuống là mảng <code className="text-cyan-400 bg-cyan-400/10 px-1.5 py-0.5 rounded">config_data</code>:
-      </p>
-      <CodeBlock 
-        language="json" 
-        title="Unbox Config Data"
-        code={`{
-  "clips": [
-    "s3://videos/assets/unbox/clip1.mov",
-    "s3://videos/assets/unbox/clip2.mov"
-  ],
-  "audio": "s3://videos/assets/audio/the_mountain-tiktok.mp3",
-  "text_events": [
-    {"time": 0.0, "text": "VỢT CẦU LÔNG SIÊU ĐỈNH", "effect": "hook"},
-    {"time": 3.2, "text": "Cuốn cán chính hãng", "effect": "feature"}
-  ]
-}`} 
-      />
-
-      <SectionHeading icon={CodeIcon}>4. Tinh Chỉnh Nâng Cao (Dành cho Developer)</SectionHeading>
-      <div className="rounded-xl border-l-4 border-red-500 bg-red-500/10 p-5 mt-4 text-sm">
-        <p className="font-bold text-red-400 mb-3 uppercase tracking-wider text-xs">Phần cấu hình hệ thống Core</p>
-        <p className="mb-4">Khi điều chỉnh Source hệ thống trong <code className="bg-black/30 px-1.5 py-0.5 rounded font-mono text-red-300">make_viral.py</code>:</p>
-        <ul className="space-y-3 list-disc pl-5 marker:text-red-500/50">
-          <li>
-            <strong className="text-white">Tăng tốc độ luân chuyển Scene:</strong> Giảm <code className="text-red-300 bg-black/20 px-1">xfade_duration</code> (Mặc định 0.5s) xuống <code className="text-red-300 bg-black/20 px-1">0.2s - 0.4s</code> tạo nét cắt gắt. Hoặc giảm biến thời gian <code className="text-red-300 bg-black/20 px-1">scene_max_seconds</code>.
-          </li>
-          <li>
-            <strong className="text-white">Thay Tốc Độ Zoom (Ken Burns):</strong> Bên trong hàm <code className="text-red-300 bg-black/20 px-1">_render_scene()</code>, thay đổi hệ số trượt <code className="text-red-300 bg-black/20 px-1">z='min(zoom+0.0015,1.15)'</code>. Phóng to <code className="text-red-300 bg-black/20 px-1">0.0018</code> dồn dập, <code className="text-red-300 bg-black/20 px-1">0.0012</code> êm trôi.
-          </li>
-          <li>
-            <strong className="text-white">Render Output Bị Lỗi (Giật Lag):</strong> Có thể do Drop Rate khung hình ảo khi FFmpeg scale. Giữ nguyên force Output Filter: <code className="text-red-300 bg-black/20 px-1">s=1080x1920:fps=30</code> trước khi qua Zoompan.
-          </li>
-          <li>
-            <strong className="text-white">Thiếu FFmpeg Drawtext Backend:</strong> Module tự bắt <code className="text-red-300 bg-black/20 px-1">OverlayError</code> để đổi qua Fallback chạy MoviePy/Pillow Render Text dán đè thay nếu OS Developer không build bản có Drawtext.
-          </li>
-        </ul>
-      </div>
-
-      <div className="my-8 h-px bg-white/10" />
-
-      <SectionHeading icon={Bot}>5. Universal AI Prompt (Dành cho Content Marketing)</SectionHeading>
-      <div className="rounded-xl border border-cyan-500/20 bg-cyan-500/5 p-4 mb-4 flex gap-3">
-        <Info className="w-6 h-6 text-cyan-500 flex-shrink-0" />
-        <p className="text-sm text-cyan-200/80">
-          Hãy copy prompt dưới đây và dán vào ChatGPT / Claude. Bạn chỉ cần thay đổi <strong>MỤC TIÊU</strong> (Unboxing, Lookbook, Travel, ...) để AI tạo ra kịch bản quay và text overlay phù hợp nhất:
+  return (
+    <div className="space-y-6 text-gray-300 leading-relaxed font-light">
+      <div className="rounded-xl border border-cyan-500/30 bg-cyan-500/10 p-6 shadow-sm shadow-cyan-900/20">
+        <h1 className="flex items-center gap-3 text-3xl font-bold bg-gradient-to-r from-cyan-400 to-emerald-400 bg-clip-text text-transparent mb-4">
+          <Zap className="w-8 h-8 text-cyan-400" />
+          Hướng Dẫn: Plugin Video Unbox
+        </h1>
+        <p className="text-lg text-white/80">
+          Công cụ <strong className="font-semibold text-white">Worker Unbox</strong> cung cấp 2 chế độ tạo Video Viral không lời cực mạnh bám theo nhạc percussive sôi động (EDM, Phonk). Hãy chọn chế độ phù hợp với nguyên liệu video của bạn:
         </p>
-      </div>
-
-      <CodeBlock 
-        language="text" 
-        title="Universal Scripting Prompt"
-        code={`Bạn là chuyên gia sáng tạo nội dung Video Viral (TikTok/Reels/Shorts). Bạn giỏi trong việc lên ý tưởng hình ảnh bám theo nhịp điệu âm nhạc (Beat-sync).
-
-Nhiệm vụ: Lên kịch bản quay B-roll và nội dung Text Overlay cho Video.
-- LOẠI VIDEO: [ĐIỀN VÀO: Unboxing / Showcase / Transformation / Travel Recap / Workout / ASMR]
-- CHỦ ĐỀ SẢN PHẨM: [ĐIỀN VÀO, VÍ DỤ: "Bàn phím cơ Custom"]
-
-Hệ thống render tự động của tôi sẽ cắt đoạn thô và chèn chữ theo 2 kiểu:
-1. "hook": Hiện to, nổi bật ngay giây đầu tiên (giây 0.0).
-2. "feature": Chữ hiện ở góc dưới trái, trượt vào màn hình (slide-in), thường dùng để giới thiệu điểm mạnh hoặc lợi ích.
-
-Hãy đưa ra kịch bản theo yêu cầu sau:
-
-### PHẦN 1: Ý TƯỞNG QUAY PHIM (Dành cho Producer)
-Tư vấn 15-20 cảnh quay cực ngắn (1.5s - 2.5s mỗi cảnh) phù hợp với LOẠI VIDEO đã chọn. Hãy tập trung vào các góc máy sáng tạo, ánh sáng tốt và hành động dứt khoát.
-(Vd: Cú máy trượt (Slide), máy xoay (Rotate), cận cảnh macro (Close-up), quay POV người dùng).
-
-### PHẦN 2: CHUỖI TEXT OVERLAY (JSON Format)
-Dựa trên mood của LOẠI VIDEO, hãy ghi ra các dòng text ngắn gọn, punchy (dưới 5 từ). Sắp xếp mốc thời gian (time) nối tiếp nhau khoảng mỗi 3-4 giây.
-In kết quả JSON đúng mẫu dưới đây (In duy nhất block JSON này, không giải thích thêm ở phần này):
-
-{
-  "text_events": [
-    {"time": 0.0, "text": "HOOK GÂY TÒ MÒ 🔥", "effect": "hook"},
-    {"time": 3.0, "text": "Key Feature 1", "effect": "feature"},
-    {"time": 6.5, "text": "Key Feature 2", "effect": "feature"},
-    {"time": 9.5, "text": "Lợi ích / Call To Action", "effect": "feature"}
-  ]
-}`} 
-      />
-
-      <div className="mt-8 rounded-xl bg-cyan-500/10 border border-cyan-500/20 p-5 items-center flex gap-4">
-        <Sparkles className="w-8 h-8 text-cyan-400 flex-shrink-0" />
-        <div>
-          <h4 className="font-semibold text-white mb-1">Mẹo đa năng</h4>
-          <p className="text-sm text-cyan-50">
-            Đừng chỉ nghĩ Link Bio là CTA duy nhất. Hãy dùng Text Feature để đặt câu hỏi tương tác (Vd: "Cmt số 1 nếu bạn thích màu này") để tăng engagement cho video!
-          </p>
+        
+        {/* Sub-tabs for Unbox Mode selector */}
+        <div className="flex flex-wrap gap-3 mt-6">
+          <button
+            onClick={() => setUnboxType('compare')}
+            className={cn(
+              "px-4 py-2 rounded-xl text-xs font-bold border transition-all duration-200",
+              unboxType === 'compare'
+                ? "bg-cyan-500/20 border-cyan-500/50 text-cyan-300 shadow-lg shadow-cyan-500/10"
+                : "bg-white/5 border-white/10 text-muted-foreground hover:bg-white/10 hover:text-white"
+            )}
+          >
+            📊 So sánh 2 chế độ
+          </button>
+          <button
+            onClick={() => setUnboxType('basic')}
+            className={cn(
+              "px-4 py-2 rounded-xl text-xs font-bold border transition-all duration-200",
+              unboxType === 'basic'
+                ? "bg-cyan-500/20 border-cyan-500/50 text-cyan-300 shadow-lg shadow-cyan-500/10"
+                : "bg-white/5 border-white/10 text-muted-foreground hover:bg-white/10 hover:text-white"
+            )}
+          >
+            📦 1. Basic Unbox (Cơ Bản)
+          </button>
+          <button
+            onClick={() => setUnboxType('viral')}
+            className={cn(
+              "px-4 py-2 rounded-xl text-xs font-bold border transition-all duration-200",
+              unboxType === 'viral'
+                ? "bg-cyan-500/20 border-cyan-500/50 text-cyan-300 shadow-lg shadow-cyan-500/10"
+                : "bg-white/5 border-white/10 text-muted-foreground hover:bg-white/10 hover:text-white"
+            )}
+          >
+            ⚡ 2. Viral Unbox (AI Nâng Cao)
+          </button>
         </div>
       </div>
+
+      {unboxType === 'compare' && (
+        <div className="space-y-6 animate-in fade-in duration-300">
+          <SectionHeading icon={Target}>So sánh Basic Unbox vs Viral Unbox</SectionHeading>
+          
+          <div className="overflow-x-auto rounded-xl border border-white/10 bg-[#0f1117]">
+            <table className="min-w-full divide-y divide-white/5 text-left text-sm text-gray-300">
+              <thead className="bg-white/5 text-xs uppercase tracking-wider text-white">
+                <tr>
+                  <th className="px-6 py-4 font-semibold">Tính năng</th>
+                  <th className="px-6 py-4 font-semibold text-cyan-400">📦 Basic Unbox (Cơ Bản)</th>
+                  <th className="px-6 py-4 font-semibold text-emerald-400">⚡ Viral Unbox (AI Nâng Cao)</th>
+                </tr>
+              </thead>
+              <tbody className="divide-y divide-white/5">
+                <tr>
+                  <td className="px-6 py-4 font-medium text-white">Nguyên liệu đầu vào (Input)</td>
+                  <td className="px-6 py-4">Nhiều clip ngắn đã được quay hoặc cắt thô sẵn.</td>
+                  <td className="px-6 py-4"><strong className="text-white">1 Clip dài duy nhất</strong> (1.5 - 3 phút) chứa trọn vẹn quá trình unbox có âm thanh ASMR tự nhiên.</td>
+                </tr>
+                <tr>
+                  <td className="px-6 py-4 font-medium text-white">Cắt ghép (Scene Cutting)</td>
+                  <td className="px-6 py-4">Nối các clip ngắn lại với nhau. Chuyển cảnh trúng chính xác vào nhịp beat nhạc (Beat-sync).</td>
+                  <td className="px-6 py-4">Tự động phân tích chuyển động trong clip để cắt bỏ phần tĩnh (boring frame) và giữ lại phân cảnh hành động hấp dẫn.</td>
+                </tr>
+                <tr>
+                  <td className="px-6 py-4 font-medium text-white">Tăng giảm tốc độ (Speed Ramp)</td>
+                  <td className="px-6 py-4">Tốc độ bình thường (1x).</td>
+                  <td className="px-6 py-4"><strong className="text-white">Optical-Flow Speed Ramping:</strong> Tự động tua nhanh lúc chuẩn bị/không có hành động, và làm chậm (Slow-motion) mượt mà vào lúc mở hộp, bóc seal.</td>
+                </tr>
+                <tr>
+                  <td className="px-6 py-4 font-medium text-white">Căn giữa khung dọc (Crop 9:16)</td>
+                  <td className="px-6 py-4">Center-crop tĩnh (cắt chính giữa khung hình).</td>
+                  <td className="px-6 py-4"><strong className="text-white">YOLO Smart Crop:</strong> Nhận diện sản phẩm, tay người và hộp quà để dịch chuyển camera theo vùng chuyển động, luôn giữ vật thể ở trung tâm khung dọc.</td>
+                </tr>
+                <tr>
+                  <td className="px-6 py-4 font-medium text-white">Xử lý âm thanh (Audio Mix)</td>
+                  <td className="px-6 py-4">Chèn nhạc nền (BGM) lồng ghép đè lên video.</td>
+                  <td className="px-6 py-4"><strong className="text-white">ASMR + Music Mix:</strong> Tách tiếng ASMR gốc (tiếng bóc seal, tiếng động vật lý) và trộn hoàn hảo bám theo beat nhạc nền.</td>
+                </tr>
+                <tr>
+                  <td className="px-6 py-4 font-medium text-white">Chèn Chữ (Text Overlays)</td>
+                  <td className="px-6 py-4">Phải tự điền chính xác <strong className="text-pink-400">Timestamp (giây)</strong> chữ xuất hiện.</td>
+                  <td className="px-6 py-4"><strong className="text-emerald-400">Auto Beat-Snapped:</strong> Không cần điền thời gian! Hệ thống tự động đẩy chữ nhảy ra trúng các nhịp Drop mạnh của nhạc.</td>
+                </tr>
+                <tr>
+                  <td className="px-6 py-4 font-medium text-white">Mục đích sử dụng tối ưu</td>
+                  <td className="px-6 py-4">Làm video tổng hợp nhanh, lookbook, các clip dựng từ nhiều nguồn khác nhau.</td>
+                  <td className="px-6 py-4">Làm video mở hộp sản phẩm cận cảnh cực kỳ nghệ thuật, sang xịn mịn, giữ chân người xem cao nhờ nhịp điệu dồn dập.</td>
+                </tr>
+              </tbody>
+            </table>
+          </div>
+          
+          <div className="rounded-xl border border-cyan-500/20 bg-cyan-500/5 p-5 flex gap-4">
+            <Sparkles className="w-8 h-8 text-cyan-400 flex-shrink-0" />
+            <div>
+              <h4 className="font-semibold text-white mb-1">Lời khuyên của chuyên gia Content</h4>
+              <p className="text-sm text-cyan-100/90">
+                Nếu bạn chỉ quay 1 cú bấm máy dài cảnh bóc hộp từ đầu tới cuối, hãy sử dụng ngay <strong className="text-cyan-300">Viral Unbox</strong>. Nếu bạn có sẵn nhiều clip khác nhau muốn ghép lại thành một video bám nhịp, hãy chọn <strong className="text-cyan-300">Basic Unbox</strong>!
+              </p>
+            </div>
+          </div>
+        </div>
+      )}
+
+      {unboxType === 'basic' && (
+        <div className="space-y-6 animate-in fade-in duration-300">
+          <div className="rounded-xl border border-cyan-500/20 bg-cyan-500/5 p-6">
+            <h2 className="text-2xl font-bold text-white mb-3">📦 Basic Unbox - Cắt Ghép Nhịp Beat Cổ Điển</h2>
+            <p className="text-gray-300">
+              Công cụ tự động cắt và chuyển đổi giữa nhiều clip ngắn của bạn khớp với các mốc Beat-drop mạnh mẽ của bài hát. Chế độ này yêu cầu bạn nhập chính xác mốc thời gian hiển thị text để video có nội dung đồng bộ nhất.
+            </p>
+          </div>
+
+          <SectionHeading icon={Settings}>Cách Sử Dụng trên UI</SectionHeading>
+          <ul className="space-y-3 list-decimal pl-5">
+            <li>Tải lên danh sách các <strong className="text-white">Clips ngắn thô</strong> (Nhiều file khác nhau).</li>
+            <li>Tải lên <strong className="text-white">Background Audio</strong> (Mặc định sẽ được phân tích beat tự động).</li>
+            <li>Thêm các dòng <strong className="text-white">Text Overlay</strong> và bắt buộc điền <strong className="text-cyan-400">Timestamp (giây)</strong> để chữ xuất hiện đúng phân đoạn.</li>
+            <li>Bấm <strong className="text-white">Send to Render Farm</strong> để hoàn thành.</li>
+          </ul>
+
+          <SectionHeading icon={Bot}>AI Prompt tạo kịch bản Basic Unbox (Có Giây)</SectionHeading>
+          <p className="text-sm text-muted-foreground">
+            Hãy copy prompt này gửi cho ChatGPT/Claude để AI tự lên danh sách text overlay kèm số giây chính xác bám theo nhịp video:
+          </p>
+          
+          <CodeBlock
+            language="text"
+            title="Prompt AI cho Basic Unbox"
+            code={`Bạn là chuyên gia kịch bản video TikTok. Hãy viết kịch bản video ngắn dạng beat-sync cho sản phẩm: [ĐIỀN TÊN SẢN PHẨM].
+Tôi sẽ cắt video bám theo nhịp beat nhạc sôi động. Tôi cần bạn tạo chuỗi Text Overlay kèm theo giây chính xác (thường mỗi 3-4 giây xuất hiện một câu ngắn gọn dưới 5 từ).
+
+Đầu ra in định dạng JSON chuẩn sau:
+{
+  "text_events": [
+    {"time": 0.0, "text": "HOOK BẮT MẮT 🔥", "effect": "hook"},
+    {"time": 3.0, "text": "Đặc điểm nổi bật 1", "effect": "feature"},
+    {"time": 6.5, "text": "Đặc điểm nổi bật 2", "effect": "feature"},
+    {"time": 9.5, "text": "Call to action mua ngay", "effect": "feature"}
+  ]
+}`}
+          />
+        </div>
+      )}
+
+      {unboxType === 'viral' && (
+        <div className="space-y-6 animate-in fade-in duration-300">
+          <div className="rounded-xl border border-emerald-500/20 bg-emerald-500/5 p-6">
+            <h2 className="text-2xl font-bold text-white mb-3">⚡ Viral Unbox - AI Smart Editor</h2>
+            <p className="text-gray-300">
+              Trải nghiệm công nghệ dựng phim tự động đỉnh cao. Hệ thống sử dụng mô hình học sâu <strong className="text-emerald-400">YOLOv8</strong> để tự động bám theo sản phẩm, tự động tua nhanh/tua chậm thông minh thông qua luồng chuyển động, và tự động trộn tiếng động ASMR thực tế vào nhạc.
+            </p>
+          </div>
+
+          <SectionHeading icon={Settings}>Cách Sử Dụng trên UI</SectionHeading>
+          <ul className="space-y-3 list-decimal pl-5">
+            <li>Tải lên <strong className="text-white">1 Video Clip dài duy nhất</strong> (Khuyên dùng video quay quá trình mở hộp từ đầu tới cuối dài từ 1 - 3 phút, có âm thanh bóc hộp rõ nét).</li>
+            <li>Tải lên <strong className="text-white">Background Audio</strong> (Bài nhạc trending bạn muốn lồng ghép).</li>
+            <li>Thêm các dòng <strong className="text-white">Text Overlay</strong>. <strong className="text-emerald-400">Cực kỳ đặc biệt:</strong> Bạn KHÔNG cần điền số giây. Chỉ cần sắp xếp thứ tự các câu text, AI sẽ tự chọn các nhịp drop hay nhất để tung chữ ra màn hình!</li>
+            <li>Bấm <strong className="text-white">Send to Render Farm</strong> để bắt đầu render GPU.</li>
+          </ul>
+
+          <SectionHeading icon={Bot}>AI Prompt tạo kịch bản Viral Unbox (Không Cần Giây)</SectionHeading>
+          <p className="text-sm text-muted-foreground">
+            Sử dụng prompt này để AI tự viết ra những câu giật tít, giới thiệu tính năng cực ngắn gọn mà không cần lo về việc tính toán số giây hiển thị:
+          </p>
+
+          <CodeBlock
+            language="text"
+            title="Prompt AI cho Viral Unbox"
+            code={`Bạn là một bậc thầy làm video TikTok triệu view. Hãy viết nội dung chữ chèn màn hình cho video Viral Unbox sản phẩm: [ĐIỀN TÊN SẢN PHẨM].
+Do hệ thống AI của tôi tự động bắt nhịp beat nhạc để chèn chữ, bạn không cần chèn giây (time). Hãy viết các câu thật ngắn gọn, punchy, đậm chất Gen Z để kích thích sự tò mò.
+
+In kết quả theo định dạng JSON sau:
+{
+  "text_events": [
+    {"text": "ĐẬP HỘP SIÊU PHẨM MỚI 📦", "effect": "hook"},
+    {"text": "Bóc seal cực đã tay", "effect": "feature"},
+    {"text": "Khung nhôm nguyên khối", "effect": "feature"},
+    {"text": "Giá cực hời trong bio!", "effect": "feature"}
+  ]
+}`}
+          />
+        </div>
+      )}
     </div>
-  </div>
-);
+  );
+};
 
 const ContentSlideshowWorker = () => (
   <div className="space-y-6 text-gray-300 leading-relaxed font-light">

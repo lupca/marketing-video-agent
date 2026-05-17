@@ -11,6 +11,14 @@ import tempfile
 from pathlib import Path
 from typing import Any, Sequence, Union
 
+try:
+    from shared_core.gpu_utils import detect_ffmpeg_hw_encoder, get_ffmpeg_encoder_args
+except ImportError:
+    def detect_ffmpeg_hw_encoder() -> str:
+        return "libx264"
+    def get_ffmpeg_encoder_args(crf: int = 20, preset: str = "veryfast") -> list[str]:
+        return ["-c:v", "libx264", "-preset", preset, "-crf", str(crf)]
+
 from moviepy.editor import CompositeVideoClip, ImageClip, VideoFileClip
 from PIL import Image, ImageDraw, ImageFont
 
@@ -195,10 +203,10 @@ def _overlay_ffmpeg(
                             slide_duration=slide_duration, y_offset=y_off)
         filters.append(f)
 
+    enc_args = get_ffmpeg_encoder_args(crf=crf, preset=preset)
     proc = subprocess.run(
         [ffmpeg_bin, "-y", "-i", str(src), "-vf", ",".join(filters),
-         "-r", str(fps), "-c:v", "libx264", "-preset", preset,
-         "-crf", str(crf), "-pix_fmt", "yuv420p", "-c:a", "copy",
+         "-r", str(fps), *enc_args, "-pix_fmt", "yuv420p", "-c:a", "copy",
          "-movflags", "+faststart", str(dst)],
         stdout=subprocess.PIPE, stderr=subprocess.PIPE, text=True,
     )
@@ -301,11 +309,26 @@ def _overlay_moviepy(
             overlays.append(final_clip)
 
         comp = CompositeVideoClip([base, *overlays], size=base.size).set_duration(base.duration)
-        comp.write_videofile(
-            str(dst), fps=fps, codec="libx264", audio_codec="aac",
-            preset=preset, ffmpeg_params=["-crf", str(crf), "-movflags", "+faststart"],
-            threads=max(1, (os.cpu_count() or 4) // 2), verbose=False, logger=None,
-        )
+        hw_codec = detect_ffmpeg_hw_encoder()
+        write_kwargs = {
+            "fps": fps,
+            "codec": hw_codec,
+            "audio_codec": "aac",
+            "threads": max(1, (os.cpu_count() or 4) // 2),
+            "verbose": False,
+            "logger": None,
+        }
+        if hw_codec == "h264_nvenc":
+            write_kwargs["ffmpeg_params"] = [
+                "-preset", "p4", "-rc", "vbr", "-cq", str(crf), "-movflags", "+faststart"
+            ]
+        elif hw_codec == "h264_videotoolbox":
+            write_kwargs["ffmpeg_params"] = ["-movflags", "+faststart"]
+        else:
+            write_kwargs["preset"] = preset
+            write_kwargs["ffmpeg_params"] = ["-crf", str(crf), "-movflags", "+faststart"]
+            
+        comp.write_videofile(str(dst), **write_kwargs)
     except Exception as exc:
         raise OverlayError(f"MoviePy overlay failed: {exc}") from exc
     finally:
