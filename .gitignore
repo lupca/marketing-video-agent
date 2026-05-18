@@ -9,3 +9,8 @@ logo
 models/
 node_modules
 bk
+
+.mp4
+.mp3
+.onnx
+.pth
