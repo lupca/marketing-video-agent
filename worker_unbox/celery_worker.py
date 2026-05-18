@@ -12,6 +12,7 @@ from shared_core.worker_base import create_celery_app, execute_video_task
 from shared_core.minio_utils import (
     download_file_from_minio, is_minio_path, get_object_name,
 )
+from shared_core.gpu_utils import ensure_h264_mp4
 
 from make_viral import make_viral
 from unbox_viral import make_unbox_viral
@@ -39,6 +40,10 @@ def download_unbox_assets(config_data: Dict[str, Any], work_dir: str) -> Dict[st
                     obj_name = get_object_name(clip_url)
                     local_path = os.path.join(input_dir, os.path.basename(obj_name))
                     download_file_from_minio(obj_name, local_path)
+                    
+                    # Ensure standard H.264 MP4 format
+                    local_path = ensure_h264_mp4(local_path)
+                    
                     if isinstance(config_data[key], list):
                         config_data[key][i] = local_path
                     else:

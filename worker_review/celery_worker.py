@@ -14,6 +14,7 @@ from shared_core.minio_utils import (
     download_file_from_minio, is_minio_path, get_object_name,
     get_minio_client, get_bucket_name,
 )
+from shared_core.gpu_utils import ensure_h264_mp4
 
 from video_builder import build_video
 
@@ -29,6 +30,12 @@ def _download_s3(s3_url: str, local_path: str) -> str:
     obj_name = get_object_name(s3_url)
     os.makedirs(os.path.dirname(local_path), exist_ok=True)
     download_file_from_minio(obj_name, local_path)
+    
+    # Normalize if it's a video file to prevent AV1/VP9 OpenCV decoding issues
+    ext = os.path.splitext(local_path)[1].lower()
+    if ext in (".mp4", ".webm", ".mov", ".mkv"):
+        local_path = ensure_h264_mp4(local_path)
+        
     logger.info("  ↓ Downloaded %s → %s", obj_name, local_path)
     return local_path
 
@@ -48,6 +55,12 @@ def _download_s3_folder(s3_prefix: str, local_dir: str) -> int:
             continue
         local_path = os.path.join(local_dir, filename)
         download_file_from_minio(obj.object_name, local_path)
+        
+        # Normalize if it's a video file to prevent AV1/VP9 OpenCV decoding issues
+        ext = os.path.splitext(local_path)[1].lower()
+        if ext in (".mp4", ".webm", ".mov", ".mkv"):
+            local_path = ensure_h264_mp4(local_path)
+            
         count += 1
         logger.info("  ↓ Downloaded %s → %s", obj.object_name, local_path)
 

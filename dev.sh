@@ -7,6 +7,8 @@
 
 set -e
 
+export IMAGEIO_FFMPEG_EXE="/usr/bin/ffmpeg"
+
 ROOT_DIR="$(cd "$(dirname "$0")" && pwd)"
 cd "$ROOT_DIR"
 

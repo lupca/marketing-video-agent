@@ -14,6 +14,11 @@ import socket
 from datetime import datetime, timezone
 from typing import Dict, Any
 
+# Force MoviePy / imageio-ffmpeg to use system's NVENC-enabled FFmpeg
+system_ffmpeg = shutil.which("ffmpeg")
+if system_ffmpeg:
+    os.environ["IMAGEIO_FFMPEG_EXE"] = system_ffmpeg
+
 from celery import Celery
 from celery.signals import worker_ready, worker_shutting_down
 

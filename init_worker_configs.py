@@ -25,6 +25,7 @@ def initialize_configs(reset=False):
         ("download", "Download Worker - Social media downloader"),
         ("promotion", "Promotion Worker - Ad video generator"),
         ("agent", "Agent Orchestrator - High-level AI coordination"),
+        ("translify", "Translify Worker - Chinese-to-Vietnamese translator"),
     ]
     
     if reset:

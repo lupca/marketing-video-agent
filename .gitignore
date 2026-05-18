@@ -9,8 +9,24 @@ logo
 models/
 node_modules
 bk
+# Large binary formats
+*.mp4
+*.mp3
+*.wav
+*.onnx
+*.pth
+*.index
+*.bin
+*.zip
+*.tar.gz
+*.log
+*.db
 
-.mp4
-.mp3
-.onnx
-.pth
+
+# Temporary and environment directories
+translify_tmp/
+venv/
+.venv/
+__pycache__/
+scratch/
+=2.0.0

@@ -6,6 +6,8 @@
 
 set -e
 
+export IMAGEIO_FFMPEG_EXE="/usr/bin/ffmpeg"
+
 ROOT_DIR="$(cd "$(dirname "$0")" && pwd)"
 cd "$ROOT_DIR"
 
@@ -45,7 +47,7 @@ try:
     db.close()
 except Exception as e:
     # Fallback to defaults if DB isn't ready or tables missing
-    print('review unbox download agent')
+    print('review unbox download agent translify')
 ")
 
 if [ -z "$ENABLED_WORKERS" ]; then

@@ -432,6 +432,6 @@ class VideoViralEngine:
             "-i", str(video), "-i", str(self.audio_track),
             "-map", "0:v:0", "-map", "1:a:0",
             "-c:v", "copy", "-c:a", "aac",
-            "-ar", "49100", "-ac", "2", "-b:a", "192k",
+            "-ar", "44100", "-ac", "2", "-b:a", "192k",
             "-t", f"{dur:.3f}", "-movflags", "+faststart", str(output),
         ])
