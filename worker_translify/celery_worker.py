@@ -13,7 +13,8 @@ from shared_core.minio_utils import (
 )
 from shared_core.gpu_utils import ensure_h264_mp4
 
-from translify_engine.pipeline import TranslifyPipeline
+from translify_engine.analysis_engine import AnalysisEngine
+from translify_engine.render_engine import RenderEngine
 
 logger = logging.getLogger(__name__)
 
@@ -46,23 +47,42 @@ def download_translify_assets(config_data: Dict[str, Any], work_dir: str) -> Dic
 # ── Build Function Adapter ──────────────────────────────────────────────────
 
 def _build_translify_video(local_config: Dict[str, Any], work_dir: str) -> str:
-    """Adapter: call TranslifyPipeline with local assets."""
+    """Adapter: call new Scene-based Video-as-Data engines with local assets."""
     video_path = local_config.get("video")
     if not video_path or not os.path.exists(video_path):
         raise ValueError(f"No valid input video found in config: {video_path}")
         
     output_mp4 = os.path.join(work_dir, "output_translated.mp4")
+    temp_dir = os.path.join(work_dir, "pipeline_temp")
     
     # Read extra options if any
-    use_iopaint = local_config.get("use_iopaint", True)
     voice_name = local_config.get("voice_name", "vi-VN-NamMinhNeural")
     
-    pipeline = TranslifyPipeline(use_iopaint=use_iopaint, voice_name=voice_name)
-    return pipeline.process(
+    logger.info("🎬 [Video-as-Data Pipeline] Starting Analysis Engine...")
+    analysis_engine = AnalysisEngine()
+    project_db = analysis_engine.analyze(
         video_path=video_path,
-        output_path=output_mp4,
-        work_dir=os.path.join(work_dir, "pipeline_temp")
+        work_dir=temp_dir,
+        project_id="translify_project"
     )
+    
+    logger.info("🎬 [Video-as-Data Pipeline] Starting Constraint-Aware Rewrite Engine...")
+    from translify_engine.constraint_engine import ConstraintEngine
+    constraint_engine = ConstraintEngine()
+    project_db = constraint_engine.apply_constraints(
+        project=project_db,
+        work_dir=temp_dir
+    )
+    
+    logger.info("🎬 [Video-as-Data Pipeline] Starting Render Engine...")
+    render_engine = RenderEngine(voice_name=voice_name)
+    return render_engine.render(
+        project=project_db,
+        original_video=video_path,
+        work_dir=temp_dir,
+        output_path=output_mp4
+    )
+
 
 
 # ── Celery Task ─────────────────────────────────────────────────────────────

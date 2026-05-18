@@ -21,8 +21,8 @@ def translate_with_ollama(texts: list[str], prompt_type: str = "subtitle") -> li
     # Ensure URL ends with /v1 or correct ollama endpoints
     ollama_api = f"{base_url}/api/chat"
     
-    # We default to qwen3.5:9b as requested by user
-    model_name = os.getenv("OLLAMA_MODEL", "qwen3.5:9b")
+    # We default to qwen2.5:7b as requested by user
+    model_name = os.getenv("OLLAMA_MODEL", "qwen2.5:7b")
     
     system_prompt = (
         "Bạn là một biên dịch viên chuyên nghiệp cho video ngắn Douyin/TikTok. "
