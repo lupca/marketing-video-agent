@@ -19,6 +19,7 @@ from routers.downloads import router as downloads_router
 from routers.system import router as system_router
 from routers.agent import router as agent_router
 from routers.worker_config import router as worker_config_router
+from routers.translify import router as translify_router
 
 # ── Logging ───────────────────────────────────────────────────────────────────
 
@@ -76,3 +77,4 @@ app.include_router(downloads_router)
 app.include_router(system_router)
 app.include_router(agent_router)
 app.include_router(worker_config_router)
+app.include_router(translify_router)

@@ -110,6 +110,16 @@ fi
 "$RESEARCH_VENV/bin/pip" install -r "$ROOT_DIR/worker_research/requirements.txt" -q
 echo -e "${GREEN}  ✔ Worker Research venv ready${NC}"
 
+# Worker Translify venv
+TRANSLIFY_VENV="$ROOT_DIR/worker_translify/venv"
+if [ ! -d "$TRANSLIFY_VENV" ]; then
+  echo -e "${YELLOW}  Creating Worker Translify venv...${NC}"
+  python3 -m venv "$TRANSLIFY_VENV"
+fi
+"$TRANSLIFY_VENV/bin/pip" install --upgrade pip -q
+"$TRANSLIFY_VENV/bin/pip" install -r "$ROOT_DIR/worker_translify/requirements.txt" -q
+echo -e "${GREEN}  ✔ Worker Translify venv ready${NC}"
+
 # Worker Agent venv
 AGENT_VENV="$ROOT_DIR/worker_agent/venv"
 if [ ! -d "$AGENT_VENV" ]; then
@@ -200,6 +210,12 @@ AGENT_PID=$!
 cd "$ROOT_DIR"
 echo -e "${GREEN}  ✔ Worker Agent PID: $AGENT_PID${NC}"
 
+cd "$ROOT_DIR/worker_translify"
+"$TRANSLIFY_VENV/bin/celery" -A celery_worker worker -Q translify_queue -n worker_translify@%h --loglevel=info -c 2 &
+TRANSLIFY_PID=$!
+cd "$ROOT_DIR"
+echo -e "${GREEN}  ✔ Worker Translify PID: $TRANSLIFY_PID${NC}"
+
 # ----------------------------------------------------------
 # 6. Start Frontend
 # ----------------------------------------------------------
@@ -229,7 +245,7 @@ echo -e "\n${YELLOW}Press Ctrl+C to stop all services${NC}\n"
 # ----------------------------------------------------------
 cleanup() {
   echo -e "\n${YELLOW}Shutting down all processes...${NC}"
-  kill $API_PID $REVIEW_PID $UNBOX_PID $DOWNLOAD_PID $SLIDESHOW_PID $PROMOTION_PID $RESEARCH_PID $AGENT_PID $FRONTEND_PID 2>/dev/null
+  kill $API_PID $REVIEW_PID $UNBOX_PID $DOWNLOAD_PID $SLIDESHOW_PID $PROMOTION_PID $RESEARCH_PID $AGENT_PID $TRANSLIFY_PID $FRONTEND_PID 2>/dev/null
   docker compose -f "$ROOT_DIR/docker-compose.dev.yml" down
   echo -e "${GREEN}✔ All stopped.${NC}"
   exit 0

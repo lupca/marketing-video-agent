@@ -1,8 +1,10 @@
 import React, { useState } from "react";
+import { Link, useNavigate } from "react-router-dom";
 import { CheckCircle2, Clock, AlertCircle, ChevronDown, ChevronUp, Timer, Download, ExternalLink, Eye, Trash2, Play, Copy } from "lucide-react";
 import { cn } from "../../../lib/utils";
 import { formatDuration, formatDate } from "../../../lib/format";
 import type { VideoJob } from "../../../hooks/useJobs";
+import api from "../../../lib/api";
 
 export function getMinioBrowserUrl(s3Url: string): string {
   // s3://videos/outputs/review_job_4.mp4 → http://localhost:9001/browser/videos/outputs/review_job_4.mp4
@@ -23,6 +25,22 @@ interface JobTableProps {
 
 export function JobTable({ jobs, onViewDetails, onDeleteJob, onDownloadJob, onUpdateNote, onWatchJob, onCopyJob, deletingId }: JobTableProps) {
   const [expandedError, setExpandedError] = useState<number | null>(null);
+  const navigate = useNavigate();
+  const [reopeningId, setReopeningId] = useState<number | null>(null);
+
+  const handleReopen = async (jobId: number) => {
+    setReopeningId(jobId);
+    try {
+      await api.post(`/api/translify/projects/${jobId}/reopen`);
+      navigate(`/translify/editor/${jobId}`);
+    } catch (e: any) {
+      console.error(e);
+      alert("Không thể mở lại kịch bản: " + (e?.response?.data?.detail || e.message));
+    } finally {
+      setReopeningId(null);
+    }
+  };
+
 
   if (jobs.length === 0) {
     return (
@@ -91,6 +109,11 @@ export function JobTable({ jobs, onViewDetails, onDeleteJob, onDownloadJob, onUp
                         {job.status === "PENDING" && (
                           <span className="inline-flex items-center rounded-full border border-gray-500/30 px-3 py-1 text-xs font-semibold bg-gray-500/10 text-gray-400">
                             QUEUED
+                          </span>
+                        )}
+                        {job.status === "WAITING_FOR_REVIEW" && (
+                          <span className="inline-flex items-center rounded-full border border-amber-500/30 px-3 py-1 text-xs font-semibold bg-amber-500/10 text-amber-400 shadow-[0_0_10px_rgba(245,158,11,0.2)]">
+                            <Eye className="mr-1.5 h-3.5 w-3.5" /> REVIEW NEEDED
                           </span>
                         )}
                         {job.status === "FAILED" && (
@@ -194,6 +217,37 @@ export function JobTable({ jobs, onViewDetails, onDeleteJob, onDownloadJob, onUp
                         title="Sao chép & Chỉnh sửa"
                       >
                         <Copy className="h-4 w-4" />
+                      </button>
+                    )}
+                    {job.status === "WAITING_FOR_REVIEW" && (
+                      <Link
+                        to={`/translify/editor/${job.id}`}
+                        className="inline-flex items-center justify-center rounded-lg bg-amber-500/10 hover:bg-amber-500/20 text-amber-400 border border-amber-500/30 transition-all h-8 px-2.5 text-[10px] uppercase font-bold hover:shadow-[0_0_15px_rgba(245,158,11,0.3)] gap-1 shrink-0"
+                        title="Refine Translation"
+                      >
+                        <Play className="h-3 w-3 fill-current" /> Refine Script
+                      </Link>
+                    )}
+                    {job.job_type === "translify" && job.status === "SUCCESS" && (
+                      <button
+                        onClick={() => handleReopen(job.id)}
+                        disabled={reopeningId === job.id}
+                        className="inline-flex items-center justify-center rounded-lg bg-emerald-500/10 hover:bg-emerald-500/20 text-emerald-400 border border-emerald-500/30 transition-all h-8 px-2.5 text-[10px] uppercase font-bold hover:shadow-[0_0_15px_rgba(16,185,129,0.3)] gap-1 shrink-0 disabled:opacity-50"
+                        title="Edit & render again"
+                      >
+                        {reopeningId === job.id ? <Clock className="h-3 w-3 animate-spin" /> : <Play className="h-3 w-3 fill-current" />}
+                        Edit & Re-render
+                      </button>
+                    )}
+                    {job.job_type === "translify" && job.status === "FAILED" && (
+                      <button
+                        onClick={() => handleReopen(job.id)}
+                        disabled={reopeningId === job.id}
+                        className="inline-flex items-center justify-center rounded-lg bg-rose-500/10 hover:bg-rose-500/20 text-rose-400 border border-rose-500/30 transition-all h-8 px-2.5 text-[10px] uppercase font-bold hover:shadow-[0_0_15px_rgba(244,63,94,0.3)] gap-1 shrink-0 disabled:opacity-50"
+                        title="Edit script & try again"
+                      >
+                        {reopeningId === job.id ? <Clock className="h-3 w-3 animate-spin" /> : <Play className="h-3 w-3 fill-current" />}
+                        Retry
                       </button>
                     )}
                     <button

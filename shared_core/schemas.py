@@ -8,7 +8,7 @@ from datetime import datetime
 
 # ── Allowed job types ─────────────────────────────────────────────────────────
 
-VALID_JOB_TYPES = {"review", "unbox", "unbox_viral", "slideshow", "promotion"}
+VALID_JOB_TYPES = {"review", "unbox", "unbox_viral", "slideshow", "promotion", "translify"}
 
 
 

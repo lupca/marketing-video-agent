@@ -196,37 +196,44 @@ def run_paddle_ocr(video_path: str, work_dir: str) -> list[dict]:
     try:
         from paddleocr import PaddleOCR
         
-        ocr = PaddleOCR(use_angle_cls=False, lang="ch", use_gpu=False)
+        # Lock to PP-OCRv4 to align dictionary and models, disable MKLDNN to avoid CPU crashes
+        ocr = PaddleOCR(use_angle_cls=False, lang="ch", enable_mkldnn=False, ocr_version="PP-OCRv4")
         
         ocr_results = []
         for sec, frame_path in ocr_frames:
-            result = ocr.ocr(frame_path, cls=False)
-            if not result or not result[0]:
+            try:
+                result = ocr.ocr(frame_path)
+                if not result or not result[0]:
+                    continue
+                    
+                for line in result[0]:
+                    # Defensive check on line structure returned by PaddleOCR
+                    if not line or len(line) < 2 or not line[1] or len(line[1]) < 2:
+                        continue
+                        
+                    bbox = line[0]  # List of 4 points: [[x1,y1], [x2,y2], [x3,y3], [x4,y4]]
+                    text = line[1][0]
+                    conf = line[1][1]
+                    
+                    # Only keep high confidence Chinese text and filter out potential captions
+                    if conf > 0.6:
+                        ocr_results.append({
+                            "time_sec": sec,
+                            "bbox": bbox,
+                            "text": text.strip(),
+                            "confidence": float(conf)
+                        })
+            except Exception as frame_err:
+                logger.warning(f"PaddleOCR skipped frame {sec} due to error: {frame_err}")
                 continue
                 
-            for line in result[0]:
-                bbox = line[0]  # List of 4 points: [[x1,y1], [x2,y2], [x3,y3], [x4,y4]]
-                text = line[1][0]
-                conf = line[1][1]
-                
-                # Only keep high confidence Chinese text and filter out potential captions
-                # Standard captions are usually located at the bottom (y > height * 0.75).
-                # PaddleOCR detections at top or middle are usually graphic cards/titles.
-                if conf > 0.6:
-                    ocr_results.append({
-                        "time_sec": sec,
-                        "bbox": bbox,
-                        "text": text.strip(),
-                        "confidence": float(conf)
-                    })
-                    
         logger.info(f"PaddleOCR scan complete. Found {len(ocr_results)} on-screen text elements.")
         
-        # Cleanup PaddleOCR GPU memory (Paddle OCR uses paddle framework which also caches CUDA)
+        # Cleanup PaddleOCR GPU memory
         del ocr
         clean_gpu_memory()
         return ocr_results
     except Exception as e:
-        logger.error(f"PaddleOCR failed: {e}")
+        logger.error(f"PaddleOCR initialization failed: {e}")
         clean_gpu_memory()
         return []

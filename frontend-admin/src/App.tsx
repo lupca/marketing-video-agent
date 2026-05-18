@@ -1,5 +1,5 @@
 import { BrowserRouter as Router, Routes, Route, Link, useLocation, Navigate } from "react-router-dom";
-import { LayoutDashboard, Video, Zap, LogOut, User as UserIcon, FolderHeart, Database, Activity, Wand2, BookOpen, DownloadCloud, Sparkles, Bot } from "lucide-react";
+import { LayoutDashboard, Video, Zap, LogOut, User as UserIcon, FolderHeart, Database, Activity, Wand2, BookOpen, DownloadCloud, Sparkles, Bot, Languages } from "lucide-react";
 import Dashboard from "./pages/Dashboard";
 import CreateUnboxJob from "./pages/CreateUnboxJob";
 import CreateUnboxViralJob from "./pages/CreateUnboxViralJob";
@@ -13,6 +13,8 @@ import Assets from "./pages/Assets";
 import SystemHealth from "./pages/SystemHealth";
 import Guides from "./pages/Guides";
 import AgentStudio from "./pages/AgentStudio";
+import TranslifyEditor from "./pages/TranslifyEditor";
+import CreateTranslifyJob from "./pages/CreateTranslifyJob";
 import Login from "./pages/Login";
 import Register from "./pages/Register";
 import { AuthProvider, useAuth } from "./context/AuthContext";
@@ -40,6 +42,7 @@ function Sidebar() {
     { name: "Command Center", path: "/", icon: LayoutDashboard },
     { name: "Sưu tầm Video", path: "/download", icon: DownloadCloud },
     { name: "Review Studio", path: "/create-review", icon: Wand2 },
+    { name: "Dịch thuật Video", path: "/create-translify", icon: Languages },
     { name: "Projects", path: "/projects", icon: FolderHeart },
     { name: "Assets", path: "/assets", icon: Database },
     { name: "Unbox Factory", path: "/create-unbox", icon: Video },
@@ -133,6 +136,8 @@ function MainLayout() {
           <Route path="/guides" element={<Guides />} />
           <Route path="/agent-studio" element={<AgentStudio />} />
           <Route path="/health" element={<SystemHealth />} />
+          <Route path="/translify/editor/:id" element={<TranslifyEditor />} />
+          <Route path="/create-translify" element={<CreateTranslifyJob />} />
         </Routes>
       </main>
     </div>

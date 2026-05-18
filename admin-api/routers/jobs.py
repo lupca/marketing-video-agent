@@ -75,6 +75,8 @@ def create_job(
     if job.job_type == "unbox_viral":
         queue_name = "unbox_queue"
         task_name = "worker_unbox.tasks.process_unbox_viral"
+    elif job.job_type == "translify":
+        task_name = "worker_translify.tasks.analyze_video"
 
     try:
         celery_client.celery_app.send_task(

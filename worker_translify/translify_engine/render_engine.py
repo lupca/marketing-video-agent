@@ -102,7 +102,7 @@ class RenderEngine:
     def __init__(self, voice_name: str = "vi-VN-NamMinhNeural"):
         self.voice_name = voice_name
 
-    def render(self, project: VideoProject, original_video: str, work_dir: str, output_path: str) -> str:
+    def render(self, project: VideoProject, original_video: str, work_dir: str, output_path: str, bgm_file: str = None) -> str:
         """
         Render each scene independently based on the VideoProject database and concatenate them.
         """
@@ -120,12 +120,19 @@ class RenderEngine:
         height = int(cap.get(cv2.CAP_PROP_FRAME_HEIGHT))
         cap.release()
         
-        # 1. Slice full video original audio & BGM (if separate vocals BGM was done, use it)
-        # For simplicity in Phase 1, we extract original audio track as backing audio
-        full_audio_wav = os.path.join(work_dir, "full_audio.wav")
-        subprocess.run([
-            ffmpeg_bin, "-y", "-i", original_video, "-vn", "-acodec", "pcm_s16le", "-ar", "16000", "-ac", "1", full_audio_wav
-        ], stdout=subprocess.DEVNULL, stderr=subprocess.DEVNULL)
+        # 1. Slice full video original audio & BGM or use custom BGM file
+        if bgm_file and os.path.exists(bgm_file):
+            logger.info(f"Slicing ambient BGM from custom audio file: {bgm_file}")
+            full_audio_wav = os.path.join(work_dir, "custom_bgm.wav")
+            subprocess.run([
+                ffmpeg_bin, "-y", "-i", bgm_file, "-acodec", "pcm_s16le", "-ar", "16000", "-ac", "1", full_audio_wav
+            ], stdout=subprocess.DEVNULL, stderr=subprocess.DEVNULL)
+        else:
+            logger.info("Slicing ambient BGM from original video audio track")
+            full_audio_wav = os.path.join(work_dir, "full_audio.wav")
+            subprocess.run([
+                ffmpeg_bin, "-y", "-i", original_video, "-vn", "-acodec", "pcm_s16le", "-ar", "16000", "-ac", "1", full_audio_wav
+            ], stdout=subprocess.DEVNULL, stderr=subprocess.DEVNULL)
         
         scene_files = []
         
