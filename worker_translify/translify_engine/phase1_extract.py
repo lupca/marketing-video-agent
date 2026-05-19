@@ -196,8 +196,8 @@ def run_paddle_ocr(video_path: str, work_dir: str) -> list[dict]:
     try:
         from paddleocr import PaddleOCR
         
-        # Lock to PP-OCRv4 to align dictionary and models, disable MKLDNN to avoid CPU crashes
-        ocr = PaddleOCR(use_angle_cls=False, lang="ch", enable_mkldnn=False, ocr_version="PP-OCRv4")
+        # Lock to PP-OCRv4 to align dictionary and models, force CPU device to prevent GPU/CUDA PIR C++ instruction crashes
+        ocr = PaddleOCR(use_textline_orientation=False, lang="ch", device="cpu", enable_mkldnn=False, ocr_version="PP-OCRv4")
         
         ocr_results = []
         for sec, frame_path in ocr_frames:
@@ -206,23 +206,41 @@ def run_paddle_ocr(video_path: str, work_dir: str) -> list[dict]:
                 if not result or not result[0]:
                     continue
                     
-                for line in result[0]:
-                    # Defensive check on line structure returned by PaddleOCR
-                    if not line or len(line) < 2 or not line[1] or len(line[1]) < 2:
-                        continue
+                res_obj = result[0]
+                # Check for newer PaddleOCR 3.x / PaddleX format (where res_obj is a dict/OCRResult)
+                if isinstance(res_obj, dict) or (hasattr(res_obj, "get") and "rec_texts" in res_obj):
+                    texts = res_obj.get("rec_texts", [])
+                    scores = res_obj.get("rec_scores", [])
+                    polys = res_obj.get("dt_polys", [])
+                    for text, conf, poly in zip(texts, scores, polys):
+                        if conf > 0.6:
+                            # Convert numpy float arrays in polygons to regular float lists
+                            bbox = [[float(coord) for coord in point] for point in poly] if poly is not None else []
+                            ocr_results.append({
+                                "time_sec": sec,
+                                "bbox": bbox,
+                                "text": text.strip(),
+                                "confidence": float(conf)
+                            })
+                else:
+                    # Fallback to older PaddleOCR 2.x list-of-lists format
+                    for line in res_obj:
+                        # Defensive check on line structure returned by PaddleOCR
+                        if not line or len(line) < 2 or not line[1] or len(line[1]) < 2:
+                            continue
+                            
+                        bbox = line[0]  # List of 4 points: [[x1,y1], [x2,y2], [x3,y3], [x4,y4]]
+                        text = line[1][0]
+                        conf = line[1][1]
                         
-                    bbox = line[0]  # List of 4 points: [[x1,y1], [x2,y2], [x3,y3], [x4,y4]]
-                    text = line[1][0]
-                    conf = line[1][1]
-                    
-                    # Only keep high confidence Chinese text and filter out potential captions
-                    if conf > 0.6:
-                        ocr_results.append({
-                            "time_sec": sec,
-                            "bbox": bbox,
-                            "text": text.strip(),
-                            "confidence": float(conf)
-                        })
+                        # Only keep high confidence Chinese text and filter out potential captions
+                        if conf > 0.6:
+                            ocr_results.append({
+                                "time_sec": sec,
+                                "bbox": bbox,
+                                "text": text.strip(),
+                                "confidence": float(conf)
+                            })
             except Exception as frame_err:
                 logger.warning(f"PaddleOCR skipped frame {sec} due to error: {frame_err}")
                 continue

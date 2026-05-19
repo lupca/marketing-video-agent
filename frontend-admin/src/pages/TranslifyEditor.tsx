@@ -12,9 +12,10 @@ import { AssetSelector } from "../components/ui/AssetSelector";
 import type { UploadedFile } from "../components/features/review/types";
 
 interface OcrItem {
-  text: string;
+  text_zh: string;
+  text_vi: string | null;
   bbox: number[][];
-  confidence: number;
+  confidence?: number;
 }
 
 interface AudioSegment {
@@ -649,8 +650,8 @@ export default function TranslifyEditor() {
                         {activeScene.visual.ocr_text && activeScene.visual.ocr_text.length > 0 ? (
                           <div className="flex flex-wrap gap-1.5 mt-1">
                             {activeScene.visual.ocr_text.map((ocr, i) => (
-                              <span key={i} className="text-xs bg-white/5 border border-white/10 text-muted-foreground px-2 py-0.5 rounded" title={`Confidence: ${(ocr.confidence * 100).toFixed(0)}%`}>
-                                {ocr.text}
+                              <span key={i} className="text-xs bg-white/5 border border-white/10 text-muted-foreground px-2 py-0.5 rounded" title={ocr.confidence !== undefined ? `Confidence: ${(ocr.confidence * 100).toFixed(0)}%` : "OCR Detected"}>
+                                {ocr.text_zh}
                               </span>
                             ))}
                           </div>
