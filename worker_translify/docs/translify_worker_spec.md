@@ -80,31 +80,34 @@ Thực hiện trích xuất dữ liệu đa phương tiện từ video gốc và
    - Sử dụng System Prompt chuyên dụng ép buộc AI rút gọn câu chữ về dưới ngưỡng `{max_words}` nhưng nghiêm cấm làm thay đổi ý nghĩa bán hàng.
    - **Cơ chế Fallback an toàn:** Nếu kết nối Ollama thất bại, hệ thống tự động sử dụng hàm cắt chuỗi Python để lấy đúng `{max_words}` từ đầu tiên, đảm bảo pipeline không bị gián đoạn.
 
-#### C. Render Engine (`translify_engine/render_engine.py`)
-Chịu trách nhiệm xử lý hình ảnh, âm thanh độc lập ở từng cảnh quay trước khi ghép nối:
-1. **OpenCV Telea Inpainting:** 
-   - Với mỗi cảnh có chữ cứng Trung Quốc, duyệt qua từng khung hình (frames).
-   - Tạo mặt nạ nhị phân (mask) từ tọa độ bounding box của OCR (được nới rộng 6 pixel biên để tẩy triệt để).
-   - Thực hiện thuật toán xóa chữ tốc độ cao `cv2.inpaint(frame, mask, 5, cv2.INPAINT_TELEA)`.
-   - Transcode clip sạch sang chuẩn H.264 MP4 không tiếng bằng FFmpeg (`-c:v libx264 -pix_fmt yuv420p -an`).
-2. **TTS Synthesis:**
-   - Gọi thư viện `edge-tts` bất đồng bộ để sinh giọng đọc Việt Nam (mặc định giọng `vi-VN-NamMinhNeural`).
-   - Có cơ chế **Retry 3 lần** kết hợp thời gian trễ tăng dần lũy thừa (exponential backoff) nếu gặp sự cố mạng.
-3. **Timing Co-Stretching (Rubberband):**
-   - Đọc file âm thanh TTS tạm bằng `soundfile`.
-   - So sánh thời lượng âm thanh thực tế thu được (`actual_dur`) với thời lượng phân cảnh (`scene_dur`).
-   - Tính toán tỷ lệ co giãn `ratio = actual_dur / scene_dur`. Tỷ lệ này được giới hạn chặt chẽ trong khoảng an toàn `[0.5, 2.0]`.
-   - Nếu tỷ lệ sai lệch quá 5%, nạp thuật toán co giãn tốc độ giữ nguyên cao độ âm thanh **Rubberband** (`pyrubberband.time_stretch`).
-   - Cắt ngắn hoặc chèn thêm mảng giá trị 0 (silent padding) để thời lượng file âm thanh đầu ra khớp khít từng miligiây với cảnh phim.
-4. **Stylized Subtitle Burn:**
-   - Tạo file phụ đề nghệ thuật `.ass` động từ câu dịch bằng `subtitle_utils.py` (font mặc định `Outfit`, cỡ chữ `32`, màu chữ trắng viền đen dày).
-   - Ghi đè trực tiếp phụ đề lên clip sạch bằng FFmpeg video filter: `-vf ass=subtitle.ass`.
-5. **Audio Mixing:**
-   - Cắt nhạc nền gốc tương ứng với khoảng thời gian của cảnh từ file `full_audio.wav`.
-   - Sử dụng FFmpeg mix track giọng đọc tiếng Việt và nhạc nền gốc ở tỷ lệ âm lượng nhạc nền là 0.3 (`-filter_complex "[1:a]volume=0.3[bgm];[0:a][bgm]amix=inputs=2:duration=first[aout]"`).
-6. **Lossless Scene Concatenation:**
-   - Tập hợp tất cả các file phân cảnh hoàn chỉnh `.mp4` vào danh sách.
-   - Sử dụng FFmpeg `concat` demuxer ghép nối nối tiếp không nén để xuất ra video đích hoàn thiện mà không gây ra hiện tượng giật hình hoặc mất đồng bộ.
+#### C. Composition & Assembly Engine (`translify_engine/phase3_compose.py`)
+Module chịu trách nhiệm chính trong việc xử lý hình ảnh, âm thanh và kết hợp toàn bộ tài nguyên để xuất video Việt hóa hoàn chỉnh. Được thiết kế lại toàn diện theo chuẩn hướng đối tượng (OOP) và kiến trúc cấu hình mở rộng:
+
+1. **Kiến trúc Cấu hình Hợp nhất (`CompositionConfig`):**
+   - **`VoiceoverConfig`**: Định nghĩa sample rate (mặc định 16000Hz), giọng đọc (`vi-VN-NamMinhNeural`), giới hạn co giãn [0.5x, 2.0x], ngưỡng lệch 5%, và giới hạn luồng song song.
+   - **`InpaintConfig`**: Cấu hình sử dụng AI LaMa, padding mở rộng 6px và thiết bị chạy (CUDA/CPU).
+   - **`AssemblyConfig`**: Cấu hình âm lượng phối (BGM giảm -12dB), định dạng codec (h264_nvenc / libx264), bitrate âm thanh 192k, tần số phối 44100Hz và các presets.
+
+2. **Xử lý Bất đồng bộ Song song (`VoiceoverGenerator`):**
+   - Khởi tạo tiến trình sinh giọng nói tiếng Việt từ `edge-tts` bất đồng bộ hoàn toàn.
+   - Sử dụng **`asyncio.Semaphore(5)`** để giới hạn số luồng TTS song song, ngăn ngừa lỗi nghẽn hoặc bị chặn IP (Rate Limit) bởi Edge-TTS API.
+   - Tách biệt pha I/O mạng bất đồng bộ khỏi pha xử lý âm thanh đồng bộ: sau khi tải xong toàn bộ các phân đoạn giọng nói, hệ thống mới tiến hành chuyển đổi WAV, co giãn thời lượng (**Rubberband co-stretching**) để khớp chính xác từng miligiây với cảnh phim và vá mảng tĩnh (silent padding).
+   - Tích hợp bộ chạy luồng an toàn (Standard ThreadPool Executor fallback) khi được kích hoạt bên trong một event loop đang chạy (như Celery worker), ngăn ngừa xung đột loop.
+
+3. **Xóa chữ cứng màn hình thông minh (`TextInpainter`):**
+   - Quản lý tài nguyên an toàn: Toàn bộ quá trình xử lý OpenCV (`VideoCapture`, `VideoWriter`) được bao bọc trong khối `try-finally` chặt chẽ để đảm bảo không bị rò rỉ bộ nhớ hoặc khóa file khi có ngoại lệ xảy ra.
+   - Tẩy chữ cứng: Tạo mask nhị phân từ tọa độ bounding box OCR nới rộng 6 pixel.
+   - Áp dụng mô hình AI tiên tiến **IOPaint LaMa** trên GPU CUDA (hoặc tự động fallback sang thuật toán OpenCV Telea tốc độ cao nếu GPU thiếu VRAM hoặc IOPaint bị tắt).
+   - Mã hóa tăng tốc GPU NVENC để chuyển đổi video thô sang chuẩn H.264 MP4 không tiếng.
+
+4. **Biên tập & Kết xuất Sản phẩm Cuối (`VideoAssembler`):**
+   - Đóng gói logic thực thi FFmpeg qua bộ hàm helper an toàn, tự động ghi nhận log stderr và stdout chi tiết khi câu lệnh biên tập thất bại để tối ưu hóa việc giám sát lỗi.
+   - Thực hiện phối âm (Audio Mixing) hai kênh: Giảm âm lượng nhạc nền gốc (BGM) xuống mức `0.25` và trộn với track thuyết minh tiếng Việt rõ ràng.
+   - Đốt cứng phụ đề nghệ thuật (ASS Subtitle Burn) động qua bộ lọc `ass` của FFmpeg.
+   - Render tốc độ cao với card đồ họa NVIDIA (RTX 3060) qua codec `h264_nvenc` với các tham số tối ưu (`-preset p5`, `-rc vbr`, `-cq 20`).
+   - Tự động kích hoạt **Cơ chế dự phòng CPU (CPU Fallback)** sang codec `libx264` (`-preset veryfast`, `-crf 20`) nếu phát hiện lỗi hoặc không hỗ trợ phần cứng GPU NVENC trên môi trường chạy hiện tại.
+
+*Lưu ý: Hệ thống cũng cung cấp lớp `RenderEngine` (`translify_engine/render_engine.py`) phục vụ như một giải pháp thay thế để chia nhỏ và render độc lập từng scene thô rồi ghép nối tiếp (concat).*
 
 ---
 
