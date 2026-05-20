@@ -9,6 +9,8 @@ import { DownloadJobTable } from "../components/features/downloads/DownloadJobTa
 import { Card } from "../components/ui/Card";
 import { Button } from "../components/ui/Button";
 import { Modal } from "../components/ui/Modal";
+import { Pagination } from "../components/ui/Pagination";
+
 
 export default function DownloadVideo() {
   const { jobs, loading, refreshing, fetchJobs, deleteJob, getDownloadUrl, getJobLogs, hasActive } = useDownloadJobs(true, 5000);
@@ -20,6 +22,13 @@ export default function DownloadVideo() {
   const [statusMsg, setStatusMsg] = useState("");
   const [error, setError] = useState<string | null>(null);
   const [activeTab, setActiveTab] = useState<"all" | "video" | "audio">("all");
+  const [currentPage, setCurrentPage] = useState(1);
+  const [itemsPerPage, setItemsPerPage] = useState(10);
+
+  const handleTabChange = (tab: "all" | "video" | "audio") => {
+    setActiveTab(tab);
+    setCurrentPage(1);
+  };
 
   // Logs modal state
   const [selectedJob, setSelectedJob] = useState<DownloadJob | null>(null);
@@ -118,6 +127,8 @@ export default function DownloadVideo() {
     if (activeTab === "all") return true;
     return job.format_type === activeTab;
   });
+
+  const paginatedJobs = displayJobs.slice((currentPage - 1) * itemsPerPage, currentPage * itemsPerPage);
 
   const stats = [
     { label: "Tổng cộng", value: displayJobs.length, color: "text-white" },
@@ -264,7 +275,7 @@ export default function DownloadVideo() {
         {jobs.length > 0 && (
           <div className="flex items-center gap-2 bg-black/20 p-1.5 rounded-2xl w-fit border border-white/5 shadow-inner">
             <button
-              onClick={() => setActiveTab("all")}
+              onClick={() => handleTabChange("all")}
               className={cn(
                 "px-5 py-2.5 rounded-xl text-sm font-semibold transition-all duration-200",
                 activeTab === "all" ? "bg-white/15 text-white shadow-sm ring-1 ring-white/20" : "text-muted-foreground hover:text-white hover:bg-white/5"
@@ -273,7 +284,7 @@ export default function DownloadVideo() {
               Tất cả ({jobs.length})
             </button>
             <button
-              onClick={() => setActiveTab("video")}
+              onClick={() => handleTabChange("video")}
               className={cn(
                 "px-5 py-2.5 rounded-xl text-sm font-semibold transition-all duration-200 flex items-center gap-2",
                 activeTab === "video" ? "bg-cyan-500/20 text-cyan-400 shadow-sm ring-1 ring-cyan-500/30" : "text-muted-foreground hover:text-cyan-400/80 hover:bg-white/5"
@@ -282,7 +293,7 @@ export default function DownloadVideo() {
               <Film className="w-4 h-4" /> Video MP4 ({jobs.filter(j => j.format_type === 'video').length})
             </button>
             <button
-              onClick={() => setActiveTab("audio")}
+              onClick={() => handleTabChange("audio")}
               className={cn(
                 "px-5 py-2.5 rounded-xl text-sm font-semibold transition-all duration-200 flex items-center gap-2",
                 activeTab === "audio" ? "bg-amber-500/20 text-amber-500 shadow-sm ring-1 ring-amber-500/30" : "text-muted-foreground hover:text-amber-500/80 hover:bg-white/5"
@@ -305,33 +316,44 @@ export default function DownloadVideo() {
           </div>
         )}
 
-        {/* Table */}
-        <Card className="overflow-hidden">
-          {loading && jobs.length === 0 ? (
-            <div className="flex flex-col items-center justify-center p-12 text-muted-foreground gap-3">
-              <RefreshCw className="w-6 h-6 animate-spin text-primary" />
-              Đang tải danh sách...
-            </div>
-          ) : jobs.length === 0 ? (
-            <div className="flex flex-col items-center justify-center p-12 text-muted-foreground gap-2">
-              <AlertCircle className="w-6 h-6 text-muted-foreground/50" />
-              <span>Chưa có lượt tải nào. Nhập URL phía trên để bắt đầu!</span>
-            </div>
-          ) : displayJobs.length === 0 ? (
-            <div className="flex flex-col items-center justify-center p-12 text-muted-foreground gap-2">
-              <AlertCircle className="w-6 h-6 text-muted-foreground/50" />
-              <span>Không có tải xuống nào ở định dạng này.</span>
-            </div>
-          ) : (
-            <DownloadJobTable
-              jobs={displayJobs}
-              deletingId={deletingId}
-              onViewLogs={handleViewLogs}
-              onDeleteJob={handleDeleteJob}
-              onDownloadResult={handleDownloadResult}
+        <div className="space-y-4">
+          <Card className="overflow-hidden">
+            {loading && jobs.length === 0 ? (
+              <div className="flex flex-col items-center justify-center p-12 text-muted-foreground gap-3">
+                <RefreshCw className="w-6 h-6 animate-spin text-primary" />
+                Đang tải danh sách...
+              </div>
+            ) : jobs.length === 0 ? (
+              <div className="flex flex-col items-center justify-center p-12 text-muted-foreground gap-2">
+                <AlertCircle className="w-6 h-6 text-muted-foreground/50" />
+                <span>Chưa có lượt tải nào. Nhập URL phía trên để bắt đầu!</span>
+              </div>
+            ) : displayJobs.length === 0 ? (
+              <div className="flex flex-col items-center justify-center p-12 text-muted-foreground gap-2">
+                <AlertCircle className="w-6 h-6 text-muted-foreground/50" />
+                <span>Không có tải xuống nào ở định dạng này.</span>
+              </div>
+            ) : (
+              <DownloadJobTable
+                jobs={paginatedJobs}
+                deletingId={deletingId}
+                onViewLogs={handleViewLogs}
+                onDeleteJob={handleDeleteJob}
+                onDownloadResult={handleDownloadResult}
+              />
+            )}
+          </Card>
+
+          {displayJobs.length > 0 && (
+            <Pagination
+              currentPage={currentPage}
+              totalItems={displayJobs.length}
+              itemsPerPage={itemsPerPage}
+              onPageChange={setCurrentPage}
+              onItemsPerPageChange={setItemsPerPage}
             />
           )}
-        </Card>
+        </div>
       </div>
 
       {/* Logs Modal */}

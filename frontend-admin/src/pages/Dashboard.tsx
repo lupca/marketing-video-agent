@@ -9,6 +9,8 @@ import { JobDetailsModal } from "../components/features/jobs/JobDetailsModal";
 import { VideoPlayerModal } from "../components/features/jobs/VideoPlayerModal";
 import { Button } from "../components/ui/Button";
 import { Card } from "../components/ui/Card";
+import { Pagination } from "../components/ui/Pagination";
+
 
 export default function Dashboard() {
   const navigate = useNavigate();
@@ -20,8 +22,15 @@ export default function Dashboard() {
   const [deletingId, setDeletingId] = useState<number | null>(null);
   const [watchUrl, setWatchUrl] = useState<string | null>(null);
   const [activeTab, setActiveTab] = useState<string>("all");
+  const [currentPage, setCurrentPage] = useState(1);
+  const [itemsPerPage, setItemsPerPage] = useState(10);
 
   const handleRefresh = () => fetchJobs(true);
+  
+  const handleTabChange = (tab: string) => {
+    setActiveTab(tab);
+    setCurrentPage(1);
+  };
 
   const handleViewDetails = async (job: VideoJob) => {
     setSelectedJob(job);
@@ -90,6 +99,7 @@ export default function Dashboard() {
 
   const jobTypes = Array.from(new Set(jobs.map(j => j.job_type))).sort();
   const displayJobs = jobs.filter(job => activeTab === "all" || job.job_type === activeTab);
+  const paginatedJobs = displayJobs.slice((currentPage - 1) * itemsPerPage, currentPage * itemsPerPage);
 
   const formatJobType = (type: string) => {
     switch (type) {
@@ -152,7 +162,7 @@ export default function Dashboard() {
       {jobs.length > 0 && jobTypes.length > 0 && (
         <div className="flex flex-wrap items-center gap-2 bg-black/20 p-1.5 rounded-2xl w-fit border border-white/5 shadow-inner">
           <button
-            onClick={() => setActiveTab("all")}
+            onClick={() => handleTabChange("all")}
             className={cn(
               "px-5 py-2.5 rounded-xl text-sm font-semibold transition-all duration-200",
               activeTab === "all" ? "bg-white/15 text-white shadow-sm ring-1 ring-white/20" : "text-muted-foreground hover:text-white hover:bg-white/5"
@@ -163,7 +173,7 @@ export default function Dashboard() {
           {jobTypes.map(type => (
             <button
               key={type}
-              onClick={() => setActiveTab(type)}
+              onClick={() => handleTabChange(type)}
               className={cn(
                 "px-5 py-2.5 rounded-xl text-sm font-semibold transition-all duration-200",
                 getJobTypeColor(type, activeTab === type)
@@ -186,33 +196,45 @@ export default function Dashboard() {
         </div>
       )}
 
-      <Card className="overflow-hidden">
-        {loading && jobs.length === 0 ? (
-          <div className="flex flex-col items-center justify-center p-12 text-muted-foreground gap-3">
-            <RefreshCw className="w-6 h-6 animate-spin text-primary" />
-            Connecting to Render Farm...
-          </div>
-        ) : jobs.length === 0 ? (
-          <div className="flex flex-col items-center justify-center p-12 text-muted-foreground gap-2">
-            No video jobs found.
-          </div>
-        ) : displayJobs.length === 0 ? (
-          <div className="flex flex-col items-center justify-center p-12 text-muted-foreground gap-2">
-            No videos in this format.
-          </div>
-        ) : (
-          <JobTable
-            jobs={displayJobs}
-            deletingId={deletingId}
-            onViewDetails={handleViewDetails}
-            onDeleteJob={handleDeleteJob}
-            onDownloadJob={handleDownloadJob}
-            onWatchJob={handleWatchJob}
-            onCopyJob={handleCopyJob}
-            onUpdateNote={updateJob}
+      <div className="space-y-4">
+        <Card className="overflow-hidden">
+          {loading && jobs.length === 0 ? (
+            <div className="flex flex-col items-center justify-center p-12 text-muted-foreground gap-3">
+              <RefreshCw className="w-6 h-6 animate-spin text-primary" />
+              Connecting to Render Farm...
+            </div>
+          ) : jobs.length === 0 ? (
+            <div className="flex flex-col items-center justify-center p-12 text-muted-foreground gap-2">
+              No video jobs found.
+            </div>
+          ) : displayJobs.length === 0 ? (
+            <div className="flex flex-col items-center justify-center p-12 text-muted-foreground gap-2">
+              No videos in this format.
+            </div>
+          ) : (
+            <JobTable
+              jobs={paginatedJobs}
+              deletingId={deletingId}
+              onViewDetails={handleViewDetails}
+              onDeleteJob={handleDeleteJob}
+              onDownloadJob={handleDownloadJob}
+              onWatchJob={handleWatchJob}
+              onCopyJob={handleCopyJob}
+              onUpdateNote={updateJob}
+            />
+          )}
+        </Card>
+
+        {displayJobs.length > 0 && (
+          <Pagination
+            currentPage={currentPage}
+            totalItems={displayJobs.length}
+            itemsPerPage={itemsPerPage}
+            onPageChange={setCurrentPage}
+            onItemsPerPageChange={setItemsPerPage}
           />
         )}
-      </Card>
+      </div>
 
       {selectedJob && (
         <JobDetailsModal
