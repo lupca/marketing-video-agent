@@ -231,19 +231,20 @@ class TextInpainter:
     def _create_mask(self, height: int, width: int, active_texts: List[Dict[str, Any]]) -> np.ndarray:
         """Constructs a binary mask over detected textual bounding box regions with edge padding."""
         mask = np.zeros((height, width), dtype=np.uint8)
-        pad = self.config.inpaint_padding
         for item in active_texts:
             bbox = item["bbox"]  # [[x1,y1], [x2,y2], [x3,y3], [x4,y4]]
-            pts = np.array(bbox, dtype=np.int32)
-            rect = cv2.boundingRect(pts)
-            x, y, w, h_box = rect
-            cv2.rectangle(
-                mask,
-                (max(0, x - pad), max(0, y - pad)),
-                (min(width, x + w + pad), min(height, y + h_box + pad)),
-                255,
-                -1
-            )
+            if not bbox:
+                continue
+            poly = np.array(bbox, dtype=np.int32)
+            poly = poly.reshape((-1, 1, 2))
+            
+            # Draw the exact slanted polygon, not a straight rectangle
+            cv2.fillPoly(mask, [poly], 255)
+
+        # Apply a 3x3 dilation (adds ~1 pixel border) to soften the edge for the inpainting model
+        # This prevents the text outline from remaining visible as a "ghost" after removal
+        kernel = np.ones((3, 3), np.uint8)
+        mask = cv2.dilate(mask, kernel, iterations=1)
         return mask
 
     def clean_frames(self, video_path: str, ocr_results: List[Dict[str, Any]], work_dir: str) -> str:

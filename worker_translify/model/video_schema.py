@@ -17,6 +17,7 @@ class OcrItem(BaseModel):
     bbox: List[List[float]] = Field(..., description="Bounding box points [[x1,y1], [x2,y2], [x3,y3], [x4,y4]]")
     text_zh: str = Field(..., description="Detected text in Chinese")
     text_vi: Optional[str] = Field(default=None, description="Translated text in Vietnamese")
+    time_sec: float = Field(default=0.0, description="Timestamp of the frame where this OCR item was detected")
 
 class VisualData(BaseModel):
     ocr_text: List[OcrItem] = Field(default_factory=list, description="List of on-screen OCR text items detected in the scene")

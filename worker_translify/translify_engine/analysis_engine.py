@@ -102,7 +102,8 @@ class AnalysisEngine:
                         matching_ocr.append(OcrItem(
                             bbox=res["bbox"],
                             text_zh=res["text"],
-                            text_vi=None
+                            text_vi=None,
+                            time_sec=t_sec
                         ))
             
             # Translate Chinese texts to Vietnamese using Ollama

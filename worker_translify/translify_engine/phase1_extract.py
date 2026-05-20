@@ -192,12 +192,21 @@ def run_paddle_ocr(video_path: str, work_dir: str) -> list[dict]:
     if not ocr_frames:
         return []
         
-    logger.info("Loading PaddleOCR (Chinese, GPU)...")
+    logger.info("Loading PaddleOCR (CPU, ultra-tight box params)...")
     try:
         from paddleocr import PaddleOCR
         
-        # Lock to PP-OCRv4 to align dictionary and models, force CPU device to prevent GPU/CUDA PIR C++ instruction crashes
-        ocr = PaddleOCR(use_textline_orientation=False, lang="ch", device="cpu", enable_mkldnn=False, ocr_version="PP-OCRv4")
+        # 1. TUNED PARAMETERS FOR TIGHT BOUNDING BOXES
+        ocr = PaddleOCR(
+            use_angle_cls=True, 
+            lang="ch", 
+            device="cpu", 
+            enable_mkldnn=False, 
+            ocr_version="PP-OCRv4",
+            det_db_unclip_ratio=1.15,  # Forces bounding box to hug the text tightly
+            det_db_thresh=0.35,        # Ignores faded edges
+            det_db_box_thresh=0.6      # Drops low-confidence noise boxes
+        )
         
         ocr_results = []
         for sec, frame_path in ocr_frames:
@@ -208,39 +217,37 @@ def run_paddle_ocr(video_path: str, work_dir: str) -> list[dict]:
                     
                 res_obj = result[0]
                 # Check for newer PaddleOCR 3.x / PaddleX format (where res_obj is a dict/OCRResult)
+                iterable_res = []
                 if isinstance(res_obj, dict) or (hasattr(res_obj, "get") and "rec_texts" in res_obj):
                     texts = res_obj.get("rec_texts", [])
                     scores = res_obj.get("rec_scores", [])
                     polys = res_obj.get("dt_polys", [])
-                    for text, conf, poly in zip(texts, scores, polys):
-                        if conf > 0.6:
-                            # Convert numpy float arrays in polygons to regular float lists
-                            bbox = [[float(coord) for coord in point] for point in poly] if poly is not None else []
-                            ocr_results.append({
-                                "time_sec": sec,
-                                "bbox": bbox,
-                                "text": text.strip(),
-                                "confidence": float(conf)
-                            })
+                    for t, s, p in zip(texts, scores, polys):
+                        iterable_res.append((p, (t, s)))
                 else:
-                    # Fallback to older PaddleOCR 2.x list-of-lists format
-                    for line in res_obj:
-                        # Defensive check on line structure returned by PaddleOCR
-                        if not line or len(line) < 2 or not line[1] or len(line[1]) < 2:
-                            continue
-                            
-                        bbox = line[0]  # List of 4 points: [[x1,y1], [x2,y2], [x3,y3], [x4,y4]]
-                        text = line[1][0]
-                        conf = line[1][1]
+                    iterable_res = res_obj
+
+                for line in iterable_res:
+                    # Defensive check on line structure returned by PaddleOCR
+                    if not line or len(line) < 2 or not line[1] or len(line[1]) < 2:
+                        continue
                         
-                        # Only keep high confidence Chinese text and filter out potential captions
-                        if conf > 0.6:
-                            ocr_results.append({
-                                "time_sec": sec,
-                                "bbox": bbox,
-                                "text": text.strip(),
-                                "confidence": float(conf)
-                            })
+                    poly = line[0]  # Array of 4 points: [[x1,y1], [x2,y2], [x3,y3], [x4,y4]]
+                    text = line[1][0]
+                    conf = float(line[1][1])
+                    
+                    if conf <= 0.7:
+                        continue
+                        
+                    # 2. PRESERVE THE EXACT POLYGON
+                    bbox_polygon = [[float(p[0]), float(p[1])] for p in poly] if poly is not None else []
+                    
+                    ocr_results.append({
+                        "time_sec": sec,
+                        "bbox": bbox_polygon, 
+                        "text": text.strip(),
+                        "confidence": conf
+                    })
             except Exception as frame_err:
                 logger.warning(f"PaddleOCR skipped frame {sec} due to error: {frame_err}")
                 continue

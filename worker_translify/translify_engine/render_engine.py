@@ -55,25 +55,27 @@ def inpaint_scene_clip(scene_mp4: str, scene: Scene, output_mp4: str, fps: float
         # Check for active text detections within +/- 1 second of this frame's absolute time
         active_items = []
         for item in scene.visual.ocr_text:
-            # We don't have absolute time directly in OcrItem, so we treat it as active for the whole scene
-            # since the Analysis Engine only maps OCR detections within this scene's bounds!
-            active_items.append(item)
+            item_time = getattr(item, 'time_sec', scene.start)
+            if abs(sec_abs - item_time) <= 1.0:
+                active_items.append(item)
             
         if active_items:
-            # Create inpaint mask
+            # Create inpaint mask using exact polygons
             mask = np.zeros((height, width), dtype=np.uint8)
             for item in active_items:
-                pts = np.array(item.bbox, dtype=np.int32)
-                rect = cv2.boundingRect(pts)
-                x, y, w, h_box = rect
-                pad = 6
-                cv2.rectangle(
-                    mask,
-                    (max(0, x - pad), max(0, y - pad)),
-                    (min(width, x + w + pad), min(height, y + h_box + pad)),
-                    255,
-                    -1
-                )
+                if not item.bbox:
+                    continue
+                poly = np.array(item.bbox, dtype=np.int32)
+                poly = poly.reshape((-1, 1, 2))
+                
+                # Draw the exact slanted polygon, not a straight rectangle
+                cv2.fillPoly(mask, [poly], 255)
+
+            # Apply a 9x9 dilation (adds a motion buffer for 30-FPS video / 1-FPS OCR)
+            # This prevents the text outline from remaining visible as a "ghost" after removal
+            kernel = np.ones((9, 9), np.uint8)
+            mask = cv2.dilate(mask, kernel, iterations=1)
+            
             # High-speed CV2 Telea Inpainting
             frame = cv2.inpaint(frame, mask, 5, cv2.INPAINT_TELEA)
             
@@ -280,7 +282,8 @@ class RenderEngine:
         concat_txt = os.path.join(work_dir, "concat_list.txt")
         with open(concat_txt, "w") as f:
             for file_path in scene_files:
-                f.write(f"file '{file_path}'\n")
+                abs_path = os.path.abspath(file_path)
+                f.write(f"file '{abs_path}'\n")
                 
         logger.info("Concatenating all processed scenes into final output video...")
         subprocess.run([
