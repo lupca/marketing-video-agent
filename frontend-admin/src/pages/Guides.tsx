@@ -41,7 +41,7 @@ const SectionHeading = ({ children, icon: Icon }: { children: React.ReactNode; i
   </h2>
 );
 
-const ContentReviewWorker = () => (
+export const ContentReviewWorker = () => (
   <div className="space-y-6 text-gray-300 leading-relaxed font-light">
     <div className="rounded-xl border border-primary/20 bg-primary/5 p-6 shadow-sm">
       <h1 className="flex items-center gap-3 text-3xl font-bold bg-gradient-to-r from-violet-400 to-fuchsia-400 bg-clip-text text-transparent mb-4">
@@ -165,7 +165,7 @@ Lưu ý: Pacing đoạn quan trọng cao trào hãy rát cực ngắn (0.4-0.9),
 // We need an icon for Bot (missing from imports). I'll use FileText or replace it. I'll import Bot at the top actually in the final code.
 // Replacing Bot with Zap above.
 
-const ContentUnboxWorker = () => {
+export const ContentUnboxWorker = () => {
   const [unboxType, setUnboxType] = useState<'compare' | 'basic' | 'viral'>('compare');
 
   return (
@@ -367,7 +367,7 @@ In kết quả theo định dạng JSON sau:
   );
 };
 
-const ContentSlideshowWorker = () => (
+export const ContentSlideshowWorker = () => (
   <div className="space-y-6 text-gray-300 leading-relaxed font-light">
     <div className="rounded-xl border border-amber-500/30 bg-amber-500/10 p-6 shadow-sm shadow-amber-900/20">
       <h1 className="flex items-center gap-3 text-3xl font-bold bg-gradient-to-r from-amber-400 to-orange-400 bg-clip-text text-transparent mb-4">

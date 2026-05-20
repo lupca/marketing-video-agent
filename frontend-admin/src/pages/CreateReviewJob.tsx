@@ -10,6 +10,7 @@ import { ProjectAudioStep } from "../components/features/review/ProjectAudioStep
 import { SegmentEditorStep } from "../components/features/review/SegmentEditorStep";
 import { RenderSettingsStep } from "../components/features/review/RenderSettingsStep";
 import { ReviewSubmitStep } from "../components/features/review/ReviewSubmitStep";
+import { JobCreationLayout } from "../components/ui/JobCreationLayout";
 
 const STEPS = [
   { id: 1, name: "Âm thanh & Dự án", icon: Music },
@@ -24,6 +25,7 @@ export default function CreateReviewJob() {
   const cloneJobId = searchParams.get("clone");
   const [step, setStep] = useState(1);
   const [cloneLoading, setCloneLoading] = useState(!!cloneJobId);
+  const [tmcpContext, setTmcpContext] = useState<any>(null);
 
   // Custom Hooks
   const { projects, createProject } = useProjects();
@@ -82,6 +84,11 @@ export default function CreateReviewJob() {
         if (job.priority !== undefined) setPriority(job.priority);
 
         const cfg = job.config_data || {};
+
+        // Extract and set tmcp_context
+        if (cfg.metadata?.tmcp_context) {
+          setTmcpContext(cfg.metadata.tmcp_context);
+        }
 
         // Pre-fill audio assets
         if (cfg.assets?.audio) {
@@ -213,7 +220,10 @@ export default function CreateReviewJob() {
 
       setUploadStatus("Đang tạo job...");
       const configData = {
-        metadata: { project_id: targetProjectId },
+        metadata: {
+          project_id: targetProjectId,
+          ...(tmcpContext ? { tmcp_context: tmcpContext } : {})
+        },
         assets: {
           logo: { width: 160, x: 48, y: 160, opacity: 0.9 },
           audio: {
@@ -252,109 +262,111 @@ export default function CreateReviewJob() {
   const canGoStep3 = segments.length > 0 && segments.every(s => s.clips.length > 0);
 
   return (
-    <div className="max-w-5xl mx-auto p-8 lg:p-12 space-y-10">
-      <div className="space-y-2">
-        <h2 className="text-4xl font-extrabold tracking-tight bg-clip-text text-transparent bg-gradient-to-r from-white to-white/60">
-          Tạo Video Review
-        </h2>
-        <p className="text-muted-foreground text-lg">
-          Upload nguyên liệu, lên kịch bản phân cảnh, và dựng video tự động theo phong cách viral.
-        </p>
-      </div>
-
-      {cloneJobId && (
-        <div className="glass-panel p-4 flex items-center gap-3 bg-amber-500/10 border border-amber-500/20 rounded-xl animate-in fade-in">
-          <Copy className="w-5 h-5 text-amber-400 shrink-0" />
-          <div>
-            <p className="text-sm font-medium text-amber-300">Bản sao từ Job #{cloneJobId}</p>
-            <p className="text-xs text-amber-400/70">Chỉnh sửa nội dung bên dưới rồi gửi để tạo video mới.</p>
-          </div>
+    <JobCreationLayout jobType="review" tmcpContext={tmcpContext}>
+      <div className="max-w-5xl mx-auto p-8 lg:p-12 space-y-10">
+        <div className="space-y-2">
+          <h2 className="text-4xl font-extrabold tracking-tight bg-clip-text text-transparent bg-gradient-to-r from-white to-white/60">
+            Tạo Video Review
+          </h2>
+          <p className="text-muted-foreground text-lg">
+            Upload nguyên liệu, lên kịch bản phân cảnh, và dựng video tự động theo phong cách viral.
+          </p>
         </div>
-      )}
 
-      {cloneLoading ? (
-        <div className="glass-panel p-16 flex flex-col items-center justify-center gap-4 text-muted-foreground">
-          <div className="w-8 h-8 border-2 border-primary border-t-transparent rounded-full animate-spin"></div>
-          <p>Đang tải dữ liệu từ Job #{cloneJobId}...</p>
-        </div>
-      ) : (
-
-      <div className="glass-panel p-6 lg:p-10 flex flex-col space-y-10">
-        <div className="flex items-center justify-between w-full border-b border-white/10 pb-8">
-          {STEPS.map((s, idx) => (
-            <div key={s.id} className="flex items-center">
-              <div className={cn("flex items-center gap-3 transition-all duration-300", step >= s.id ? "text-primary" : "text-muted-foreground")}>
-                <div className={cn(
-                  "flex items-center justify-center w-10 h-10 rounded-full border-2 transition-all duration-300",
-                  step > s.id ? "bg-primary border-primary text-white" :
-                    step === s.id ? "border-primary bg-primary/20 shadow-[0_0_15px_rgba(124,58,237,0.4)]" : "border-muted-foreground/30"
-                )}>
-                  {step > s.id ? <CheckCircle2 className="w-5 h-5" /> : <s.icon className="w-5 h-5" />}
-                </div>
-                <span className={cn("font-medium text-sm hidden lg:block", step >= s.id ? "text-white" : "text-muted-foreground")}>{s.name}</span>
-              </div>
-              {idx < STEPS.length - 1 && <div className="w-8 lg:w-16 h-px bg-white/10 mx-3"></div>}
+        {cloneJobId && (
+          <div className="glass-panel p-4 flex items-center gap-3 bg-amber-500/10 border border-amber-500/20 rounded-xl animate-in fade-in">
+            <Copy className="w-5 h-5 text-amber-400 shrink-0" />
+            <div>
+              <p className="text-sm font-medium text-amber-300">Bản sao từ Job #{cloneJobId}</p>
+              <p className="text-xs text-amber-400/70">Chỉnh sửa nội dung bên dưới rồi gửi để tạo video mới.</p>
             </div>
-          ))}
-        </div>
-
-        {error && (
-          <div className="p-4 bg-red-500/10 text-red-400 rounded-xl border border-red-500/20 flex items-start gap-3 animate-in fade-in">
-            <AlertCircle className="w-5 h-5 shrink-0 mt-0.5" />
-            <p>{error}</p>
           </div>
         )}
 
-        {step === 1 && (
-          <ProjectAudioStep
-            projects={projects}
-            selectedProjectId={selectedProjectId}
-            setSelectedProjectId={setSelectedProjectId}
-            isCreatingProject={isCreatingProject}
-            setIsCreatingProject={setIsCreatingProject}
-            newProjectName={newProjectName}
-            setNewProjectName={setNewProjectName}
-            voiceover={voiceover} setVoiceover={setVoiceover}
-            script={script} setScript={setScript}
-            bgm={bgm} setBgm={setBgm}
-            language={language} setLanguage={setLanguage}
-            onNext={() => setStep(2)}
-            canGoNext={!!canGoStep2}
-          />
-        )}
+        {cloneLoading ? (
+          <div className="glass-panel p-16 flex flex-col items-center justify-center gap-4 text-muted-foreground">
+            <div className="w-8 h-8 border-2 border-primary border-t-transparent rounded-full animate-spin"></div>
+            <p>Đang tải dữ liệu từ Job #{cloneJobId}...</p>
+          </div>
+        ) : (
 
-        {step === 2 && (
-          <SegmentEditorStep
-            segments={segments} setSegments={setSegments}
-            onPrev={() => setStep(1)}
-            onNext={() => setStep(3)}
-            canGoNext={canGoStep3}
-          />
-        )}
+        <div className="glass-panel p-6 lg:p-10 flex flex-col space-y-10">
+          <div className="flex items-center justify-between w-full border-b border-white/10 pb-8">
+            {STEPS.map((s, idx) => (
+              <div key={s.id} className="flex items-center">
+                <div className={cn("flex items-center gap-3 transition-all duration-300", step >= s.id ? "text-primary" : "text-muted-foreground")}>
+                  <div className={cn(
+                    "flex items-center justify-center w-10 h-10 rounded-full border-2 transition-all duration-300",
+                    step > s.id ? "bg-primary border-primary text-white" :
+                      step === s.id ? "border-primary bg-primary/20 shadow-[0_0_15px_rgba(124,58,237,0.4)]" : "border-muted-foreground/30"
+                  )}>
+                    {step > s.id ? <CheckCircle2 className="w-5 h-5" /> : <s.icon className="w-5 h-5" />}
+                  </div>
+                  <span className={cn("font-medium text-sm hidden lg:block", step >= s.id ? "text-white" : "text-muted-foreground")}>{s.name}</span>
+                </div>
+                {idx < STEPS.length - 1 && <div className="w-8 lg:w-16 h-px bg-white/10 mx-3"></div>}
+              </div>
+            ))}
+          </div>
 
-        {step === 3 && (
-          <RenderSettingsStep
-            autoSubtitle={autoSubtitle} setAutoSubtitle={setAutoSubtitle}
-            priority={priority} setPriority={setPriority}
-            fontSize={fontSize} setFontSize={setFontSize}
-            textColor={textColor} setTextColor={setTextColor}
-            onPrev={() => setStep(2)}
-            onNext={() => setStep(4)}
-          />
-        )}
+          {error && (
+            <div className="p-4 bg-red-500/10 text-red-400 rounded-xl border border-red-500/20 flex items-start gap-3 animate-in fade-in">
+              <AlertCircle className="w-5 h-5 shrink-0 mt-0.5" />
+              <p>{error}</p>
+            </div>
+          )}
 
-        {step === 4 && (
-          <ReviewSubmitStep
-            projects={projects} selectedProjectId={selectedProjectId}
-            isCreatingProject={isCreatingProject} newProjectName={newProjectName}
-            voiceover={voiceover} script={script} bgm={bgm} language={language}
-            segments={segments} autoSubtitle={autoSubtitle} priority={priority}
-            loading={loading} uploadStatus={uploadStatus}
-            onPrev={() => setStep(3)} onSubmit={handleSubmit}
-          />
+          {step === 1 && (
+            <ProjectAudioStep
+              projects={projects}
+              selectedProjectId={selectedProjectId}
+              setSelectedProjectId={setSelectedProjectId}
+              isCreatingProject={isCreatingProject}
+              setIsCreatingProject={setIsCreatingProject}
+              newProjectName={newProjectName}
+              setNewProjectName={setNewProjectName}
+              voiceover={voiceover} setVoiceover={setVoiceover}
+              script={script} setScript={setScript}
+              bgm={bgm} setBgm={setBgm}
+              language={language} setLanguage={setLanguage}
+              onNext={() => setStep(2)}
+              canGoNext={!!canGoStep2}
+            />
+          )}
+
+          {step === 2 && (
+            <SegmentEditorStep
+              segments={segments} setSegments={setSegments}
+              onPrev={() => setStep(1)}
+              onNext={() => setStep(3)}
+              canGoNext={canGoStep3}
+            />
+          )}
+
+          {step === 3 && (
+            <RenderSettingsStep
+              autoSubtitle={autoSubtitle} setAutoSubtitle={setAutoSubtitle}
+              priority={priority} setPriority={setPriority}
+              fontSize={fontSize} setFontSize={setFontSize}
+              textColor={textColor} setTextColor={setTextColor}
+              onPrev={() => setStep(2)}
+              onNext={() => setStep(4)}
+            />
+          )}
+
+          {step === 4 && (
+            <ReviewSubmitStep
+              projects={projects} selectedProjectId={selectedProjectId}
+              isCreatingProject={isCreatingProject} newProjectName={newProjectName}
+              voiceover={voiceover} script={script} bgm={bgm} language={language}
+              segments={segments} autoSubtitle={autoSubtitle} priority={priority}
+              loading={loading} uploadStatus={uploadStatus}
+              onPrev={() => setStep(3)} onSubmit={handleSubmit}
+            />
+          )}
+        </div>
         )}
       </div>
-      )}
-    </div>
+    </JobCreationLayout>
   );
 }

@@ -599,6 +599,11 @@ def process_tmcp_webhook_impl(job_id: int):
         logger.info(f"Applying defensive healing to draft parameters for worker: {worker_type}")
         draft_params = heal_draft_parameters(worker_type, draft_params, script_content, title)
 
+        # Preserve original TMCP context in config_data.metadata.tmcp_context
+        if "metadata" not in draft_params or not isinstance(draft_params["metadata"], dict):
+            draft_params["metadata"] = {}
+        draft_params["metadata"]["tmcp_context"] = payload
+
         # 4. Tạo Job mới ở trạng thái DRAFT
         new_job = VideoJob(
             job_type=worker_type,

@@ -9,6 +9,7 @@ import { Button } from "../components/ui/Button"
 import { AssetSelector } from "../components/ui/AssetSelector"
 import { AssetSelectModal } from "../components/ui/AssetSelectModal"
 import type { UploadedFile } from "../components/features/review/types"
+import { JobCreationLayout } from "../components/ui/JobCreationLayout"
 
 interface TextEvent {
   time?: number | null
@@ -25,6 +26,7 @@ export default function CreateUnboxViralJob() {
   const [step, setStep] = useState(1)
   const [cloneLoading, setCloneLoading] = useState(!!cloneJobId)
   const clonedFromId = cloneJobId
+  const [tmcpContext, setTmcpContext] = useState<any>(null)
 
   // Data State
   const [selectedProjectId, setSelectedProjectId] = useState("")
@@ -65,6 +67,9 @@ export default function CreateUnboxViralJob() {
         if (job.priority !== undefined) setPriority(job.priority)
 
         const cfg = job.config_data || {}
+        if (cfg.metadata?.tmcp_context) {
+          setTmcpContext(cfg.metadata.tmcp_context)
+        }
 
         // Pre-fill clips as asset references (s3_url only, no File object)
         if (cfg.clips && Array.isArray(cfg.clips)) {
@@ -157,7 +162,11 @@ export default function CreateUnboxViralJob() {
         config_data: {
           clips: clipUrls,
           audio: audioUrl,
-          text_events: textEvents
+          text_events: textEvents,
+          metadata: {
+            project_id: targetProjectId,
+            ...(tmcpContext ? { tmcp_context: tmcpContext } : {})
+          }
         }
       }
 
@@ -179,8 +188,9 @@ export default function CreateUnboxViralJob() {
   ]
 
   return (
-    <div className="max-w-5xl mx-auto p-8 lg:p-12 space-y-10">
-      <div className="space-y-2">
+    <JobCreationLayout jobType="unbox_viral" tmcpContext={tmcpContext}>
+      <div className="max-w-5xl mx-auto p-8 lg:p-12 space-y-10">
+        <div className="space-y-2">
         <h2 className="text-4xl font-extrabold tracking-tight bg-clip-text text-transparent bg-gradient-to-r from-violet-400 to-indigo-400">
           Create Viral Unbox ⚡
         </h2>
@@ -533,5 +543,6 @@ export default function CreateUnboxViralJob() {
       </div>
       )}
     </div>
+    </JobCreationLayout>
   )
 }
