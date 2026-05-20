@@ -74,6 +74,8 @@ class ProjectResponse(BaseModel):
 class JobCreate(BaseModel):
     job_type: str
     config_data: Dict[str, Any]
+    draft_parameters: Optional[Dict[str, Any]] = None
+    final_parameters: Optional[Dict[str, Any]] = None
     project_id: str
     template_id: Optional[str] = None
     priority: Optional[int] = 0
@@ -98,6 +100,8 @@ class JobResponse(BaseModel):
     status: str
     priority: int
     config_data: Dict[str, Any]
+    draft_parameters: Optional[Dict[str, Any]] = None
+    final_parameters: Optional[Dict[str, Any]] = None
     progress_percent: int
     result_url: Optional[str] = None
     error_message: Optional[str] = None
@@ -109,6 +113,11 @@ class JobResponse(BaseModel):
 
 class JobUpdate(BaseModel):
     note: Optional[str] = None
+    status: Optional[str] = None
+    config_data: Optional[Dict[str, Any]] = None
+    draft_parameters: Optional[Dict[str, Any]] = None
+    final_parameters: Optional[Dict[str, Any]] = None
+    priority: Optional[int] = None
 
 
 # ── Assets ────────────────────────────────────────────────────────────────────
@@ -316,3 +325,28 @@ class ModelSettingsResponse(BaseModel):
     base_url: str
     model_name: str
     source: str  # "database" | "environment" | "default"
+
+
+# ── TMCP Webhook Payloads ─────────────────────────────────────────────────────
+
+class BrandContext(BaseModel):
+    brand_name: str
+    tone_of_voice: Optional[str] = ""
+    brand_colors: Optional[List[str]] = []
+
+class CampaignContext(BaseModel):
+    campaign_name: str
+    target_audience: Optional[str] = ""
+    objective: Optional[str] = ""
+
+class VariantData(BaseModel):
+    title: str
+    script_content: str
+    media_hints: Optional[List[str]] = []
+    suggested_duration: Optional[int] = 15
+
+class TMCPPayload(BaseModel):
+    source_id: str
+    brand_context: BrandContext
+    campaign_context: CampaignContext
+    variant_data: VariantData

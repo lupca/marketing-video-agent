@@ -4,7 +4,7 @@ import api from "../lib/api";
 export interface VideoJob {
   id: number;
   job_type: string;
-  status: "PENDING" | "PROCESSING" | "SUCCESS" | "FAILED" | "WAITING_FOR_REVIEW";
+  status: "PENDING" | "PROCESSING" | "SUCCESS" | "FAILED" | "WAITING_FOR_REVIEW" | "DRAFT";
   priority: number;
   progress_percent: number;
   config_data: any;

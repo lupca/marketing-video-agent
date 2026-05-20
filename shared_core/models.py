@@ -88,6 +88,8 @@ class VideoJob(Base):
     status = Column(String, default="PENDING", index=True)
     priority = Column(Integer, default=0)
     config_data = Column(FlexibleJSON)
+    draft_parameters = Column(FlexibleJSON, nullable=True)
+    final_parameters = Column(FlexibleJSON, nullable=True)
     result_url = Column(String, nullable=True)
     error_message = Column(Text, nullable=True)
     progress_percent = Column(Integer, default=0)

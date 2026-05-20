@@ -1,6 +1,6 @@
 import { useEffect, useState } from "react";
-import { useNavigate } from "react-router-dom";
-import { UploadCloud, Folder, Plus, CheckCircle2, Languages, Send, AlertTriangle } from "lucide-react";
+import { useNavigate, useSearchParams } from "react-router-dom";
+import { UploadCloud, Folder, Plus, CheckCircle2, Languages, Send, AlertTriangle, Copy } from "lucide-react";
 import api from "../lib/api";
 import { cn } from "../lib/utils";
 import { useAssets } from "../hooks/useAssets";
@@ -11,6 +11,8 @@ import type { UploadedFile } from "../components/features/review/types";
 
 export default function CreateTranslifyJob() {
   const navigate = useNavigate();
+  const [searchParams] = useSearchParams();
+  const cloneJobId = searchParams.get("clone");
   const { uploadAsset } = useAssets();
   const { projects, createProject } = useProjects();
 
@@ -26,11 +28,51 @@ export default function CreateTranslifyJob() {
   const [loading, setLoading] = useState(false);
   const [error, setError] = useState<string | null>(null);
   const [uploadStatus, setUploadStatus] = useState("");
+  const [cloneLoading, setCloneLoading] = useState(!!cloneJobId);
 
   useEffect(() => {
     if (projects.length > 0 && !selectedProjectId) setSelectedProjectId(projects[0].id);
     if (projects.length === 0) setIsCreatingProject(true);
   }, [projects, selectedProjectId]);
+
+  // Clone/Draft loading
+  useEffect(() => {
+    if (!cloneJobId) return;
+    let cancelled = false;
+    const loadClone = async () => {
+      try {
+        setCloneLoading(true);
+        const res = await api.get(`/api/jobs/${cloneJobId}`);
+        const job = res.data;
+        if (cancelled) return;
+
+        if (job.project_id) setSelectedProjectId(job.project_id);
+        if (job.priority !== undefined) setPriority(job.priority);
+
+        const cfg = job.config_data || {};
+        if (cfg.video) {
+          const videoUrl = cfg.video;
+          setVideo({
+            file: undefined,
+            id: null,
+            s3_url: videoUrl,
+            asset: { id: "", s3_url: videoUrl, file_name: videoUrl.split("/").pop() || "video.mp4", file_size_bytes: 0, asset_type: "clip", mime_type: "video/mp4", created_at: "" },
+            uploading: false,
+            progress: 0,
+          });
+        }
+        if (cfg.voice_name) {
+          setVoiceName(cfg.voice_name);
+        }
+      } catch (err) {
+        console.error("Failed to load cloned job:", err);
+      } finally {
+        if (!cancelled) setCloneLoading(false);
+      }
+    };
+    loadClone();
+    return () => { cancelled = true; };
+  }, [cloneJobId]);
 
   const handleSubmit = async () => {
     if (!video) return setError("Vui lòng chọn video tiếng Trung đầu vào.");
@@ -57,7 +99,9 @@ export default function CreateTranslifyJob() {
         allAssetIds.push(res.id);
       } else {
         videoUrl = video.asset!.s3_url;
-        allAssetIds.push(video.asset!.id);
+        if (video.asset!.id) {
+          allAssetIds.push(video.asset!.id);
+        }
       }
 
       setUploadStatus("Đang khởi tạo tiến trình dịch thuật...");
@@ -103,6 +147,16 @@ export default function CreateTranslifyJob() {
         </p>
       </div>
 
+      {cloneJobId && (
+        <div className="glass-panel p-4 flex items-center gap-3 bg-amber-500/10 border border-amber-500/20 rounded-xl animate-in fade-in">
+          <Copy className="w-5 h-5 text-amber-400 shrink-0" />
+          <div>
+            <p className="text-sm font-medium text-amber-300">Bản sao từ Job #{cloneJobId}</p>
+            <p className="text-xs text-amber-400/70">Chỉnh sửa nội dung bên dưới rồi gửi để tạo video mới.</p>
+          </div>
+        </div>
+      )}
+
       {error && (
         <div className="p-4 bg-rose-500/10 text-rose-400 rounded-xl border border-rose-500/20 backdrop-blur-sm animate-in fade-in flex items-center gap-2">
           <AlertTriangle className="w-5 h-5 shrink-0" />
@@ -110,8 +164,14 @@ export default function CreateTranslifyJob() {
         </div>
       )}
 
-      {/* Forms & Inputs */}
-      <div className="glass-panel p-6 lg:p-10 flex flex-col space-y-8">
+      {cloneLoading ? (
+        <div className="glass-panel p-16 flex flex-col items-center justify-center gap-4 text-muted-foreground">
+          <div className="w-8 h-8 border-2 border-primary border-t-transparent rounded-full animate-spin"></div>
+          <p>Đang tải dữ liệu từ Job #{cloneJobId}...</p>
+        </div>
+      ) : (
+        /* Forms & Inputs */
+        <div className="glass-panel p-6 lg:p-10 flex flex-col space-y-8">
         {/* Step 1: Project Selection */}
         <div className="space-y-4">
           <label className="text-sm font-semibold text-white/90 uppercase tracking-wider flex items-center gap-2">
@@ -280,6 +340,7 @@ export default function CreateTranslifyJob() {
           </Button>
         </div>
       </div>
+      )}
     </div>
   );
 }

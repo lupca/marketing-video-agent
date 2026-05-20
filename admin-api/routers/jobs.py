@@ -1,3 +1,4 @@
+import fastapi
 """Jobs router — create, list, get, delete, download, logs."""
 
 from datetime import timedelta
@@ -24,6 +25,54 @@ def _get_user_job(job_id: int, db: Session, user_id: str):
     if job is None:
         raise HTTPException(status_code=404, detail="Job not found")
     return job
+
+
+def resolve_celery_task_and_queue(job_type: str) -> tuple[str, str]:
+    """
+    Phân giải tên Celery Task và Queue tương ứng với loại Job.
+    Tập trung logic ánh xạ tại một nơi duy nhất.
+    """
+    queue_name = f"{job_type}_queue"
+    task_name = f"worker_{job_type}.tasks.process_video"
+    
+    if job_type == "unbox_viral":
+        queue_name = "unbox_queue"
+        task_name = "worker_unbox.tasks.process_unbox_viral"
+    elif job_type == "translify":
+        task_name = "worker_translify.tasks.analyze_video"
+    elif job_type == "agent":
+        queue_name = "agent_queue"
+        task_name = "worker_agent.tasks.process_tmcp_webhook"
+        
+    return task_name, queue_name
+
+
+def get_or_create_tmcp_project(db: Session) -> models.Project:
+    """Tìm hoặc tự động khởi tạo Project TMCP Outsource mặc định."""
+    user = db.query(models.User).filter(models.User.role == "admin").first()
+    if not user:
+        user = db.query(models.User).first()
+    if not user:
+        raise HTTPException(
+            status_code=500, detail="No users configured in database. Cannot create project."
+        )
+
+    proj = db.query(models.Project).filter(
+        models.Project.name == "TMCP Outsource", 
+        models.Project.user_id == user.id
+    ).first()
+    
+    if not proj:
+        proj = models.Project(
+            name="TMCP Outsource", 
+            description="Workspace for TMCP Outsource Integration", 
+            user_id=user.id
+        )
+        db.add(proj)
+        db.commit()
+        db.refresh(proj)
+    return proj
+
 
 
 @router.post("", response_model=schemas.JobResponse)
@@ -68,15 +117,8 @@ def create_job(
             db.add(models.JobAsset(job_id=db_job.id, asset_id=aid))
         db.commit()
 
-    # Queue worker task
-    queue_name = f"{job.job_type}_queue"
-    task_name = f"worker_{job.job_type}.tasks.process_video"
-    
-    if job.job_type == "unbox_viral":
-        queue_name = "unbox_queue"
-        task_name = "worker_unbox.tasks.process_unbox_viral"
-    elif job.job_type == "translify":
-        task_name = "worker_translify.tasks.analyze_video"
+    # Queue worker task using centralized helper
+    task_name, queue_name = resolve_celery_task_and_queue(job.job_type)
 
     try:
         celery_client.celery_app.send_task(
@@ -177,6 +219,42 @@ def update_job(
     if job_update.note is not None:
         job.note = job_update.note
         
+    if job_update.priority is not None:
+        job.priority = job_update.priority
+        
+    if job_update.config_data is not None:
+        job.config_data = job_update.config_data
+        
+    if job_update.draft_parameters is not None:
+        job.draft_parameters = job_update.draft_parameters
+        
+    if job_update.final_parameters is not None:
+        job.final_parameters = job_update.final_parameters
+
+    if job_update.status is not None:
+        # Nếu chuyển từ DRAFT sang PENDING, đẩy task vào Celery Queue!
+        if job.status == "DRAFT" and job_update.status == "PENDING":
+            job.status = "PENDING"
+            
+            # Queue worker task using centralized helper
+            task_name, queue_name = resolve_celery_task_and_queue(job.job_type)
+                
+            task_config = dict(job.config_data) if job.config_data else {}
+            
+            try:
+                celery_client.celery_app.send_task(
+                    task_name,
+                    args=[job.id, task_config],
+                    queue=queue_name,
+                )
+            except Exception as e:
+                job.status = "FAILED"
+                job.error_message = f"Failed to push to Celery queue: {str(e)}"
+                db.commit()
+                raise HTTPException(status_code=500, detail=f"Failed to queue job: {str(e)}")
+        else:
+            job.status = job_update.status
+        
     db.commit()
     db.refresh(job)
     return job
@@ -195,3 +273,49 @@ def get_job_logs(
         .order_by(models.JobLog.created_at.asc())
         .all()
     )
+
+
+@router.post("/from-tmcp", response_model=schemas.JobResponse)
+def create_job_from_tmcp(
+    payload: schemas.TMCPPayload,
+    x_tmcp_key: Optional[str] = fastapi.Header(None, alias="X-TMCP-Key"),
+    db: Session = Depends(database.get_db),
+):
+    import os
+    expected_key = os.getenv("TMCP_API_KEY", "tmcp_secret_key_123")
+    if x_tmcp_key != expected_key:
+         raise HTTPException(status_code=403, detail="Forbidden: Invalid X-TMCP-Key")
+
+    # Tìm hoặc tạo project mặc định "TMCP Outsource" qua database helper
+    proj = get_or_create_tmcp_project(db)
+
+    # Tạo Job loại "agent" ở trạng thái PENDING
+    db_job = models.VideoJob(
+         job_type="agent",
+         project_id=proj.id,
+         status="PENDING",
+         priority=0,
+         config_data=payload.dict(),
+         progress_percent=0,
+         note=f"Received webhook from TMCP for variant: {payload.source_id}",
+    )
+    db.add(db_job)
+    db.commit()
+    db.refresh(db_job)
+
+    # Đẩy task xử lý webhook cho Leader Agent (worker_agent)
+    task_name, queue_name = resolve_celery_task_and_queue("agent")
+    try:
+         celery_client.celery_app.send_task(
+              task_name,
+              args=[db_job.id],
+              queue=queue_name,
+         )
+    except Exception as e:
+         db_job.status = "FAILED"
+         db_job.error_message = f"Failed to push to agent queue: {str(e)}"
+         db.commit()
+         db.refresh(db_job)
+         raise HTTPException(status_code=500, detail=f"Failed to queue agent task: {str(e)}")
+
+    return db_job

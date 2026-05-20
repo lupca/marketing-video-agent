@@ -1,10 +1,16 @@
 import React, { useState } from "react";
 import { Link, useNavigate } from "react-router-dom";
-import { CheckCircle2, Clock, AlertCircle, ChevronDown, ChevronUp, Timer, Download, ExternalLink, Eye, Trash2, Play, Copy } from "lucide-react";
+import { CheckCircle2, Clock, AlertCircle, ChevronDown, ChevronUp, Timer, Download, ExternalLink, Eye, Trash2, Play, Copy, Wand2, FileText } from "lucide-react";
 import { cn } from "../../../lib/utils";
 import { formatDuration, formatDate } from "../../../lib/format";
 import type { VideoJob } from "../../../hooks/useJobs";
 import api from "../../../lib/api";
+
+
+function getCreatePath(jobType: string): string {
+  if (jobType === "unbox_viral") return "viral";
+  return jobType;
+}
 
 export function getMinioBrowserUrl(s3Url: string): string {
   // s3://videos/outputs/review_job_4.mp4 → http://localhost:9001/browser/videos/outputs/review_job_4.mp4
@@ -111,7 +117,21 @@ export function JobTable({ jobs, onViewDetails, onDeleteJob, onDownloadJob, onUp
                             QUEUED
                           </span>
                         )}
-                        {job.status === "WAITING_FOR_REVIEW" && (
+                                                {job.status === "DRAFT" && (
+                          <span className="inline-flex items-center rounded-full border border-yellow-500/30 px-3 py-1 text-xs font-semibold bg-yellow-500/10 text-yellow-400 shadow-[0_0_10px_rgba(234,179,8,0.2)]">
+                            <FileText className="mr-1.5 h-3.5 w-3.5" /> DRAFT
+                          </span>
+                        )}
+                                            {job.status === "DRAFT" && (
+                      <Link
+                        to={`/create-${getCreatePath(job.job_type)}?clone=${job.id}&delete_draft=${job.id}`}
+                        className="inline-flex items-center justify-center rounded-lg bg-yellow-500/10 hover:bg-yellow-500/20 text-yellow-400 border border-yellow-500/30 transition-all h-8 px-2.5 text-[10px] uppercase font-bold hover:shadow-[0_0_15px_rgba(234,179,8,0.3)] gap-1 shrink-0"
+                        title="Edit and Publish Draft"
+                      >
+                        <Wand2 className="h-3.5 w-3.5" /> Edit & Publish
+                      </Link>
+                    )}
+                    {job.status === "WAITING_FOR_REVIEW" && (
                           <span className="inline-flex items-center rounded-full border border-amber-500/30 px-3 py-1 text-xs font-semibold bg-amber-500/10 text-amber-400 shadow-[0_0_10px_rgba(245,158,11,0.2)]">
                             <Eye className="mr-1.5 h-3.5 w-3.5" /> REVIEW NEEDED
                           </span>
