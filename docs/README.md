@@ -12,6 +12,8 @@ Toàn bộ tài liệu hệ thống được đặt tại thư mục `docs/`.
 4. [Tài Liệu Cấu Trúc API (Admin API)](./API_REFERENCE.md) - Auth, Projects, Jobs, Assets
 5. [Hướng Dẫn: Plugin Video Review](./WORKER_REVIEW.md) - Phù hợp tạo video Kể Chuyện, Đập hộp có Voiceover
 6. [Hướng Dẫn: Plugin Video Unbox](./WORKER_UNBOX.md) - Phù hợp tạo video ghép nhiều đoạn nhạc (Beat-drop sync)
+7. [Hướng Dẫn: Plugin Video Translify](./WORKER_TRANSLIFY.md) - Hướng dẫn dịch thuật, Việt hóa video, và xóa chữ bằng SOTA Inpainting
+
 
 ---
 

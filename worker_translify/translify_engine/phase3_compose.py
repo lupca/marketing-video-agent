@@ -248,14 +248,12 @@ class TextInpainter:
         return mask
 
     def clean_frames(self, video_path: str, ocr_results: List[Dict[str, Any]], work_dir: str) -> str:
-        """Processes video frame-by-frame, applying AI LaMa or CV2 Telea inpainting on text masks."""
+        """Processes video, applying SOTA ProPainter video inpainting on tracked text regions."""
         if not ocr_results:
             logger.info("No on-screen OCR text to remove. Skipping inpainting.")
             return video_path
 
-        logger.info("Starting on-screen text removal (inpainting)...")
-        frames_dir = os.path.join(work_dir, "inpainted_frames")
-        os.makedirs(frames_dir, exist_ok=True)
+        logger.info("Starting SOTA ProPainter on-screen text removal (inpainting)...")
 
         cap = cv2.VideoCapture(video_path)
         if not cap.isOpened():
@@ -266,78 +264,69 @@ class TextInpainter:
             width = int(cap.get(cv2.CAP_PROP_FRAME_WIDTH))
             height = int(cap.get(cv2.CAP_PROP_FRAME_HEIGHT))
 
-            # Index OCR text events by rounded seconds
-            ocr_by_sec = {}
-            for res in ocr_results:
-                sec = res["time_sec"]
-                ocr_by_sec.setdefault(sec, []).append(res)
+            # 1. Precompute tracked polygons for every frame of this video
+            from translify_engine.tracking_utils import get_tracked_polygons
+            tracked_by_frame = get_tracked_polygons(video_path, ocr_results, fps, 0.0)
 
-            temp_raw = os.path.join(work_dir, "inpainted_raw.mp4")
-            fourcc = cv2.VideoWriter_fourcc(*"mp4v")
-            writer = cv2.VideoWriter(temp_raw, fourcc, fps, (width, height))
-            if not writer.isOpened():
-                logger.warning(f"OpenCV VideoWriter reported not isOpened() for {temp_raw}, proceeding with best effort.")
-
-            # Instantiate Advanced IOPaint LaMa if enabled
-            iopaint_model = None
-            if self.config.use_iopaint:
-                try:
-                    logger.info(f"Initializing IOPaint LaMa model on {self.config.iopaint_device}...")
-                    from iopaint.model.lama import LaMa
-                    iopaint_model = LaMa(device=self.config.iopaint_device)
-                    logger.info("IOPaint LaMa loaded successfully.")
-                except Exception as e:
-                    logger.warning(f"Failed to load IOPaint LaMa model: {e}. Falling back to OpenCV Inpainting.")
-                    iopaint_model = None
-
-            try:
-                frame_idx = 0
-                cleaned_count = 0
-
-                while True:
-                    ret, frame = cap.read()
-                    if not ret:
-                        break
-
-                    sec = int(frame_idx / fps)
-                    # Apply text mask for +/- 1 second buffers
-                    active_texts = []
-                    for delta in (-1, 0, 1):
-                        t_sec = sec + delta
-                        if t_sec in ocr_by_sec:
-                            active_texts.extend(ocr_by_sec[t_sec])
-
-                    if active_texts:
-                        mask = self._create_mask(height, width, active_texts)
-
-                        if iopaint_model is not None:
-                            try:
-                                from iopaint.schema import InpaintRequest
-                                img_rgb = cv2.cvtColor(frame, cv2.COLOR_BGR2RGB)
-                                pil_img = Image.fromarray(img_rgb)
-                                pil_mask = Image.fromarray(mask)
-
-                                inpainted_rgb = iopaint_model.inpaint(pil_img, pil_mask, InpaintRequest())
-                                frame = cv2.cvtColor(np.array(inpainted_rgb), cv2.COLOR_RGB2BGR)
-                                cleaned_count += 1
-                            except Exception as e:
-                                logger.error(f"IOPaint inpaint failed on frame {frame_idx}: {e}. Falling back to CV2.")
-                                frame = cv2.inpaint(frame, mask, 5, cv2.INPAINT_TELEA)
-                        else:
-                            frame = cv2.inpaint(frame, mask, 5, cv2.INPAINT_TELEA)
-                            cleaned_count += 1
-
-                    writer.write(frame)
-                    frame_idx += 1
-            finally:
-                writer.release()
-                if iopaint_model is not None:
-                    del iopaint_model
-                    clean_gpu_memory()
+            # 2. Read all frames and generate corresponding masks
+            frames = []
+            masks = []
+            frame_idx = 0
+            has_any_mask = False
+            
+            while True:
+                ret, frame = cap.read()
+                if not ret:
+                    break
+                    
+                active_polys = tracked_by_frame.get(frame_idx, [])
+                mask = np.zeros((height, width), dtype=np.uint8)
+                
+                if active_polys:
+                    for poly_pts in active_polys:
+                        if not poly_pts:
+                            continue
+                        poly = np.array(poly_pts, dtype=np.int32)
+                        poly = poly.reshape((-1, 1, 2))
+                        cv2.fillPoly(mask, [poly], 255)
+                        
+                    # Apply a small 5x5 dilation to cover the text neatly
+                    kernel = np.ones((5, 5), np.uint8)
+                    mask = cv2.dilate(mask, kernel, iterations=1)
+                    has_any_mask = True
+                    
+                frames.append(frame)
+                masks.append(mask)
+                frame_idx += 1
         finally:
             cap.release()
 
-        logger.info(f"Cleaned {cleaned_count} frames containing Chinese text.")
+        # 3. Apply SOTA ProPainter video inpainting if we have any masked regions
+        if has_any_mask:
+            logger.info(f"Invoking SOTA ProPainter on {len(frames)} frames of full video...")
+            from translify_engine.propainter_inpaint import inpaint_video_frames_propainter
+            inpainted_frames = inpaint_video_frames_propainter(
+                frames=frames,
+                masks=masks,
+                work_dir=work_dir,
+                image_resize_ratio=1.0,
+                mask_dilation=4
+            )
+        else:
+            logger.info("No active text detected in full video. Copying original frames.")
+            inpainted_frames = frames
+
+        # 4. Write all frames to a temporary raw video file
+        temp_raw = os.path.join(work_dir, "inpainted_raw.mp4")
+        fourcc = cv2.VideoWriter_fourcc(*"mp4v")
+        writer = cv2.VideoWriter(temp_raw, fourcc, fps, (width, height))
+        try:
+            for f in inpainted_frames:
+                writer.write(f)
+        finally:
+            writer.release()
+
+        logger.info(f"Cleaned {len(inpainted_frames)} frames containing Chinese text.")
 
         # High quality H264 transcoding via NVENC with robust CPU fallback
         cleaned_video = os.path.join(work_dir, "inpainted_clean.mp4")

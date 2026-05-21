@@ -27,62 +27,131 @@ def clean_gpu_memory():
     except ImportError:
         pass
 
+def _get_perframe_text_detector():
+    """Lazily initialize and cache a PaddleX text detection model (det-only, no recognition)."""
+    if not hasattr(_get_perframe_text_detector, "_instance"):
+        import paddlex as px
+        logger.info("Initializing PaddleX per-frame text detector (PP-OCRv4_mobile_det, GPU)...")
+        _get_perframe_text_detector._instance = px.create_model("PP-OCRv4_mobile_det")
+    return _get_perframe_text_detector._instance
+
+
+def detect_text_masks_perframe(frames: list, width: int, height: int, scene_id: str) -> list:
+    """
+    Run PaddleOCR text detection on every frame to generate pixel-perfect masks.
+    Applies temporal smoothing (union of ±1 neighboring frames) to prevent flickering.
+    
+    Returns list of single-channel uint8 masks (same length as frames).
+    """
+    import tempfile
+    
+    ocr = _get_perframe_text_detector()
+    n = len(frames)
+    
+    logger.info(f"[{scene_id}] Running per-frame text detection on {n} frames...")
+    
+    # Phase 1: Detect text polygons on each frame
+    raw_masks = []
+    for i, frame in enumerate(frames):
+        mask = np.zeros((height, width), dtype=np.uint8)
+        
+        # Run PaddleX detection model directly on the in-memory numpy array (no disk writes/reads)
+        try:
+            result = list(ocr.predict(frame, box_thresh=0.5, thresh=0.3, unclip_ratio=1.5))
+            
+            if result and result[0]:
+                res_obj = result[0]
+                polys_list = []
+                if isinstance(res_obj, dict) or (hasattr(res_obj, "get") and "dt_polys" in res_obj):
+                    polys_list = res_obj.get("dt_polys", [])
+                else:
+                    # Legacy/Standard format: list of [poly, (text, conf)]
+                    for line in res_obj:
+                        if line and len(line) >= 1:
+                            polys_list.append(line[0])
+                
+                for poly in polys_list:
+                    if poly is None or len(poly) < 3:
+                        continue
+                    pts = np.array(poly, dtype=np.int32).reshape((-1, 1, 2))
+                    cv2.fillPoly(mask, [pts], 255)
+        except Exception as det_err:
+            logger.warning(f"[{scene_id}] Det error on frame {i}: {det_err}")
+        
+        raw_masks.append(mask)
+    
+    # Phase 2: Temporal smoothing — union of ±1 neighboring frame masks
+    logger.info(f"[{scene_id}] Applying temporal mask smoothing (±1 frame union)...")
+    smoothed_masks = []
+    for i in range(n):
+        combined = raw_masks[i].copy()
+        if i > 0:
+            combined = cv2.bitwise_or(combined, raw_masks[i - 1])
+        if i < n - 1:
+            combined = cv2.bitwise_or(combined, raw_masks[i + 1])
+        smoothed_masks.append(combined)
+    
+    # Phase 3: Apply generous dilation for anti-aliased text edges & drop shadows
+    kernel = np.ones((11, 11), np.uint8)
+    dilated_masks = []
+    for mask in smoothed_masks:
+        dilated = cv2.dilate(mask, kernel, iterations=2)
+        dilated_masks.append(dilated)
+    
+    text_frame_count = sum(1 for m in dilated_masks if np.any(m > 0))
+    logger.info(f"[{scene_id}] Per-frame detection complete: {text_frame_count}/{n} frames have text masks.")
+    
+    return dilated_masks
+
+
 def inpaint_scene_clip(scene_mp4: str, scene: Scene, output_mp4: str, fps: float, width: int, height: int, work_dir: str) -> str:
     """
-    Remove hardcoded Chinese text from this specific scene clip using OpenCV inpainting.
+    Remove hardcoded Chinese text from this specific scene clip using per-frame text detection + SOTA ProPainter inpainting.
     """
     if not scene.visual.ocr_text:
         return scene_mp4
 
-    logger.info(f"[{scene.id}] Inpainting text in scene clip...")
+    logger.info(f"[{scene.id}] Inpainting text using per-frame detection + ProPainter...")
+    
+    # 1. Read all frames from the scene video clip
     cap = cv2.VideoCapture(scene_mp4)
-    
-    temp_raw = os.path.join(work_dir, f"{scene.id}_inpainted_raw.mp4")
-    fourcc = cv2.VideoWriter_fourcc(*"mp4v")
-    writer = cv2.VideoWriter(temp_raw, fourcc, fps, (width, height))
-    
-    frame_idx = 0
+    frames = []
     while True:
         ret, frame = cap.read()
         if not ret:
             break
-            
-        # Time relative to the scene clip
-        sec_rel = frame_idx / fps
-        # Absolute time in full video
-        sec_abs = scene.start + sec_rel
-        
-        # Check for active text detections within +/- 1 second of this frame's absolute time
-        active_items = []
-        for item in scene.visual.ocr_text:
-            item_time = getattr(item, 'time_sec', scene.start)
-            if abs(sec_abs - item_time) <= 1.0:
-                active_items.append(item)
-            
-        if active_items:
-            # Create inpaint mask using exact polygons
-            mask = np.zeros((height, width), dtype=np.uint8)
-            for item in active_items:
-                if not item.bbox:
-                    continue
-                poly = np.array(item.bbox, dtype=np.int32)
-                poly = poly.reshape((-1, 1, 2))
-                
-                # Draw the exact slanted polygon, not a straight rectangle
-                cv2.fillPoly(mask, [poly], 255)
-
-            # Apply a 9x9 dilation (adds a motion buffer for 30-FPS video / 1-FPS OCR)
-            # This prevents the text outline from remaining visible as a "ghost" after removal
-            kernel = np.ones((9, 9), np.uint8)
-            mask = cv2.dilate(mask, kernel, iterations=1)
-            
-            # High-speed CV2 Telea Inpainting
-            frame = cv2.inpaint(frame, mask, 5, cv2.INPAINT_TELEA)
-            
-        writer.write(frame)
-        frame_idx += 1
-        
+        frames.append(frame)
     cap.release()
+    
+    if not frames:
+        return scene_mp4
+    
+    # 2. Run per-frame text detection to generate pixel-perfect masks
+    masks = detect_text_masks_perframe(frames, width, height, scene.id)
+    
+    has_any_mask = any(np.any(m > 0) for m in masks)
+    
+    # 3. Apply ProPainter video inpainting if we have any masked text
+    if has_any_mask:
+        logger.info(f"[{scene.id}] Invoking SOTA ProPainter on {len(frames)} frames...")
+        from translify_engine.propainter_inpaint import inpaint_video_frames_propainter
+        inpainted_frames = inpaint_video_frames_propainter(
+            frames=frames,
+            masks=masks,
+            work_dir=work_dir,
+            image_resize_ratio=1.0,
+            mask_dilation=4
+        )
+    else:
+        logger.info(f"[{scene.id}] No text detected in any frame. Copying original frames.")
+        inpainted_frames = frames
+
+    # 4. Write all frames to temporary MP4
+    temp_raw = os.path.join(work_dir, f"{scene.id}_inpainted_raw.mp4")
+    fourcc = cv2.VideoWriter_fourcc(*"mp4v")
+    writer = cv2.VideoWriter(temp_raw, fourcc, fps, (width, height))
+    for f in inpainted_frames:
+        writer.write(f)
     writer.release()
     
     # Transcode to standard h264 mp4
@@ -99,6 +168,7 @@ def inpaint_scene_clip(scene_mp4: str, scene: Scene, output_mp4: str, fps: float
     ]
     subprocess.run(cmd, stdout=subprocess.DEVNULL, stderr=subprocess.DEVNULL, check=True)
     return output_mp4
+
 
 class RenderEngine:
     def __init__(self, voice_name: str = "vi-VN-NamMinhNeural"):
@@ -147,6 +217,21 @@ class RenderEngine:
             if scene_dur <= 0:
                 continue
                 
+            # Check if this scene has already been successfully rendered in the current high-quality run
+            scene_final_mp4 = os.path.join(scene_dir, "scene_final.mp4")
+            if os.path.exists(scene_final_mp4) and os.path.getsize(scene_final_mp4) > 0:
+                mtime = os.path.getmtime(scene_final_mp4)
+                import datetime
+                dt = datetime.datetime.fromtimestamp(mtime)
+                # The high-quality run started on May 21, 2026 after 21:00 (local +07 time)
+                cutoff = datetime.datetime(2026, 5, 21, 20, 0, 0)
+                if dt > cutoff:
+                    logger.info(f"[{scene.id}] Already rendered in the high-quality run ({dt}). Reusing {scene_final_mp4}")
+                    scene_files.append(scene_final_mp4)
+                    continue
+                else:
+                    logger.info(f"[{scene.id}] Found stale rendering from {dt}. Will re-render.")
+            
             # a. Cut scene video clip (without audio)
             scene_raw_mp4 = os.path.join(scene_dir, "raw_clip.mp4")
             subprocess.run([

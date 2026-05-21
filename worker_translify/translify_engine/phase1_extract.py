@@ -172,10 +172,13 @@ def run_paddle_ocr(video_path: str, work_dir: str) -> list[dict]:
     frame_count = int(cap.get(cv2.CAP_PROP_FRAME_COUNT))
     duration = frame_count / fps
     
-    # Capture one frame per second
+    # Capture 5 frames per second
+    ocr_fps = 5.0
     ocr_frames = []
-    for sec in range(int(duration) + 1):
-        frame_idx = int(sec * fps)
+    total_samples = int(duration * ocr_fps) + 1
+    for i in range(total_samples):
+        t_sec = i / ocr_fps
+        frame_idx = int(t_sec * fps)
         if frame_idx >= frame_count:
             break
         cap.set(cv2.CAP_PROP_POS_FRAMES, frame_idx)
@@ -183,16 +186,16 @@ def run_paddle_ocr(video_path: str, work_dir: str) -> list[dict]:
         if not ret:
             break
             
-        frame_path = os.path.join(work_dir, f"ocr_frame_{sec:03d}.jpg")
+        frame_path = os.path.join(work_dir, f"ocr_frame_{i:04d}.jpg")
         cv2.imwrite(frame_path, frame)
-        ocr_frames.append((sec, frame_path))
+        ocr_frames.append((t_sec, frame_path))
         
     cap.release()
     
     if not ocr_frames:
         return []
         
-    logger.info("Loading PaddleOCR (CPU, ultra-tight box params)...")
+    logger.info("Loading PaddleOCR (GPU, ultra-tight box params)...")
     try:
         from paddleocr import PaddleOCR
         
@@ -200,7 +203,7 @@ def run_paddle_ocr(video_path: str, work_dir: str) -> list[dict]:
         ocr = PaddleOCR(
             use_angle_cls=True, 
             lang="ch", 
-            device="cpu", 
+            device="gpu", 
             enable_mkldnn=False, 
             ocr_version="PP-OCRv4",
             det_db_unclip_ratio=1.15,  # Forces bounding box to hug the text tightly
@@ -209,7 +212,7 @@ def run_paddle_ocr(video_path: str, work_dir: str) -> list[dict]:
         )
         
         ocr_results = []
-        for sec, frame_path in ocr_frames:
+        for t_sec, frame_path in ocr_frames:
             try:
                 result = ocr.ocr(frame_path)
                 if not result or not result[0]:
@@ -226,7 +229,7 @@ def run_paddle_ocr(video_path: str, work_dir: str) -> list[dict]:
                         iterable_res.append((p, (t, s)))
                 else:
                     iterable_res = res_obj
-
+ 
                 for line in iterable_res:
                     # Defensive check on line structure returned by PaddleOCR
                     if not line or len(line) < 2 or not line[1] or len(line[1]) < 2:
@@ -243,13 +246,13 @@ def run_paddle_ocr(video_path: str, work_dir: str) -> list[dict]:
                     bbox_polygon = [[float(p[0]), float(p[1])] for p in poly] if poly is not None else []
                     
                     ocr_results.append({
-                        "time_sec": sec,
+                        "time_sec": t_sec,
                         "bbox": bbox_polygon, 
                         "text": text.strip(),
                         "confidence": conf
                     })
             except Exception as frame_err:
-                logger.warning(f"PaddleOCR skipped frame {sec} due to error: {frame_err}")
+                logger.warning(f"PaddleOCR skipped frame {t_sec:.2f} due to error: {frame_err}")
                 continue
                 
         logger.info(f"PaddleOCR scan complete. Found {len(ocr_results)} on-screen text elements.")
