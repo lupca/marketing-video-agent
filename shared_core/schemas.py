@@ -8,7 +8,7 @@ from datetime import datetime
 
 # ── Allowed job types ─────────────────────────────────────────────────────────
 
-VALID_JOB_TYPES = {"review", "unbox", "unbox_viral", "slideshow", "promotion", "translify", "text2img"}
+VALID_JOB_TYPES = {"review", "unbox", "unbox_viral", "slideshow", "promotion", "translify", "text2img", "leader"}
 
 
 
@@ -120,6 +120,29 @@ class JobUpdate(BaseModel):
     priority: Optional[int] = None
 
 
+class MediaFolderCreate(BaseModel):
+    name: str
+    parent_id: Optional[str] = None
+
+
+class MediaFolderUpdate(BaseModel):
+    name: Optional[str] = None
+    parent_id: Optional[str] = None
+
+
+class MediaFolderResponse(BaseModel):
+    model_config = ConfigDict(from_attributes=True)
+
+    id: str
+    user_id: str
+    name: str
+    parent_id: Optional[str] = None
+    is_job_folder: bool
+    job_id: Optional[int] = None
+    created_at: datetime
+    updated_at: Optional[datetime] = None
+
+
 # ── Assets ────────────────────────────────────────────────────────────────────
 
 class AssetResponse(BaseModel):
@@ -133,6 +156,9 @@ class AssetResponse(BaseModel):
     presigned_url: Optional[str] = None
     mime_type: Optional[str] = None
     full_path: Optional[str] = None
+    display_name: Optional[str] = None
+    folder_id: Optional[str] = None
+    source: Optional[str] = None
     created_at: datetime
 
 

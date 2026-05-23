@@ -14,6 +14,7 @@ from shared_core import models, database
 from routers.auth_router import router as auth_router
 from routers.projects import router as projects_router
 from routers.assets import router as assets_router
+from routers.folders import router as folders_router
 from routers.jobs import router as jobs_router
 from routers.downloads import router as downloads_router
 from routers.system import router as system_router
@@ -72,6 +73,7 @@ async def global_exception_handler(request: Request, exc: Exception):
 app.include_router(auth_router)
 app.include_router(projects_router)
 app.include_router(assets_router)
+app.include_router(folders_router)
 app.include_router(jobs_router)
 app.include_router(downloads_router)
 app.include_router(system_router)

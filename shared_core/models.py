@@ -6,7 +6,7 @@ Uses proper cascade deletes, indexes, and JSONB for PostgreSQL.
 import uuid
 from sqlalchemy import Column, Integer, String, Boolean, DateTime, ForeignKey, Text, BigInteger, Index, JSON
 from sqlalchemy.dialects.postgresql import JSONB
-from sqlalchemy.orm import relationship
+from sqlalchemy.orm import relationship, backref
 from sqlalchemy.sql import func
 
 # Use JSON base type with JSONB variant for PostgreSQL (works with SQLite for testing)
@@ -48,6 +48,23 @@ class Project(Base):
     video_jobs = relationship("VideoJob", back_populates="project", cascade="all, delete-orphan")
 
 
+class MediaFolder(Base):
+    __tablename__ = "media_folders"
+
+    id = Column(String, primary_key=True, default=generate_uuid)
+    user_id = Column(String, ForeignKey("users.id", ondelete="CASCADE"), nullable=False)
+    name = Column(String, nullable=False)
+    parent_id = Column(String, ForeignKey("media_folders.id", ondelete="CASCADE"), nullable=True)
+    is_job_folder = Column(Boolean, default=False)
+    job_id = Column(Integer, ForeignKey("video_jobs.id", ondelete="SET NULL"), nullable=True)
+    created_at = Column(DateTime(timezone=True), server_default=func.now())
+    updated_at = Column(DateTime(timezone=True), onupdate=func.now())
+
+    user = relationship("User")
+    children = relationship("MediaFolder", backref=backref("parent", remote_side=[id]))
+    assets = relationship("Asset", back_populates="folder", cascade="all, delete-orphan")
+
+
 class Asset(Base):
     __tablename__ = "assets"
 
@@ -60,7 +77,12 @@ class Asset(Base):
     mime_type = Column(String, nullable=True)
     created_at = Column(DateTime(timezone=True), server_default=func.now())
 
+    display_name = Column(String, nullable=False, server_default='')
+    folder_id = Column(String, ForeignKey("media_folders.id", ondelete="SET NULL"), nullable=True)
+    source = Column(String, default="upload", index=True)
+
     user = relationship("User", back_populates="assets")
+    folder = relationship("MediaFolder", back_populates="assets")
     job_assets = relationship("JobAsset", back_populates="asset", cascade="all, delete-orphan")
 
 
@@ -99,7 +121,10 @@ class VideoJob(Base):
     updated_at = Column(DateTime(timezone=True), onupdate=func.now())
     note = Column(Text, nullable=True)
 
+    folder_id = Column(String, ForeignKey("media_folders.id", ondelete="SET NULL"), nullable=True)
+
     project = relationship("Project", back_populates="video_jobs")
+    folder = relationship("MediaFolder", foreign_keys=[folder_id])
     job_assets = relationship("JobAsset", back_populates="video_job", cascade="all, delete-orphan")
     logs = relationship("JobLog", back_populates="video_job", cascade="all, delete-orphan")
     worker_node = relationship("WorkerNode", back_populates="video_jobs")

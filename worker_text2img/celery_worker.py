@@ -4,7 +4,7 @@ from datetime import datetime, timezone
 from shared_core.database import SessionLocal
 from shared_core.models import VideoJob
 from shared_core.worker_base import create_celery_app, update_job, insert_log
-from engine import generate_flux_image_and_upload
+from engine import generate_image_and_upload
 
 # Initialize Logger
 logging.basicConfig(level=logging.INFO)
@@ -47,9 +47,10 @@ def process_text2img_job(self, job_id: int, payload: dict):
 
         # 4. Generate and Upload
         # This calls ComfyUI, waits for result, and uploads to MinIO
-        result_url = generate_flux_image_and_upload(
+        result_url = generate_image_and_upload(
             prompt, job_id, project_id, 
-            width=width, height=height, seed=seed
+            width=width, height=height, seed=seed,
+            config_data=config_data
         )
 
         # 5. Mark SUCCESS

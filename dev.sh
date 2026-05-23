@@ -160,6 +160,16 @@ fi
 "$AGENT_VENV/bin/pip" install -r "$ROOT_DIR/worker_agent/requirements.txt" -q
 echo -e "${GREEN}  ✔ Worker Agent venv ready${NC}"
 
+# Worker Leader venv
+LEADER_VENV="$ROOT_DIR/worker_leader/venv"
+if [ ! -d "$LEADER_VENV" ]; then
+  echo -e "${YELLOW}  Creating Worker Leader venv...${NC}"
+  python3 -m venv "$LEADER_VENV"
+fi
+"$LEADER_VENV/bin/pip" install --upgrade pip -q
+"$LEADER_VENV/bin/pip" install -r "$ROOT_DIR/worker_leader/requirements.txt" -q
+echo -e "${GREEN}  ✔ Worker Leader venv ready${NC}"
+
 # Worker Text2Img venv
 TEXT2IMG_VENV="$ROOT_DIR/worker_text2img/venv"
 if [ ! -d "$TEXT2IMG_VENV" ]; then
@@ -243,6 +253,12 @@ AGENT_PID=$!
 cd "$ROOT_DIR"
 echo -e "${GREEN}  ✔ Worker Agent PID: $AGENT_PID${NC}"
 
+cd "$ROOT_DIR/worker_leader"
+"$LEADER_VENV/bin/celery" -A celery_worker worker -Q leader_queue -n worker_leader@%h --loglevel=info -c 1 &
+LEADER_PID=$!
+cd "$ROOT_DIR"
+echo -e "${GREEN}  ✔ Worker Leader PID: $LEADER_PID${NC}"
+
 cd "$ROOT_DIR/worker_text2img"
 "$TEXT2IMG_VENV/bin/celery" -A celery_worker worker -Q text2img_queue -n worker_text2img@%h --loglevel=info -c 2 &
 TEXT2IMG_PID=$!
@@ -284,25 +300,7 @@ echo -e "\n${YELLOW}Press Ctrl+C to stop all services${NC}\n"
 # ----------------------------------------------------------
 cleanup() {
   echo -e "\n${YELLOW}Shutting down all processes...${NC}"
-  kill $API_PID $REVIEW_PID $UNBOX_PID $DOWNLOAD_PID $SLIDESHOW_PID $PROMOTION_PID $RESEARCH_PID $TEXT2IMG_PID $AGENT_PID $TRANSLIFY_PID $FRONTEND_PID 2>/dev/null
-  docker compose -f "$ROOT_DIR/docker-compose.dev.yml" down
-  echo -e "${GREEN}✔ All stopped.${NC}"
-  exit 0
-}
-
-trap cleanup SIGINT SIGTERM
-
-wait
-PROMOTION_PID $RESEARCH_PID $AGENT_PID $TRANSLIFY_PID $FRONTEND_PID 2>/dev/null
-  docker compose -f "$ROOT_DIR/docker-compose.dev.yml" down
-  echo -e "${GREEN}✔ All stopped.${NC}"
-  exit 0
-}
-
-trap cleanup SIGINT SIGTERM
-
-wait
-null
+  kill $API_PID $REVIEW_PID $UNBOX_PID $DOWNLOAD_PID $SLIDESHOW_PID $PROMOTION_PID $RESEARCH_PID $TEXT2IMG_PID $AGENT_PID $LEADER_PID $TRANSLIFY_PID $FRONTEND_PID 2>/dev/null
   docker compose -f "$ROOT_DIR/docker-compose.dev.yml" down
   echo -e "${GREEN}✔ All stopped.${NC}"
   exit 0

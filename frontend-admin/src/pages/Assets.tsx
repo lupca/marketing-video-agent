@@ -1,23 +1,60 @@
-import { useState, useRef } from "react";
-import { Database, UploadCloud, RefreshCw, Search, FolderPlus } from "lucide-react";
+import { useState, useRef, useMemo } from "react";
+import { Database, UploadCloud, RefreshCw, FolderPlus, Folder, Sparkles } from "lucide-react";
 import { useAssets } from "../hooks/useAssets";
 import { AssetTable } from "../components/features/assets/AssetTable";
 import { Button } from "../components/ui/Button";
+import { Modal } from "../components/ui/Modal";
+import { MoveFolderModal } from "../components/features/assets/MoveFolderModal";
 
 export default function Assets() {
   const [filterType, setFilterType] = useState<string>("all");
-  const { assets, loading, refreshing, fetchAssets, deleteAsset, uploadAsset } = useAssets(filterType);
-  const [currentPath, setCurrentPath] = useState<string>("");
+  const [activeTab, setActiveTab] = useState<"my_files" | "ai_generations">("my_files");
   
+  // Custom hook containing folders and assets state
+  const {
+    assets,
+    folders,
+    currentFolderId,
+    setCurrentFolderId,
+    loading,
+    refreshing,
+    error,
+    fetchAssets,
+    fetchFolders,
+    deleteAsset,
+    uploadAsset,
+    createFolder,
+    renameFolder,
+    deleteFolder,
+    renameAsset,
+    moveAsset
+  } = useAssets(filterType);
+
+  // Rename/Move states
   const [deletingId, setDeletingId] = useState<string | null>(null);
   const [uploading, setUploading] = useState(false);
   const fileInputRef = useRef<HTMLInputElement>(null);
-  const folderInputRef = useRef<HTMLInputElement>(null);
 
-  const handleRefresh = () => fetchAssets(true);
+  // Folder creation states
+  const [isFolderModalOpen, setIsFolderModalOpen] = useState(false);
+  const [newFolderName, setNewFolderName] = useState("");
+  const [creatingFolder, setCreatingFolder] = useState(false);
 
-  const handleDelete = async (id: string) => {
-    if (!confirm("Are you sure you want to permanently delete this asset?")) return;
+  // Movement modal states
+  const [movingItem, setMovingItem] = useState<{
+    type: "file" | "folder";
+    id: string;
+    name: string;
+    parent_id?: string | null;
+    folder_id?: string | null;
+  } | null>(null);
+
+  const handleRefresh = () => {
+    fetchFolders();
+    fetchAssets(true);
+  };
+
+  const handleDeleteAsset = async (id: string) => {
     setDeletingId(id);
     try {
       await deleteAsset(id);
@@ -29,12 +66,34 @@ export default function Assets() {
     }
   };
 
-  const handleUploadClick = () => {
-    fileInputRef.current?.click();
+  const handleDeleteFolder = async (id: string) => {
+    setDeletingId(id);
+    try {
+      await deleteFolder(id);
+    } catch (err) {
+      console.error(err);
+      alert("Failed to delete folder");
+    } finally {
+      setDeletingId(null);
+    }
   };
 
-  const handleFolderUploadClick = () => {
-    folderInputRef.current?.click();
+  const handleCreateFolder = async () => {
+    if (!newFolderName.trim()) return;
+    setCreatingFolder(true);
+    try {
+      await createFolder(newFolderName.trim(), currentFolderId);
+      setNewFolderName("");
+      setIsFolderModalOpen(false);
+    } catch (err) {
+      alert("Failed to create folder");
+    } finally {
+      setCreatingFolder(false);
+    }
+  };
+
+  const handleUploadClick = () => {
+    fileInputRef.current?.click();
   };
 
   const handleFileChange = async (e: React.ChangeEvent<HTMLInputElement>) => {
@@ -50,7 +109,8 @@ export default function Assets() {
     else if (file.type.startsWith("image/")) assetType = "image";
 
     try {
-      await uploadAsset(file, assetType, undefined, currentPath);
+      // Upload using active folder ID
+      await uploadAsset(file, assetType, undefined, undefined, currentFolderId);
     } catch (err) {
       console.error(err);
       alert("Failed to upload asset");
@@ -60,122 +120,260 @@ export default function Assets() {
     }
   };
 
-  const handleFolderChange = async (e: React.ChangeEvent<HTMLInputElement>) => {
-    const files = e.target.files;
-    if (!files || files.length === 0) return;
-
-    setUploading(true);
-    try {
-      // Upload sequentially to avoid overloading MinIO and DB with too many simultaneous requests
-      for (let i = 0; i < files.length; i++) {
-        const file = files[i];
-        let assetType = "doc";
-        if (file.type.startsWith("video/")) assetType = "video";
-        else if (file.type.startsWith("audio/")) assetType = "audio";
-        else if (file.type.startsWith("text/")) assetType = "script";
-        else if (file.name.endsWith(".srt") || file.name.endsWith(".vtt")) assetType = "script";
-        else if (file.type.startsWith("image/")) assetType = "image";
-
-        const pathParts = file.webkitRelativePath.split("/");
-        pathParts.pop(); // remove file name
-        let folderPath = pathParts.join("/");
-        if (currentPath) {
-          folderPath = currentPath + (currentPath.endsWith("/") ? "" : "/") + folderPath;
-        }
-
-        await uploadAsset(file, assetType, undefined, folderPath);
-      }
-    } catch (err) {
-      console.error(err);
-      alert("Failed to upload folder");
-    } finally {
-      setUploading(false);
-      if (folderInputRef.current) folderInputRef.current.value = "";
+  const handleMoveItem = async (targetFolderId: string | null) => {
+    if (!movingItem) return;
+    if (movingItem.type === "folder") {
+      // API call to move folder
+      const api = await import("../lib/api").then(m => m.default);
+      await api.put(`/api/folders/${movingItem.id}`, {
+        parent_id: targetFolderId === null ? "" : targetFolderId
+      });
+      fetchFolders();
+    } else {
+      // Move asset
+      await moveAsset(movingItem.id, targetFolderId);
     }
+    setMovingItem(null);
   };
 
-  return (
-    <div className="max-w-7xl mx-auto p-8 lg:p-12 space-y-10">
-      <div className="flex flex-col md:flex-row md:items-center justify-between gap-6">
-        <div className="space-y-2">
-          <h2 className="text-4xl font-extrabold tracking-tight bg-clip-text text-transparent bg-gradient-to-r from-white to-white/60 flex items-center gap-3">
-            <Database className="w-8 h-8 text-primary" /> Asset Library
-          </h2>
-          <p className="text-muted-foreground text-lg">
-            Manage your raw S3 media files, scripts, and video renders.
-          </p>
-        </div>
+  // Job folders generated by AI workers
+  const aiJobFolders = useMemo(() => {
+    return folders.filter(f => f.is_job_folder);
+  }, [folders]);
 
-        <div className="flex flex-wrap items-center gap-3">
-          <div className="relative mr-2">
-            <Search className="absolute left-3 top-1/2 -translate-y-1/2 w-4 h-4 text-muted-foreground" />
-            <select
-              title="Filter Assets"
-              value={filterType}
-              onChange={(e) => setFilterType(e.target.value)}
-              className="pl-9 pr-8 py-2 rounded-xl bg-white/5 border border-white/10 text-white text-sm focus:outline-none focus:ring-2 focus:ring-primary/50 transition-all appearance-none cursor-pointer"
+  return (
+    <div className="max-w-full px-4 lg:px-8 p-8 lg:p-12 space-y-8">
+      {/* Title Header */}
+      <div className="space-y-2">
+        <h2 className="text-4xl font-extrabold tracking-tight bg-clip-text text-transparent bg-gradient-to-r from-white to-white/60 flex items-center gap-3">
+          <Database className="w-8 h-8 text-primary animate-pulse" /> Asset Library
+        </h2>
+        <p className="text-muted-foreground text-lg">
+          Manage your project files, directory folders, and AI-generated outputs.
+        </p>
+      </div>
+
+      {/* Main Layout Grid */}
+      <div className="grid grid-cols-1 md:grid-cols-12 gap-8">
+        
+        {/* Left Sidebar Classification */}
+        <div className="md:col-span-3 lg:col-span-2 space-y-4">
+          <div className="glass-panel p-4 rounded-2xl border border-white/10 space-y-2 bg-[#0e0e13]/60 backdrop-blur-md">
+            <button
+              onClick={() => {
+                setActiveTab("my_files");
+                setCurrentFolderId(null);
+              }}
+              className={`w-full flex items-center gap-3 px-4 py-3 rounded-xl text-left text-sm font-semibold transition-all border ${
+                activeTab === "my_files"
+                  ? "bg-primary/20 text-primary border-primary/30 shadow-[0_0_15px_rgba(238,76,124,0.1)]"
+                  : "hover:bg-white/5 text-muted-foreground hover:text-white border-transparent"
+              }`}
             >
-              <option value="all" className="bg-[#1A1A24]">All Media</option>
-              <option value="video" className="bg-[#1A1A24]">Videos</option>
-              <option value="clip" className="bg-[#1A1A24]">Segment Clips</option>
-              <option value="voiceover" className="bg-[#1A1A24]">Voiceovers</option>
-              <option value="bgm" className="bg-[#1A1A24]">Music & SFX</option>
-              <option value="script" className="bg-[#1A1A24]">Scripts</option>
-            </select>
+              <Folder className="w-4 h-4" />
+              <span>My Files</span>
+            </button>
+
+            <button
+              onClick={() => {
+                setActiveTab("ai_generations");
+              }}
+              className={`w-full flex items-center gap-3 px-4 py-3 rounded-xl text-left text-sm font-semibold transition-all border ${
+                activeTab === "ai_generations"
+                  ? "bg-amber-500/20 text-amber-400 border-amber-500/30 shadow-[0_0_15px_rgba(245,158,11,0.1)]"
+                  : "hover:bg-white/5 text-muted-foreground hover:text-white border-transparent"
+              }`}
+            >
+              <Sparkles className="w-4 h-4" />
+              <span>AI Generations</span>
+            </button>
           </div>
 
-          <Button onClick={handleRefresh} variant="secondary" isLoading={refreshing} size="icon">
-            {!refreshing && <RefreshCw className="w-4 h-4" />}
-          </Button>
-          
-          <Button
-            onClick={handleFolderUploadClick}
-            disabled={uploading}
-            isLoading={uploading}
-            variant="secondary"
-            className="pr-6 pl-4"
-          >
-            {!uploading && <FolderPlus className="w-4 h-4 mr-2" />}
-            Folder
-          </Button>
+          {/* AI Generations quick list in sidebar */}
+          {activeTab === "ai_generations" && (
+            <div className="glass-panel p-4 rounded-2xl border border-white/10 space-y-3 bg-[#0e0e13]/60 backdrop-blur-md max-h-[40vh] overflow-y-auto custom-scrollbar">
+              <h4 className="text-xs font-bold uppercase tracking-wider text-muted-foreground/60 px-2 flex items-center gap-1.5">
+                <Sparkles className="w-3 h-3 text-amber-400" /> Output Projects
+              </h4>
+              <div className="space-y-1">
+                {aiJobFolders.length === 0 ? (
+                  <p className="text-xs text-muted-foreground italic px-2 py-4">No AI jobs run yet.</p>
+                ) : (
+                  aiJobFolders.map(folder => (
+                    <button
+                      key={folder.id}
+                      onClick={() => {
+                        setCurrentFolderId(folder.id);
+                        setActiveTab("my_files");
+                      }}
+                      className="w-full flex items-center gap-2 px-2 py-2 rounded-lg text-left text-xs text-white/80 hover:text-amber-400 hover:bg-white/5 transition-all truncate border border-transparent hover:border-white/5"
+                    >
+                      <Folder className="w-3.5 h-3.5 text-amber-400 shrink-0 fill-amber-400/15" />
+                      <span className="truncate">{folder.name.replace(/^Video_\d+_/, "")}</span>
+                    </button>
+                  ))
+                )}
+              </div>
+            </div>
+          )}
+        </div>
 
-          <Button
-            onClick={handleUploadClick}
-            disabled={uploading}
-            isLoading={uploading}
-            className="glowing-button pr-6 pl-4"
-          >
-            {!uploading && <UploadCloud className="w-4 h-4 mr-2" />}
-            File
-          </Button>
-          <input
-            type="file"
-            ref={fileInputRef}
-            onChange={handleFileChange}
-            className="hidden"
-            title="Upload Media"
-          />
-          <input
-            type="file"
-            ref={folderInputRef}
-            onChange={handleFolderChange}
-            className="hidden"
-            title="Upload Folder"
-            // @ts-ignore
-            webkitdirectory="true"
-            directory="true"
-          />
+        {/* Right Content Section */}
+        <div className="md:col-span-9 lg:col-span-10 space-y-6">
+          {error && (
+            <div className="p-4 rounded-xl border border-rose-500/20 bg-rose-500/10 text-rose-400 text-sm">
+              {error}
+            </div>
+          )}
+
+          {/* Action Bar Header */}
+          <div className="flex items-center justify-between gap-4 flex-wrap">
+            {/* Asset Type Filter Dropdown */}
+            <div className="flex items-center gap-3">
+              <span className="text-xs font-semibold text-muted-foreground uppercase tracking-wide">Show:</span>
+              <select
+                title="Filter Assets"
+                value={filterType}
+                onChange={(e) => setFilterType(e.target.value)}
+                className="px-4 py-2 rounded-xl bg-white/5 border border-white/10 text-white text-xs font-medium focus:outline-none focus:ring-1 focus:ring-primary transition-all cursor-pointer"
+              >
+                <option value="all" className="bg-[#1A1A24]">All Formats</option>
+                <option value="video" className="bg-[#1A1A24]">Videos</option>
+                <option value="subtitle" className="bg-[#1A1A24]">Subtitles</option>
+                <option value="image" className="bg-[#1A1A24]">Images</option>
+                <option value="audio" className="bg-[#1A1A24]">Music & Voice</option>
+              </select>
+            </div>
+
+            {/* Main Action Buttons */}
+            <div className="flex items-center gap-2">
+              <Button onClick={handleRefresh} variant="secondary" isLoading={refreshing} size="icon">
+                {!refreshing && <RefreshCw className="w-4 h-4" />}
+              </Button>
+
+              <Button
+                onClick={() => setIsFolderModalOpen(true)}
+                variant="secondary"
+                className="pr-5 pl-4"
+              >
+                <FolderPlus className="w-4 h-4 mr-2" />
+                Folder
+              </Button>
+
+              <Button
+                onClick={handleUploadClick}
+                disabled={uploading}
+                isLoading={uploading}
+                className="glowing-button pr-5 pl-4"
+              >
+                <UploadCloud className="w-4 h-4 mr-2" />
+                File
+              </Button>
+
+              <input
+                type="file"
+                ref={fileInputRef}
+                onChange={handleFileChange}
+                className="hidden"
+                title="Upload Media"
+              />
+            </div>
+          </div>
+
+          {/* Asset List Grid & Breadcrumbs Component */}
+          {activeTab === "ai_generations" ? (
+            <div className="glass-panel p-12 rounded-2xl border border-white/10 text-center space-y-4 bg-[#0e0e13]/60 backdrop-blur-md">
+              <div className="w-16 h-16 rounded-full bg-amber-500/10 border border-amber-500/20 text-amber-400 flex items-center justify-center mx-auto shadow-[0_0_20px_rgba(245,158,11,0.1)]">
+                <Sparkles className="w-8 h-8 animate-pulse" />
+              </div>
+              <div className="max-w-md mx-auto space-y-2">
+                <h3 className="text-xl font-bold text-white">AI Generation Folders</h3>
+                <p className="text-sm text-muted-foreground leading-relaxed">
+                  Select an output project folder from the left sidebar to browse and download its generated video exports, subtitling, and AI images.
+                </p>
+              </div>
+            </div>
+          ) : (
+            <AssetTable
+              assets={assets}
+              folders={folders}
+              currentFolderId={currentFolderId}
+              setCurrentFolderId={setCurrentFolderId}
+              loading={loading}
+              deletingId={deletingId}
+              onDeleteAsset={handleDeleteAsset}
+              onDeleteFolder={handleDeleteFolder}
+              onRenameAsset={renameAsset}
+              onRenameFolder={renameFolder}
+              onOpenMoveModal={setMovingItem}
+              onUploadClick={handleUploadClick}
+              onCreateFolderClick={() => setIsFolderModalOpen(true)}
+            />
+          )}
         </div>
       </div>
 
-      <AssetTable
-        assets={assets}
-        loading={loading}
-        deletingId={deletingId}
-        onDelete={handleDelete}
-        onUploadClick={handleUploadClick}
-        currentPath={currentPath}
-        setCurrentPath={setCurrentPath}
+      {/* 1. Modal: Folder Creation */}
+      <Modal
+        isOpen={isFolderModalOpen}
+        onClose={() => {
+          setIsFolderModalOpen(false);
+          setNewFolderName("");
+        }}
+        title={
+          <div className="flex items-center gap-2 text-white font-semibold">
+            <FolderPlus className="w-5 h-5 text-primary" />
+            <span>Create Folder</span>
+          </div>
+        }
+        maxWidth="sm"
+      >
+        <div className="p-6 space-y-5 bg-[#0a0a09]/95 text-white/90">
+          <div className="space-y-2">
+            <label className="text-xs font-semibold text-muted-foreground uppercase tracking-wide">
+              Folder Name
+            </label>
+            <input
+              type="text"
+              placeholder="e.g. Christmas Campaign 2026"
+              value={newFolderName}
+              onChange={e => setNewFolderName(e.target.value)}
+              className="w-full px-4 py-2.5 rounded-xl bg-white/5 border border-white/10 text-white text-sm focus:outline-none focus:ring-1 focus:ring-primary"
+              autoFocus
+              onKeyDown={e => {
+                if (e.key === "Enter") handleCreateFolder();
+              }}
+            />
+          </div>
+          <div className="flex items-center justify-end gap-3 pt-3 border-t border-white/5">
+            <Button
+              onClick={() => {
+                setIsFolderModalOpen(false);
+                setNewFolderName("");
+              }}
+              variant="secondary"
+            >
+              Cancel
+            </Button>
+            <Button
+              onClick={handleCreateFolder}
+              disabled={creatingFolder || !newFolderName.trim()}
+              isLoading={creatingFolder}
+              className="glowing-button pr-5 pl-5"
+            >
+              Create
+            </Button>
+          </div>
+        </div>
+      </Modal>
+
+      {/* 2. Modal: Move Folder / File */}
+      <MoveFolderModal
+        isOpen={movingItem !== null}
+        onClose={() => setMovingItem(null)}
+        folders={folders}
+        movingItem={movingItem}
+        onMove={handleMoveItem}
       />
     </div>
   );

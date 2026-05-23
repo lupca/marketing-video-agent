@@ -71,7 +71,7 @@ Tạo folder mới `worker_text2img/` ngang hàng với các worker khác, chứ
    import os
    from celery import Celery
    from shared_core.worker_base import BaseVideoWorker # hoặc tạo BaseImageWorker
-   from .engine import generate_flux_image_and_upload
+   from .engine import generate_image_and_upload
 
    celery_app = Celery("worker_text2img", broker=os.getenv("REDIS_URL", "redis://localhost:6379/0"))
 
@@ -82,7 +82,7 @@ Tạo folder mới `worker_text2img/` ngang hàng với các worker khác, chứ
        prompt = payload.get("config_data", {}).get("prompt", "")
        project_id = payload.get("project_id", "default")
        
-       result_url = generate_flux_image_and_upload(prompt, job_id, project_id)
+       result_url = generate_image_and_upload(prompt, job_id, project_id)
        
        # 3. Cập nhật DB (Status = SUCCESS, result_url = result_url)
        return {"status": "success", "url": result_url}

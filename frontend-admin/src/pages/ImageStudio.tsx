@@ -20,6 +20,7 @@ interface GenerationResult {
   jobId: number;
   status: string;
   url?: string;
+  s3Url?: string;
   error?: string;
 }
 
@@ -97,7 +98,23 @@ export default function ImageStudio() {
         const job = res.data;
 
         if (job.status === "SUCCESS") {
-          setCurrentJob({ jobId, status: "SUCCESS", url: job.result_url });
+          try {
+            const dlRes = await api.get(`/api/jobs/${jobId}/download`);
+            setCurrentJob({ 
+              jobId, 
+              status: "SUCCESS", 
+              url: dlRes.data.download_url, 
+              s3Url: job.result_url 
+            });
+          } catch (dlErr) {
+            console.error("Failed to get download URL:", dlErr);
+            setCurrentJob({ 
+              jobId, 
+              status: "SUCCESS", 
+              url: job.result_url, 
+              s3Url: job.result_url 
+            });
+          }
           setIsGenerating(false);
           clearInterval(interval);
         } else if (job.status === "FAILED") {
@@ -123,7 +140,8 @@ export default function ImageStudio() {
   };
 
   const handleSaveToAssets = async () => {
-    if (!currentJob?.url) return;
+    const s3Url = currentJob?.s3Url || currentJob?.url;
+    if (!s3Url) return;
     
     setSaveStatus("saving");
     try {
@@ -131,9 +149,9 @@ export default function ImageStudio() {
       // Thông thường worker đã lưu vào MinIO, ta chỉ cần tạo record asset
       await api.post("/api/assets", {
         project_id: selectedProjectId,
-        s3_url: currentJob.url,
+        s3_url: s3Url,
         asset_type: "image",
-        file_name: `flux_gen_${currentJob.jobId}.png`,
+        file_name: `lightning_gen_${currentJob.jobId}.png`,
         mime_type: "image/png"
       });
       setSaveStatus("success");

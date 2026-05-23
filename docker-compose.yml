@@ -168,6 +168,25 @@ services:
       - worker_base
     restart: always
 
+  worker_leader:
+    build:
+      context: .
+      dockerfile: worker_leader/Dockerfile
+    container_name: worker_leader
+    environment:
+      - DATABASE_URL=postgresql://admin:password123@db:5432/video_creator
+      - REDIS_URL=redis://redis:6379/0
+      - MINIO_ENDPOINT=minio:9000
+      - MINIO_ACCESS_KEY=minioadmin
+      - MINIO_SECRET_KEY=minioadmin
+      - MINIO_BUCKET_NAME=videos
+    depends_on:
+      - db
+      - redis
+      - minio
+      - worker_base
+    restart: always
+
   worker_translify:
     build:
       context: .

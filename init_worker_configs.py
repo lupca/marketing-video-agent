@@ -25,6 +25,7 @@ def initialize_configs(reset=False):
         ("download", "Download Worker - Social media downloader"),
         ("promotion", "Promotion Worker - Ad video generator"),
         ("agent", "Agent Orchestrator - High-level AI coordination"),
+        ("leader", "AI Leader Agent - Analyzes scripts and orchestrates workflows"),
         ("translify", "Translify Worker - Chinese-to-Vietnamese translator"),
         ("text2img", "Text-to-Image Worker - Generates images via ComfyUI (FLUX)"),
     ]

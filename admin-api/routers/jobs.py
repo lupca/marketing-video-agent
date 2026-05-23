@@ -43,6 +43,9 @@ def resolve_celery_task_and_queue(job_type: str) -> tuple[str, str]:
     elif job_type == "agent":
         queue_name = "agent_queue"
         task_name = "worker_agent.tasks.process_tmcp_webhook"
+    elif job_type == "leader":
+        queue_name = "leader_queue"
+        task_name = "worker_leader.tasks.process_leader_job"
     elif job_type == "text2img":
         task_name = "worker_text2img.tasks.generate_image"
         
@@ -291,9 +294,9 @@ def create_job_from_tmcp(
     # Tìm hoặc tạo project mặc định "TMCP Outsource" qua database helper
     proj = get_or_create_tmcp_project(db)
 
-    # Tạo Job loại "agent" ở trạng thái PENDING
+    # Tạo Job loại "leader" ở trạng thái PENDING
     db_job = models.VideoJob(
-         job_type="agent",
+         job_type="leader",
          project_id=proj.id,
          status="PENDING",
          priority=0,
@@ -305,8 +308,8 @@ def create_job_from_tmcp(
     db.commit()
     db.refresh(db_job)
 
-    # Đẩy task xử lý webhook cho Leader Agent (worker_agent)
-    task_name, queue_name = resolve_celery_task_and_queue("agent")
+    # Đẩy task xử lý webhook cho Leader Agent (worker_leader)
+    task_name, queue_name = resolve_celery_task_and_queue("leader")
     try:
          celery_client.celery_app.send_task(
               task_name,
@@ -315,9 +318,9 @@ def create_job_from_tmcp(
          )
     except Exception as e:
          db_job.status = "FAILED"
-         db_job.error_message = f"Failed to push to agent queue: {str(e)}"
+         db_job.error_message = f"Failed to push to leader queue: {str(e)}"
          db.commit()
          db.refresh(db_job)
-         raise HTTPException(status_code=500, detail=f"Failed to queue agent task: {str(e)}")
+         raise HTTPException(status_code=500, detail=f"Failed to queue leader task: {str(e)}")
 
     return db_job

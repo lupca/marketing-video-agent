@@ -16,6 +16,7 @@ import Guides from "./pages/Guides";
 import AgentStudio from "./pages/AgentStudio";
 import TranslifyEditor from "./pages/TranslifyEditor";
 import CreateTranslifyJob from "./pages/CreateTranslifyJob";
+import CreateLeaderJob from "./pages/CreateLeaderJob";
 import Login from "./pages/Login";
 import Register from "./pages/Register";
 import { AuthProvider, useAuth } from "./context/AuthContext";
@@ -41,6 +42,7 @@ function Sidebar() {
 
   const links = [
     { name: "Command Center", path: "/", icon: LayoutDashboard },
+    { name: "AI Leader Agent", path: "/create-leader", icon: Bot },
     { name: "Image Studio", path: "/image-studio", icon: Sparkles },
     { name: "Sưu tầm Video", path: "/download", icon: DownloadCloud },
     { name: "Review Studio", path: "/create-review", icon: Wand2 },
@@ -141,6 +143,7 @@ function MainLayout() {
           <Route path="/health" element={<SystemHealth />} />
           <Route path="/translify/editor/:id" element={<TranslifyEditor />} />
           <Route path="/create-translify" element={<CreateTranslifyJob />} />
+          <Route path="/create-leader" element={<CreateLeaderJob />} />
         </Routes>
       </main>
     </div>

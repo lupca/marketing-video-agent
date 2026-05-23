@@ -24,7 +24,7 @@ from celery.signals import worker_ready, worker_shutting_down
 
 from shared_core.config import get_settings
 from shared_core.database import SessionLocal
-from shared_core.models import VideoJob, JobLog, WorkerNode, WorkerConfig
+from shared_core.models import VideoJob, JobLog, WorkerNode, WorkerConfig, User, MediaFolder, Asset
 from shared_core.minio_utils import ensure_bucket_exists, upload_file_to_minio
 
 logger = logging.getLogger(__name__)
@@ -203,29 +203,130 @@ def insert_log(db, job_id: int, message: str, level: str = "INFO") -> None:
 
 # ── Output Upload ─────────────────────────────────────────────────────────────
 
-def upload_output_video(db, job_id: int, job_type: str, output_video_path: str) -> Dict[str, str]:
+def get_or_create_job_folders(db, job_id: int, user_id: str, video_name: str) -> tuple[str, str, str]:
+    """
+    Creates or retrieves the main project folder and its 'output' subfolder in database.
+    Returns (parent_folder_id, output_folder_id, video_name_cleaned).
+    """
+    import re
+    # Clean name to be safe for folders / S3 prefixes
+    video_name_cleaned = re.sub(r'[^a-zA-Z0-9_\-\u00C0-\u1EF9]', '_', video_name)
+    folder_name = f"Video_{job_id}_{video_name_cleaned}"
+    
+    # 1. Check if parent folder already exists
+    parent_folder = db.query(MediaFolder).filter(
+        MediaFolder.job_id == job_id,
+        MediaFolder.user_id == user_id
+    ).first()
+    
+    if not parent_folder:
+        parent_folder = MediaFolder(
+            user_id=user_id,
+            name=folder_name,
+            is_job_folder=True,
+            job_id=job_id
+        )
+        db.add(parent_folder)
+        db.commit()
+        db.refresh(parent_folder)
+        
+    # 2. Check if output subfolder already exists
+    output_folder = db.query(MediaFolder).filter(
+        MediaFolder.parent_id == parent_folder.id,
+        MediaFolder.name == "output",
+        MediaFolder.user_id == user_id
+    ).first()
+    
+    if not output_folder:
+        output_folder = MediaFolder(
+            user_id=user_id,
+            name="output",
+            parent_id=parent_folder.id,
+            is_job_folder=True,
+            job_id=job_id
+        )
+        db.add(output_folder)
+        db.commit()
+        db.refresh(output_folder)
+        
+    return parent_folder.id, output_folder.id, video_name_cleaned
+
+
+def upload_output_video(
+    db, 
+    job_id: int, 
+    job_type: str, 
+    output_video_path: str,
+    user_id: str,
+    parent_folder_id: str,
+    output_folder_id: str,
+    video_name_cleaned: str
+) -> Dict[str, str]:
     """
     Upload rendered video (and companion files like .ass subtitles) to MinIO.
     Returns dict of uploaded URLs.
     """
     ensure_bucket_exists()
     results = {}
+    filename = os.path.basename(output_video_path)
 
-    # Upload main video
-    video_obj = f"outputs/{job_type}_job_{job_id}.mp4"
+    # Upload main video to structured path: jobs/{job_id}_{video_name}/output/{filename}
+    video_obj = f"jobs/{job_id}_{video_name_cleaned}/output/{filename}"
     results["video_url"] = upload_file_to_minio(video_obj, output_video_path)
     insert_log(db, job_id, f"Uploaded video to MinIO: {video_obj}")
+    
+    # Automatically register this video as a DB Asset inside the output folder!
+    try:
+        file_size = os.path.getsize(output_video_path)
+    except Exception:
+        file_size = 0
+        
+    asset = Asset(
+        user_id=user_id,
+        asset_type="video",
+        file_name=filename,
+        display_name=filename,
+        file_size_bytes=file_size,
+        s3_url=results["video_url"],
+        mime_type="video/mp4",
+        folder_id=output_folder_id,
+        source="generated"
+    )
+    db.add(asset)
+    db.commit()
+    insert_log(db, job_id, f"Registered output video in Asset Library (folder output)")
 
     # Upload companion .ass files if present
     output_dir = os.path.dirname(output_video_path)
-    base_name = os.path.splitext(os.path.basename(output_video_path))[0]
+    base_name = os.path.splitext(filename)[0]
 
     for suffix, key in [("", "subtitle_url"), ("_captions", "captions_url")]:
         ass_path = os.path.join(output_dir, f"{base_name}{suffix}.ass")
         if os.path.isfile(ass_path):
-            ass_obj = f"outputs/{job_type}_job_{job_id}{suffix}.ass"
+            ass_filename = f"{base_name}{suffix}.ass"
+            ass_obj = f"jobs/{job_id}_{video_name_cleaned}/{ass_filename}"
             results[key] = upload_file_to_minio(ass_obj, ass_path)
             insert_log(db, job_id, f"Uploaded subtitle to MinIO: {ass_obj}")
+            
+            try:
+                ass_size = os.path.getsize(ass_path)
+            except Exception:
+                ass_size = 0
+                
+            ass_asset = Asset(
+                user_id=user_id,
+                asset_type="subtitle",
+                file_name=ass_filename,
+                display_name=ass_filename,
+                file_size_bytes=ass_size,
+                s3_url=results[key],
+                mime_type="text/plain",
+                folder_id=parent_folder_id,
+                source="generated"
+            )
+            db.add(ass_asset)
+            db.commit()
+            insert_log(db, job_id, f"Registered intermediate subtitle in Asset Library")
 
     return results
 
@@ -267,6 +368,38 @@ def execute_video_task(
 
     _current_job_id = job_id
 
+    # 1. Resolve User ID
+    user_id = None
+    if job.project and job.project.user_id:
+        user_id = job.project.user_id
+    if not user_id:
+        user = db.query(User).first()
+        user_id = user.id if user else None
+
+    # 2. Resolve Video Name
+    video_name = "Video"
+    if config_data:
+        video_name = (
+            config_data.get("title")
+            or config_data.get("name")
+            or (config_data.get("variant_data") or {}).get("title")
+            or f"{job_type}_Job_{job_id}"
+        )
+
+    # 3. Create Virtual Folders on Database
+    parent_folder_id = None
+    output_folder_id = None
+    video_name_cleaned = f"Job_{job_id}"
+    if user_id:
+        try:
+            parent_folder_id, output_folder_id, video_name_cleaned = get_or_create_job_folders(db, job_id, user_id, video_name)
+            # Link job to parent folder
+            update_job(db, job, folder_id=parent_folder_id)
+            insert_log(db, job_id, f"Associated job with folder: {video_name_cleaned}")
+        except Exception as folder_err:
+            logger.error(f"Failed to create media folders: {folder_err}")
+            insert_log(db, job_id, f"Warning: Failed to create media folders: {folder_err}", "WARNING")
+
     now = datetime.now(timezone.utc)
     update_job(db, job, status="PROCESSING", started_at=now, progress_percent=5)
     insert_log(db, job_id, "Job picked up by worker. Initializing...")
@@ -289,9 +422,25 @@ def execute_video_task(
         update_job(db, job, progress_percent=80)
         insert_log(db, job_id, "Video build completed.")
 
-        # Step 3: Upload
+        # Step 3: Upload with folders logic
         insert_log(db, job_id, "Uploading output to storage...")
-        upload_results = upload_output_video(db, job_id, job_type, output_video_path)
+        if user_id and parent_folder_id and output_folder_id:
+            upload_results = upload_output_video(
+                db=db,
+                job_id=job_id,
+                job_type=job_type,
+                output_video_path=output_video_path,
+                user_id=user_id,
+                parent_folder_id=parent_folder_id,
+                output_folder_id=output_folder_id,
+                video_name_cleaned=video_name_cleaned
+            )
+        else:
+            # Fallback to old upload name without folders if folders failed
+            video_obj = f"outputs/{job_type}_job_{job_id}.mp4"
+            video_url = upload_file_to_minio(video_obj, output_video_path)
+            upload_results = {"video_url": video_url}
+            
         update_job(db, job, progress_percent=95)
 
         # Step 4: Mark SUCCESS
