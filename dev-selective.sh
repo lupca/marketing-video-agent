@@ -31,8 +31,16 @@ echo -e "${GREEN}  ✔ Postgres, Redis, MinIO are running${NC}"
 echo -e "\n${GREEN}[2/3]${NC} Checking enabled workers in database..."
 
 # Ensure environment is set for the python call
+export LD_LIBRARY_PATH="/usr/lib/wsl/lib:$LD_LIBRARY_PATH"
 export PYTHONPATH="$ROOT_DIR"
-export DATABASE_URL="postgresql://admin:password123@localhost:5432/video_creator"
+if [ -f "$ROOT_DIR/.env" ]; then
+    set -a
+    source "$ROOT_DIR/.env"
+    set +a
+fi
+
+# Fallback if not set
+export DATABASE_URL="${DATABASE_URL:-postgresql://admin:password123@localhost:5432/video_creator}"
 
 ENABLED_WORKERS=$(python3 -c "
 import sys
@@ -81,7 +89,14 @@ for WORKER in $ENABLED_WORKERS; do
     QUEUE="${WORKER}_queue"
     # Use -n to make worker names unique
     cd "$WORKER_DIR"
-    "$VENV/bin/celery" -A celery_worker worker -Q "$QUEUE" -n "worker_${WORKER}@%h" --loglevel=info --concurrency=1 &
+    # GPU workers (translify) MUST use --pool=solo to prevent SIGSEGV from Celery
+    # prefork forking GPU contexts (PaddlePaddle/PyTorch can't be safely forked).
+    # All other workers use the standard prefork pool.
+    if [ "$WORKER" = "translify" ]; then
+        "$VENV/bin/celery" -A celery_worker worker -Q "$QUEUE" -n "worker_${WORKER}@%h" --loglevel=info --concurrency=1 --pool=solo &
+    else
+        "$VENV/bin/celery" -A celery_worker worker -Q "$QUEUE" -n "worker_${WORKER}@%h" --loglevel=info --concurrency=1 &
+    fi
     cd "$ROOT_DIR"
 done
 

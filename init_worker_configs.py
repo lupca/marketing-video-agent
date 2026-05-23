@@ -26,6 +26,7 @@ def initialize_configs(reset=False):
         ("promotion", "Promotion Worker - Ad video generator"),
         ("agent", "Agent Orchestrator - High-level AI coordination"),
         ("translify", "Translify Worker - Chinese-to-Vietnamese translator"),
+        ("text2img", "Text-to-Image Worker - Generates images via ComfyUI (FLUX)"),
     ]
     
     if reset:

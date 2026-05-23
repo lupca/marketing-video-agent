@@ -63,28 +63,20 @@ def track_polygon_lk(gray_prev: np.ndarray, gray_next: np.ndarray, poly: np.ndar
 def get_tracked_polygons(video_path: str, ocr_results: List[Dict[str, Any]], fps: float, scene_start: float) -> Dict[int, List[List[List[float]]]]:
     """
     Precomputes the tracked bounding box polygons for every frame of a video clip.
-    Takes OCR results detected at integer seconds and propagates them forward/backward
-    up to 1 second using Optical Flow.
+    Uses Local Random Access to track OCR results forward and backward in a small window,
+    completely preventing CPU RAM exhaustion.
     """
-    logger.info(f"Pre-computing tracked polygons for video: {video_path}")
+    logger.info(f"Pre-computing tracked polygons for video (Local Random Access): {video_path}")
     
-    # 1. Load all frames in grayscale for high-speed tracking
     cap = cv2.VideoCapture(video_path)
     if not cap.isOpened():
         logger.error(f"Failed to open video for tracking: {video_path}")
         return {}
         
-    gray_frames = []
-    while True:
-        ret, frame = cap.read()
-        if not ret:
-            break
-        gray_frames.append(cv2.cvtColor(frame, cv2.COLOR_BGR2GRAY))
-    cap.release()
-    
-    total_frames = len(gray_frames)
-    logger.info(f"Loaded {total_frames} frames for tracking.")
+    total_frames = int(cap.get(cv2.CAP_PROP_FRAME_COUNT))
+    logger.info(f"Video has {total_frames} frames.")
     if total_frames == 0:
+        cap.release()
         return {}
         
     # Initialize dictionary for storing polygons per frame index
@@ -93,35 +85,54 @@ def get_tracked_polygons(video_path: str, ocr_results: List[Dict[str, Any]], fps
     # Number of frames in a 1-second window
     window_frames = int(round(fps))
     
-    # 2. Track each OCR result forward and backward
+    # Track each OCR result forward and backward
     for res in ocr_results:
-        # Determine the precise frame index where this OCR item was detected
         t_detect = res.get("time_sec", scene_start)
-        # If bbox is given as a list of points
         bbox = res.get("bbox", [])
         if not bbox or len(bbox) < 3:
             continue
             
-        # Map time to frame index relative to clip start
         f_detect = int(round((t_detect - scene_start) * fps))
-        # Clamp to valid frame indices
         f_detect = max(0, min(total_frames - 1, f_detect))
         
         poly_init = np.array(bbox, dtype=np.float32)
-        
-        # Keep track of active tracked polygon at detection frame
         tracked_by_frame[f_detect].append(poly_init.tolist())
         
-        # Track forward from detection frame
-        poly_curr = poly_init.copy()
-        for f in range(f_detect, min(total_frames - 1, f_detect + window_frames)):
-            poly_curr = track_polygon_lk(gray_frames[f], gray_frames[f+1], poly_curr)
-            tracked_by_frame[f+1].append(poly_curr.tolist())
-            
-        # Track backward from detection frame
-        poly_curr = poly_init.copy()
-        for f in range(f_detect, max(0, f_detect - window_frames), -1):
-            poly_curr = track_polygon_lk(gray_frames[f], gray_frames[f-1], poly_curr)
-            tracked_by_frame[f-1].append(poly_curr.tolist())
-            
+        # 1. Track forward from detection frame using sequential reads from f_detect
+        cap.set(cv2.CAP_PROP_POS_FRAMES, f_detect)
+        ret, frame = cap.read()
+        if ret:
+            gray_prev = cv2.cvtColor(frame, cv2.COLOR_BGR2GRAY)
+            poly_curr = poly_init.copy()
+            for f in range(f_detect, min(total_frames - 1, f_detect + window_frames)):
+                ret, frame = cap.read()
+                if not ret:
+                    break
+                gray_next = cv2.cvtColor(frame, cv2.COLOR_BGR2GRAY)
+                poly_curr = track_polygon_lk(gray_prev, gray_next, poly_curr)
+                tracked_by_frame[f+1].append(poly_curr.tolist())
+                gray_prev = gray_next
+
+        # 2. Track backward from detection frame using a small localized buffer
+        start_back = max(0, f_detect - window_frames)
+        if f_detect > start_back:
+            cap.set(cv2.CAP_PROP_POS_FRAMES, start_back)
+            back_buffer = []
+            for _ in range(start_back, f_detect + 1):
+                ret, frame = cap.read()
+                if not ret:
+                    break
+                back_buffer.append(cv2.cvtColor(frame, cv2.COLOR_BGR2GRAY))
+                
+            if len(back_buffer) > 1:
+                poly_curr = poly_init.copy()
+                # back_buffer[-1] corresponds to f_detect, back_buffer[0] to start_back
+                for i in range(len(back_buffer) - 1, 0, -1):
+                    gray_prev_back = back_buffer[i]
+                    gray_next_back = back_buffer[i-1]
+                    poly_curr = track_polygon_lk(gray_prev_back, gray_next_back, poly_curr)
+                    actual_f = start_back + i - 1
+                    tracked_by_frame[actual_f].append(poly_curr.tolist())
+
+    cap.release()
     return tracked_by_frame

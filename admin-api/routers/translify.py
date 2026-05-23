@@ -22,6 +22,9 @@ class RewriteRequest(BaseModel):
 class ProjectUpdateRequest(BaseModel):
     project_data: Dict[str, Any]
     bgm: Optional[str] = None
+    voice_name: Optional[str] = None
+    tone: Optional[str] = None
+    cta: Optional[str] = None
 
 @router.get("/projects/{job_id}")
 def get_translify_project(
@@ -42,10 +45,13 @@ def get_translify_project(
     if not job.config_data or "project_data" not in job.config_data:
         raise HTTPException(status_code=404, detail="Project analysis not ready or not found")
         
-    # Return both the project_data and custom BGM if set in config_data
+    # Return the project_data and configuration details if set in config_data
     return {
         "project_data": job.config_data["project_data"],
-        "bgm": job.config_data.get("bgm")
+        "bgm": job.config_data.get("bgm"),
+        "voice_name": job.config_data.get("voice_name", "vi-VN-NamMinhNeural"),
+        "tone": job.config_data.get("tone", "hào hứng"),
+        "cta": job.config_data.get("cta", "")
     }
 
 @router.put("/projects/{job_id}")
@@ -69,6 +75,12 @@ def update_translify_project(
     cfg["project_data"] = req.project_data
     if req.bgm is not None:
         cfg["bgm"] = req.bgm
+    if req.voice_name is not None:
+        cfg["voice_name"] = req.voice_name
+    if req.tone is not None:
+        cfg["tone"] = req.tone
+    if req.cta is not None:
+        cfg["cta"] = req.cta
     job.config_data = cfg
     db.commit()
     return {"status": "success"}

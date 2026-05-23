@@ -27,12 +27,90 @@ def clean_gpu_memory():
     except ImportError:
         pass
 
+import os
+os.environ["FLAGS_allocator_strategy"] = "auto_growth"
+os.environ["FLAGS_fraction_of_gpu_memory_to_use"] = "0.05"
+
 def _get_perframe_text_detector():
-    """Lazily initialize and cache a PaddleX text detection model (det-only, no recognition)."""
+    """Lazily initialize and cache a PaddleOCR text detection model (det-only, no recognition)."""
     if not hasattr(_get_perframe_text_detector, "_instance"):
-        import paddlex as px
-        logger.info("Initializing PaddleX per-frame text detector (PP-OCRv4_mobile_det, GPU)...")
-        _get_perframe_text_detector._instance = px.create_model("PP-OCRv4_mobile_det")
+        from shared_core.gpu_utils import detect_torch_device
+        
+        # --- MONKEYPATCH FOR PADDLEPADDLE VERSION MISMATCH & GRAPH OPTIMIZATION SEGFAULTS ---
+        import paddle.inference as inference
+        if not hasattr(inference.Config, '_monkeypatched'):
+            original_config_init = inference.Config.__init__
+            def patched_config_init(self, *args, **kwargs):
+                original_config_init(self, *args, **kwargs)
+                try:
+                    self.switch_ir_optim(False)
+                    self.delete_pass("fc_fuse_pass")
+                    self.delete_pass("fc_elementwise_layernorm_fuse_pass")
+                except Exception as e:
+                    logger.warning(f"Paddle Config patch error: {e}")
+            inference.Config.__init__ = patched_config_init
+            
+            # Patch set_optimization_level to avoid missing attribute crash
+            if not hasattr(inference.Config, 'set_optimization_level'):
+                inference.Config.set_optimization_level = lambda self, level: None
+                
+            # Intercept switch_ir_optim to force it to always be False
+            original_switch_ir_optim = inference.Config.switch_ir_optim
+            def patched_switch_ir_optim(self, x=False):
+                try:
+                    original_switch_ir_optim(self, False)
+                except Exception as e:
+                    logger.warning(f"Paddle switch_ir_optim patch error: {e}")
+            inference.Config.switch_ir_optim = patched_switch_ir_optim
+            
+            inference.Config._monkeypatched = True
+            logger.info("Monkeypatched paddle.inference.Config to disable buggy IR passes and force ir_optim=False.")
+        # ------------------------------------------------------------------------------------
+        
+        from paddleocr import PaddleOCR
+        
+        device = detect_torch_device()
+        use_gpu = True if device == "cuda" else False
+        logger.info(f"Initializing per-frame PaddleOCR detector on device={device} (use_gpu={use_gpu})...")
+        
+        instance = PaddleOCR(
+            use_angle_cls=False,
+            lang="ch",
+            use_gpu=use_gpu,
+            device="gpu" if use_gpu else "cpu",
+            enable_mkldnn=False if use_gpu else True,
+            rec=False,
+            ocr_version="PP-OCRv4",
+            det_db_box_thresh=0.5,
+            det_db_thresh=0.3,
+            det_db_unclip_ratio=1.5,
+            ir_optim=False
+        )
+        
+        # Dry run to verify GPU/cuDNN compatibility
+        if use_gpu:
+            try:
+                import numpy as np
+                dummy_img = np.zeros((32, 32, 3), dtype=np.uint8)
+                instance.ocr(dummy_img, rec=False)
+                logger.info("PaddleOCR GPU dry run successful in render engine!")
+            except Exception as dry_err:
+                logger.warning(f"PaddleOCR GPU dry run failed in render engine (likely missing cuDNN): {dry_err}. Falling back to CPU...")
+                use_gpu = False
+                instance = PaddleOCR(
+                    use_angle_cls=False,
+                    lang="ch",
+                    use_gpu=False,
+                    device="cpu",
+                    enable_mkldnn=True,
+                    rec=False,
+                    ocr_version="PP-OCRv4",
+                    det_db_box_thresh=0.5,
+                    det_db_thresh=0.3,
+                    det_db_unclip_ratio=1.5,
+                    ir_optim=False
+                )
+        _get_perframe_text_detector._instance = instance
     return _get_perframe_text_detector._instance
 
 
@@ -55,20 +133,12 @@ def detect_text_masks_perframe(frames: list, width: int, height: int, scene_id: 
     for i, frame in enumerate(frames):
         mask = np.zeros((height, width), dtype=np.uint8)
         
-        # Run PaddleX detection model directly on the in-memory numpy array (no disk writes/reads)
+        # Run PaddleOCR detection model directly on the in-memory numpy array (no disk writes/reads)
         try:
-            result = list(ocr.predict(frame, box_thresh=0.5, thresh=0.3, unclip_ratio=1.5))
+            result = ocr.ocr(frame, rec=False)
             
             if result and result[0]:
-                res_obj = result[0]
-                polys_list = []
-                if isinstance(res_obj, dict) or (hasattr(res_obj, "get") and "dt_polys" in res_obj):
-                    polys_list = res_obj.get("dt_polys", [])
-                else:
-                    # Legacy/Standard format: list of [poly, (text, conf)]
-                    for line in res_obj:
-                        if line and len(line) >= 1:
-                            polys_list.append(line[0])
+                polys_list = result[0]
                 
                 for poly in polys_list:
                     if poly is None or len(poly) < 3:
@@ -104,7 +174,7 @@ def detect_text_masks_perframe(frames: list, width: int, height: int, scene_id: 
     return dilated_masks
 
 
-def inpaint_scene_clip(scene_mp4: str, scene: Scene, output_mp4: str, fps: float, width: int, height: int, work_dir: str) -> str:
+def _inpaint_scene_clip_inprocess(scene_mp4: str, scene: Scene, output_mp4: str, fps: float, width: int, height: int, work_dir: str) -> str:
     """
     Remove hardcoded Chinese text from this specific scene clip using per-frame text detection + SOTA ProPainter inpainting.
     """
@@ -133,13 +203,21 @@ def inpaint_scene_clip(scene_mp4: str, scene: Scene, output_mp4: str, fps: float
     
     # 3. Apply ProPainter video inpainting if we have any masked text
     if has_any_mask:
-        logger.info(f"[{scene.id}] Invoking SOTA ProPainter on {len(frames)} frames...")
+        # High-performance, low-RAM ProPainter inference scale:
+        image_resize_ratio = 0.5
+        max_dim = max(height, width)
+        if max_dim >= 1920:
+            image_resize_ratio = 0.4
+        elif max_dim >= 3840:
+            image_resize_ratio = 0.2
+
+        logger.info(f"[{scene.id}] Invoking SOTA ProPainter on {len(frames)} frames with scale {image_resize_ratio}...")
         from translify_engine.propainter_inpaint import inpaint_video_frames_propainter
         inpainted_frames = inpaint_video_frames_propainter(
             frames=frames,
             masks=masks,
             work_dir=work_dir,
-            image_resize_ratio=1.0,
+            image_resize_ratio=image_resize_ratio,
             mask_dilation=4
         )
     else:
@@ -167,6 +245,47 @@ def inpaint_scene_clip(scene_mp4: str, scene: Scene, output_mp4: str, fps: float
         output_mp4
     ]
     subprocess.run(cmd, stdout=subprocess.DEVNULL, stderr=subprocess.DEVNULL, check=True)
+    return output_mp4
+
+def inpaint_scene_clip(scene_mp4: str, scene: Scene, output_mp4: str, fps: float, width: int, height: int, work_dir: str) -> str:
+    """Runs inpaint_scene_clip in an isolated subprocess to prevent CPU RAM accumulation."""
+    import sys
+    import json
+    
+    if not scene.visual.ocr_text:
+        return scene_mp4
+        
+    logger.info(f"[{scene.id}] Spawning isolated subprocess for inpaint_scene_clip...")
+    scene_json = os.path.join(work_dir, f"{scene.id}_data.json")
+    with open(scene_json, "w", encoding="utf-8") as f:
+        f.write(scene.model_dump_json(indent=2))
+        
+    cmd = [
+        sys.executable,
+        "-m", "translify_engine.cli_scene_inpaint",
+        "--scene-mp4", scene_mp4,
+        "--scene-data-json", scene_json,
+        "--fps", str(fps),
+        "--width", str(width),
+        "--height", str(height),
+        "--work-dir", work_dir,
+        "--output-mp4", output_mp4
+    ]
+    
+    env = os.environ.copy()
+    env["PYTHONPATH"] = os.path.dirname(os.path.dirname(os.path.dirname(os.path.abspath(__file__))))
+    
+    proc = subprocess.run(cmd, env=env, capture_output=True, text=True)
+    try: os.remove(scene_json)
+    except: pass
+    
+    if proc.returncode != 0:
+        logger.error(f"[{scene.id}] Subprocess inpaint_scene_clip failed with code {proc.returncode}")
+        logger.error(f"Subprocess stderr: {proc.stderr}")
+        logger.error(f"Subprocess stdout: {proc.stdout}")
+        # Fallback to in-process
+        return _inpaint_scene_clip_inprocess(scene_mp4, scene, output_mp4, fps, width, height, work_dir)
+        
     return output_mp4
 
 

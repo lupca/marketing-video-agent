@@ -174,7 +174,7 @@ def inpaint_video_frames_propainter(
         return list(frames)
 
     # 2. Chunking parameters (optimized for 16GB VRAM)
-    chunk_size = 60
+    chunk_size = 30
     overlap = 8
     
     # Generate intervals

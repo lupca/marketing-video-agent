@@ -140,15 +140,7 @@ def _build_render_only(local_config: Dict[str, Any], work_dir: str) -> str:
     temp_dir = os.path.join(work_dir, "pipeline_temp")
     os.makedirs(temp_dir, exist_ok=True)
     
-    # Run Constraint Engine again just in case (to format text lengths or auto-correct)
-    logger.info("🎬 [Video-as-Data Pipeline] Applying final constraints...")
-    from translify_engine.constraint_engine import ConstraintEngine
-    constraint_engine = ConstraintEngine()
-    project_db = constraint_engine.apply_constraints(
-        project=project_db,
-        work_dir=temp_dir
-    )
-    
+
     voice_name = local_config.get("voice_name", "vi-VN-NamMinhNeural")
     bgm_path = local_config.get("bgm")
     

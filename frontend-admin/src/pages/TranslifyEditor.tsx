@@ -89,6 +89,11 @@ export default function TranslifyEditor() {
         const data = res.data;
         setProjectData(data.project_data);
         
+        // Load custom settings if present
+        if (data.voice_name) setVoiceName(data.voice_name);
+        if (data.tone) setSelectedTone(data.tone);
+        if (data.cta) setCtaText(data.cta);
+
         // Load existing custom bgm if set
         if (data.bgm) {
           setBgm({
@@ -235,7 +240,10 @@ export default function TranslifyEditor() {
 
       await api.put(`/api/translify/projects/${id}`, {
         project_data: projectData,
-        bgm: bgmS3Url
+        bgm: bgmS3Url,
+        voice_name: voiceName,
+        tone: selectedTone,
+        cta: ctaText
       });
       
       setSaveStatus("Đã lưu tiến trình thành công!");

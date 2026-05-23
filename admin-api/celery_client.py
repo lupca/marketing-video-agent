@@ -28,5 +28,6 @@ celery_app.conf.update(
         "worker_promotion.tasks.*": {"queue": "promotion_queue"},
         "worker_agent.tasks.*": {"queue": "agent_queue"},
         "worker_research.tasks.*": {"queue": "research_queue"},
+        "worker_text2img.tasks.*": {"queue": "text2img_queue"},
     },
 )

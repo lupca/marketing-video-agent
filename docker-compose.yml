@@ -184,6 +184,13 @@ services:
       - OLLAMA_BASE_URL=http://localhost:11434
     volumes:
       - ./models:/models
+    deploy:
+      resources:
+        reservations:
+          devices:
+            - driver: nvidia
+              count: all
+              capabilities: [gpu]
     depends_on:
       - db
       - redis

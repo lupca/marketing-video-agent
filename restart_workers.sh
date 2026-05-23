@@ -53,4 +53,12 @@ cd "$ROOT_DIR/worker_agent"
 ./venv/bin/celery -A celery_worker worker -Q agent_queue -n worker_agent@%h --loglevel=info -c 1 &
 echo "  ✔ Worker Agent started."
 
+cd "$ROOT_DIR/worker_text2img"
+./venv/bin/celery -A celery_worker worker -Q text2img_queue -n worker_text2img@%h --loglevel=info -c 2 &
+echo "  ✔ Worker Text2Img started."
+
+cd "$ROOT_DIR/worker_translify"
+./venv/bin/celery -A celery_worker worker -P solo -Q translify_queue -n worker_translify@%h --loglevel=info &
+echo "  ✔ Worker Translify started."
+
 echo "All Celery workers restarted successfully!"

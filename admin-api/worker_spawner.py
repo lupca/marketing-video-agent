@@ -19,6 +19,8 @@ WORKER_DEFS: Dict[str, dict] = {
     "promotion": {"venv": "worker_promotion/venv", "cwd": "worker_promotion", "queue": "promotion_queue", "concurrency": 2},
     "research":  {"venv": "worker_research/venv",  "cwd": "worker_research",  "queue": "research_queue",  "concurrency": 2},
     "agent":     {"venv": "worker_agent/venv",     "cwd": "worker_agent",     "queue": "agent_queue",     "concurrency": 1},
+    "text2img":  {"venv": "worker_text2img/venv",  "cwd": "worker_text2img",  "queue": "text2img_queue",  "concurrency": 2},
+    "translify": {"venv": "worker_translify/venv", "cwd": "worker_translify", "queue": "translify_queue", "concurrency": 1},
 }
 
 # Track running processes: worker_type -> PID (persisted)

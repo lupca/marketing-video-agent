@@ -4,6 +4,7 @@ import Dashboard from "./pages/Dashboard";
 import CreateUnboxJob from "./pages/CreateUnboxJob";
 import CreateUnboxViralJob from "./pages/CreateUnboxViralJob";
 import CreateReviewJob from "./pages/CreateReviewJob";
+import ImageStudio from "./pages/ImageStudio";
 import CreateSlideshowJob from "./pages/CreateSlideshowJob";
 import CreatePromotionJob from "./pages/CreatePromotionJob";
 import DownloadVideo from "./pages/DownloadVideo";
@@ -40,6 +41,7 @@ function Sidebar() {
 
   const links = [
     { name: "Command Center", path: "/", icon: LayoutDashboard },
+    { name: "Image Studio", path: "/image-studio", icon: Sparkles },
     { name: "Sưu tầm Video", path: "/download", icon: DownloadCloud },
     { name: "Review Studio", path: "/create-review", icon: Wand2 },
     { name: "Dịch thuật Video", path: "/create-translify", icon: Languages },
@@ -124,6 +126,7 @@ function MainLayout() {
       <main className="flex-1 h-screen overflow-y-auto z-0 custom-scrollbar">
         <Routes>
           <Route path="/" element={<Dashboard />} />
+          <Route path="/image-studio" element={<ImageStudio />} />
           <Route path="/download" element={<DownloadVideo />} />
           <Route path="/create-unbox" element={<CreateUnboxJob />} />
           <Route path="/create-viral" element={<CreateUnboxViralJob />} />

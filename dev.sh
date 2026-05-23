@@ -112,12 +112,34 @@ echo -e "${GREEN}  ✔ Worker Research venv ready${NC}"
 
 # Worker Translify venv
 TRANSLIFY_VENV="$ROOT_DIR/worker_translify/venv"
-if [ ! -d "$TRANSLIFY_VENV" ]; then
-  echo -e "${YELLOW}  Creating Worker Translify venv...${NC}"
+if [ ! -f "$TRANSLIFY_VENV/bin/pip" ]; then
+  echo -e "${YELLOW}  Creating/Recreating Worker Translify venv (clean build)...${NC}"
+  rm -rf "$TRANSLIFY_VENV"
   python3 -m venv "$TRANSLIFY_VENV"
 fi
 "$TRANSLIFY_VENV/bin/pip" install --upgrade pip -q
-"$TRANSLIFY_VENV/bin/pip" install -r "$ROOT_DIR/worker_translify/requirements.txt" -q
+"$TRANSLIFY_VENV/bin/pip" install -r "$ROOT_DIR/worker_translify/requirements.txt"
+
+# Fix cuDNN symlinks for PaddlePaddle
+TRANSLIFY_SITE_PACKAGES=$("$TRANSLIFY_VENV/bin/python" -c "import site; print(site.getsitepackages()[0])" 2>/dev/null || echo "$TRANSLIFY_VENV/lib/python3.10/site-packages")
+CUDNN_LIB_PATH="$TRANSLIFY_SITE_PACKAGES/nvidia/cudnn/lib"
+CUBLAS_LIB_PATH="$TRANSLIFY_SITE_PACKAGES/nvidia/cublas/lib"
+
+if [ -d "$CUDNN_LIB_PATH" ]; then
+  if [ ! -f "$CUDNN_LIB_PATH/libcudnn.so" ]; then
+    ln -sf libcudnn.so.9 "$CUDNN_LIB_PATH/libcudnn.so"
+  fi
+fi
+
+if [ -d "$CUBLAS_LIB_PATH" ]; then
+  if [ ! -f "$CUBLAS_LIB_PATH/libcublas.so" ]; then
+    ln -sf libcublas.so.12 "$CUBLAS_LIB_PATH/libcublas.so"
+  fi
+  if [ ! -f "$CUBLAS_LIB_PATH/libcublasLt.so" ]; then
+    ln -sf libcublasLt.so.12 "$CUBLAS_LIB_PATH/libcublasLt.so"
+  fi
+fi
+
 echo -e "${GREEN}  ✔ Worker Translify venv ready${NC}"
 
 # Worker Agent venv
@@ -138,9 +160,20 @@ fi
 "$AGENT_VENV/bin/pip" install -r "$ROOT_DIR/worker_agent/requirements.txt" -q
 echo -e "${GREEN}  ✔ Worker Agent venv ready${NC}"
 
+# Worker Text2Img venv
+TEXT2IMG_VENV="$ROOT_DIR/worker_text2img/venv"
+if [ ! -d "$TEXT2IMG_VENV" ]; then
+  echo -e "${YELLOW}  Creating Worker Text2Img venv...${NC}"
+  python3 -m venv "$TEXT2IMG_VENV"
+fi
+"$TEXT2IMG_VENV/bin/pip" install --upgrade pip -q
+"$TEXT2IMG_VENV/bin/pip" install -r "$ROOT_DIR/worker_text2img/requirements.txt" -q
+echo -e "${GREEN}  ✔ Worker Text2Img venv ready${NC}"
+
 # ----------------------------------------------------------
 # 3. Common env vars
 # ----------------------------------------------------------
+export LD_LIBRARY_PATH="$CUDNN_LIB_PATH:$CUBLAS_LIB_PATH:/usr/lib/wsl/lib:$LD_LIBRARY_PATH"
 export DATABASE_URL="postgresql://admin:password123@localhost:5432/video_creator"
 export REDIS_URL="redis://localhost:6379/0"
 export MINIO_ENDPOINT="localhost:9000"
@@ -210,8 +243,14 @@ AGENT_PID=$!
 cd "$ROOT_DIR"
 echo -e "${GREEN}  ✔ Worker Agent PID: $AGENT_PID${NC}"
 
+cd "$ROOT_DIR/worker_text2img"
+"$TEXT2IMG_VENV/bin/celery" -A celery_worker worker -Q text2img_queue -n worker_text2img@%h --loglevel=info -c 2 &
+TEXT2IMG_PID=$!
+cd "$ROOT_DIR"
+echo -e "${GREEN}  ✔ Worker Text2Img PID: $TEXT2IMG_PID${NC}"
+
 cd "$ROOT_DIR/worker_translify"
-"$TRANSLIFY_VENV/bin/celery" -A celery_worker worker -Q translify_queue -n worker_translify@%h --loglevel=info -c 2 &
+"$TRANSLIFY_VENV/bin/celery" -A celery_worker worker -P solo -Q translify_queue -n worker_translify@%h --loglevel=info &
 TRANSLIFY_PID=$!
 cd "$ROOT_DIR"
 echo -e "${GREEN}  ✔ Worker Translify PID: $TRANSLIFY_PID${NC}"
@@ -245,7 +284,25 @@ echo -e "\n${YELLOW}Press Ctrl+C to stop all services${NC}\n"
 # ----------------------------------------------------------
 cleanup() {
   echo -e "\n${YELLOW}Shutting down all processes...${NC}"
-  kill $API_PID $REVIEW_PID $UNBOX_PID $DOWNLOAD_PID $SLIDESHOW_PID $PROMOTION_PID $RESEARCH_PID $AGENT_PID $TRANSLIFY_PID $FRONTEND_PID 2>/dev/null
+  kill $API_PID $REVIEW_PID $UNBOX_PID $DOWNLOAD_PID $SLIDESHOW_PID $PROMOTION_PID $RESEARCH_PID $TEXT2IMG_PID $AGENT_PID $TRANSLIFY_PID $FRONTEND_PID 2>/dev/null
+  docker compose -f "$ROOT_DIR/docker-compose.dev.yml" down
+  echo -e "${GREEN}✔ All stopped.${NC}"
+  exit 0
+}
+
+trap cleanup SIGINT SIGTERM
+
+wait
+PROMOTION_PID $RESEARCH_PID $AGENT_PID $TRANSLIFY_PID $FRONTEND_PID 2>/dev/null
+  docker compose -f "$ROOT_DIR/docker-compose.dev.yml" down
+  echo -e "${GREEN}✔ All stopped.${NC}"
+  exit 0
+}
+
+trap cleanup SIGINT SIGTERM
+
+wait
+null
   docker compose -f "$ROOT_DIR/docker-compose.dev.yml" down
   echo -e "${GREEN}✔ All stopped.${NC}"
   exit 0

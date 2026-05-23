@@ -43,6 +43,8 @@ def resolve_celery_task_and_queue(job_type: str) -> tuple[str, str]:
     elif job_type == "agent":
         queue_name = "agent_queue"
         task_name = "worker_agent.tasks.process_tmcp_webhook"
+    elif job_type == "text2img":
+        task_name = "worker_text2img.tasks.generate_image"
         
     return task_name, queue_name
 

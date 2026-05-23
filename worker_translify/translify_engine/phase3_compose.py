@@ -248,17 +248,18 @@ class TextInpainter:
         return mask
 
     def clean_frames(self, video_path: str, ocr_results: List[Dict[str, Any]], work_dir: str) -> str:
-        """Processes video, applying SOTA ProPainter video inpainting on tracked text regions."""
+        """Processes video, applying SOTA ProPainter video inpainting on tracked text regions with streaming pipeline."""
         if not ocr_results:
             logger.info("No on-screen OCR text to remove. Skipping inpainting.")
             return video_path
 
-        logger.info("Starting SOTA ProPainter on-screen text removal (inpainting)...")
+        logger.info("Starting SOTA ProPainter on-screen text removal via Streaming sliding window...")
 
         cap = cv2.VideoCapture(video_path)
         if not cap.isOpened():
             raise IOError(f"Failed to open video source: {video_path}")
 
+        writer = None
         try:
             fps = cap.get(cv2.CAP_PROP_FPS) or 30.0
             width = int(cap.get(cv2.CAP_PROP_FRAME_WIDTH))
@@ -268,20 +269,41 @@ class TextInpainter:
             from translify_engine.tracking_utils import get_tracked_polygons
             tracked_by_frame = get_tracked_polygons(video_path, ocr_results, fps, 0.0)
 
-            # 2. Read all frames and generate corresponding masks
-            frames = []
-            masks = []
+            # 2. Setup streaming Writer & ProPainter single chunk processor
+            from translify_engine.propainter_inpaint import _inpaint_video_frames_propainter_single_chunk
+            
+            temp_raw = os.path.join(work_dir, "inpainted_raw.mp4")
+            fourcc = cv2.VideoWriter_fourcc(*"mp4v")
+            writer = cv2.VideoWriter(temp_raw, fourcc, fps, (width, height))
+
+            # High-performance, low-RAM ProPainter inference scale:
+            image_resize_ratio = 0.5
+            max_dim = max(height, width)
+            if max_dim >= 1920:
+                image_resize_ratio = 0.4
+            elif max_dim >= 3840:
+                image_resize_ratio = 0.2
+            
+            logger.info(f"Dynamically reducing image_resize_ratio to {image_resize_ratio:.3f}")
+
+            chunk_size = 30
+            overlap = 8
+
+            raw_frames_buffer = []
+            raw_masks_buffer = []
+            prev_inpainted_overlap = []
+            
             frame_idx = 0
             has_any_mask = False
-            
+
             while True:
                 ret, frame = cap.read()
                 if not ret:
                     break
-                    
+
                 active_polys = tracked_by_frame.get(frame_idx, [])
                 mask = np.zeros((height, width), dtype=np.uint8)
-                
+
                 if active_polys:
                     for poly_pts in active_polys:
                         if not poly_pts:
@@ -289,44 +311,110 @@ class TextInpainter:
                         poly = np.array(poly_pts, dtype=np.int32)
                         poly = poly.reshape((-1, 1, 2))
                         cv2.fillPoly(mask, [poly], 255)
-                        
+
                     # Apply a small 5x5 dilation to cover the text neatly
                     kernel = np.ones((5, 5), np.uint8)
                     mask = cv2.dilate(mask, kernel, iterations=1)
                     has_any_mask = True
-                    
-                frames.append(frame)
-                masks.append(mask)
+
+                raw_frames_buffer.append(frame)
+                raw_masks_buffer.append(mask)
                 frame_idx += 1
+
+                # If buffer is full, process chunk
+                if len(raw_frames_buffer) == chunk_size:
+                    # Check if this chunk has any mask
+                    chunk_has_mask = any(np.any(m > 0) for m in raw_masks_buffer)
+                    if not chunk_has_mask:
+                        inp_chunk = list(raw_frames_buffer)
+                    else:
+                        logger.info(f"Processing chunk ending at frame {frame_idx} with ProPainter...")
+                        inp_chunk = _inpaint_video_frames_propainter_single_chunk(
+                            frames=raw_frames_buffer,
+                            masks=raw_masks_buffer,
+                            work_dir=work_dir,
+                            image_resize_ratio=image_resize_ratio,
+                            mask_dilation=4
+                        )
+
+                    # Blend overlap
+                    if prev_inpainted_overlap:
+                        overlap_len = min(overlap, len(inp_chunk))
+                        for i in range(overlap_len):
+                            alpha = i / max(1, overlap_len - 1)
+                            inp_chunk[i] = cv2.addWeighted(prev_inpainted_overlap[i], 1.0 - alpha, inp_chunk[i], alpha, 0.0)
+
+                    # Write finished frames (all except the last overlap frames, which will be blended with next chunk)
+                    write_end = len(inp_chunk) - overlap
+                    for i in range(write_end):
+                        writer.write(inp_chunk[i])
+
+                    # Save overlap for next iteration
+                    prev_inpainted_overlap = inp_chunk[-overlap:]
+                    
+                    # Sliding window: keep raw overlap frames for temporal context of next chunk
+                    raw_frames_buffer = raw_frames_buffer[-overlap:]
+                    raw_masks_buffer = raw_masks_buffer[-overlap:]
+                    
+                    # Force aggressive GC to free memory
+                    del inp_chunk
+                    gc.collect()
+
+            # Handle the last remaining frames at EOF
+            if not prev_inpainted_overlap:
+                # Video is shorter than 1 chunk, process and write everything in raw_frames_buffer
+                if raw_frames_buffer:
+                    chunk_has_mask = any(np.any(m > 0) for m in raw_masks_buffer)
+                    if not chunk_has_mask:
+                        inp_chunk = list(raw_frames_buffer)
+                    else:
+                        logger.info("Processing the only short chunk for video...")
+                        inp_chunk = _inpaint_video_frames_propainter_single_chunk(
+                            frames=raw_frames_buffer,
+                            masks=raw_masks_buffer,
+                            work_dir=work_dir,
+                            image_resize_ratio=image_resize_ratio,
+                            mask_dilation=4
+                        )
+                    for f in inp_chunk:
+                        writer.write(f)
+            else:
+                # We have processed at least one chunk.
+                # Do we have new frames beyond the last overlap?
+                if len(raw_frames_buffer) > overlap:
+                    chunk_has_mask = any(np.any(m > 0) for m in raw_masks_buffer)
+                    if not chunk_has_mask:
+                        inp_chunk = list(raw_frames_buffer)
+                    else:
+                        logger.info("Processing final EOF chunk...")
+                        inp_chunk = _inpaint_video_frames_propainter_single_chunk(
+                            frames=raw_frames_buffer,
+                            masks=raw_masks_buffer,
+                            work_dir=work_dir,
+                            image_resize_ratio=image_resize_ratio,
+                            mask_dilation=4
+                        )
+
+                    # Blend with previous overlap
+                    overlap_len = min(overlap, len(inp_chunk))
+                    for i in range(overlap_len):
+                        alpha = i / max(1, overlap_len - 1)
+                        inp_chunk[i] = cv2.addWeighted(prev_inpainted_overlap[i], 1.0 - alpha, inp_chunk[i], alpha, 0.0)
+
+                    # Write all remaining frames
+                    for f in inp_chunk:
+                        writer.write(f)
+                else:
+                    # No new frames beyond the overlap, just write the remaining overlap frames
+                    for f in prev_inpainted_overlap:
+                        writer.write(f)
+
         finally:
             cap.release()
+            if writer is not None:
+                writer.release()
 
-        # 3. Apply SOTA ProPainter video inpainting if we have any masked regions
-        if has_any_mask:
-            logger.info(f"Invoking SOTA ProPainter on {len(frames)} frames of full video...")
-            from translify_engine.propainter_inpaint import inpaint_video_frames_propainter
-            inpainted_frames = inpaint_video_frames_propainter(
-                frames=frames,
-                masks=masks,
-                work_dir=work_dir,
-                image_resize_ratio=1.0,
-                mask_dilation=4
-            )
-        else:
-            logger.info("No active text detected in full video. Copying original frames.")
-            inpainted_frames = frames
-
-        # 4. Write all frames to a temporary raw video file
-        temp_raw = os.path.join(work_dir, "inpainted_raw.mp4")
-        fourcc = cv2.VideoWriter_fourcc(*"mp4v")
-        writer = cv2.VideoWriter(temp_raw, fourcc, fps, (width, height))
-        try:
-            for f in inpainted_frames:
-                writer.write(f)
-        finally:
-            writer.release()
-
-        logger.info(f"Cleaned {len(inpainted_frames)} frames containing Chinese text.")
+        logger.info("Cleaned video containing Chinese text via sliding window streaming.")
 
         # High quality H264 transcoding via NVENC with robust CPU fallback
         cleaned_video = os.path.join(work_dir, "inpainted_clean.mp4")
@@ -449,10 +537,46 @@ def generate_vietnamese_voiceover(segments: List[Dict[str, Any]], work_dir: str,
 
 
 def clean_chinese_text_frames(video_path: str, ocr_results: List[Dict[str, Any]], work_dir: str, use_iopaint: bool = True) -> str:
-    """Backward compatibility wrapper for hard text video frame cleanup."""
-    config = InpaintConfig(use_iopaint=use_iopaint)
-    inpainter = TextInpainter(config)
-    return inpainter.clean_frames(video_path, ocr_results, work_dir)
+    """Runs clean_chinese_text_frames in an isolated subprocess to prevent CPU RAM accumulation."""
+    import sys
+    import json
+    
+    logger.info("Spawning isolated subprocess for clean_chinese_text_frames...")
+    ocr_json = os.path.join(work_dir, "ocr_results_temp.json")
+    with open(ocr_json, "w", encoding="utf-8") as f:
+        json.dump(ocr_results, f, ensure_ascii=False, indent=2)
+        
+    output_mp4 = os.path.join(work_dir, "inpainted_clean.mp4")
+    if os.path.exists(output_mp4):
+        try: os.remove(output_mp4)
+        except: pass
+        
+    cmd = [
+        sys.executable,
+        "-m", "translify_engine.cli_clean_frames",
+        "--video-path", video_path,
+        "--ocr-results-json", ocr_json,
+        "--work-dir", work_dir,
+        "--output-mp4", output_mp4
+    ]
+    
+    env = os.environ.copy()
+    env["PYTHONPATH"] = os.path.dirname(os.path.dirname(os.path.dirname(os.path.abspath(__file__))))
+    
+    proc = subprocess.run(cmd, env=env, capture_output=True, text=True)
+    try: os.remove(ocr_json)
+    except: pass
+    
+    if proc.returncode != 0:
+        logger.error(f"Subprocess clean_chinese_text_frames failed with code {proc.returncode}")
+        logger.error(f"Subprocess stderr: {proc.stderr}")
+        logger.error(f"Subprocess stdout: {proc.stdout}")
+        # Fallback to in-process
+        config = InpaintConfig(use_iopaint=use_iopaint)
+        inpainter = TextInpainter(config)
+        return inpainter.clean_frames(video_path, ocr_results, work_dir)
+        
+    return output_mp4
 
 
 def assemble_final_video(video_clean: str, voice_wav: str, bgm_wav: str, subtitle_ass: str, output_path: str, work_dir: str) -> str:
