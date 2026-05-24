@@ -27,9 +27,26 @@ interface JobTableProps {
   onWatchJob?: (id: number) => void;
   onCopyJob?: (job: VideoJob) => void;
   deletingId: number | null;
+
+  // Sorting props
+  sortField?: 'id' | 'type' | 'priority' | 'status' | 'duration' | 'created_at';
+  sortDirection?: 'asc' | 'desc';
+  onSort?: (field: 'id' | 'type' | 'priority' | 'status' | 'duration' | 'created_at') => void;
 }
 
-export function JobTable({ jobs, onViewDetails, onDeleteJob, onDownloadJob, onUpdateNote, onWatchJob, onCopyJob, deletingId }: JobTableProps) {
+export function JobTable({ 
+  jobs, 
+  onViewDetails, 
+  onDeleteJob, 
+  onDownloadJob, 
+  onUpdateNote, 
+  onWatchJob, 
+  onCopyJob, 
+  deletingId,
+  sortField,
+  sortDirection,
+  onSort
+}: JobTableProps) {
   const [expandedError, setExpandedError] = useState<number | null>(null);
   const navigate = useNavigate();
   const [reopeningId, setReopeningId] = useState<number | null>(null);
@@ -47,6 +64,26 @@ export function JobTable({ jobs, onViewDetails, onDeleteJob, onDownloadJob, onUp
     }
   };
 
+  const renderSortIcon = (field: 'id' | 'type' | 'priority' | 'status' | 'duration' | 'created_at') => {
+    const isActive = sortField === field;
+    if (!isActive) {
+      return (
+        <span className="inline-flex flex-col ml-1.5 opacity-30 group-hover:opacity-75 transition-opacity">
+          <ChevronUp className="w-2.5 h-2.5 -mb-0.5" />
+          <ChevronDown className="w-2.5 h-2.5" />
+        </span>
+      );
+    }
+    return (
+      <span className="inline-flex ml-1.5 text-primary">
+        {sortDirection === 'asc' ? (
+          <ChevronUp className="w-3.5 h-3.5 drop-shadow-[0_0_8px_rgba(238,76,124,0.5)]" />
+        ) : (
+          <ChevronDown className="w-3.5 h-3.5 drop-shadow-[0_0_8px_rgba(238,76,124,0.5)]" />
+        )}
+      </span>
+    );
+  };
 
   if (jobs.length === 0) {
     return (
@@ -60,14 +97,62 @@ export function JobTable({ jobs, onViewDetails, onDeleteJob, onDownloadJob, onUp
   return (
     <div className="w-full overflow-x-auto custom-scrollbar">
       <table className="w-full text-sm text-left border-collapse">
-        <thead className="bg-black/40 text-xs uppercase text-muted-foreground border-b border-white/10">
+        <thead className="bg-black/40 text-xs uppercase text-muted-foreground border-b border-white/10 select-none">
           <tr>
-            <th className="px-4 py-4 font-semibold tracking-wider">Job ID</th>
-            <th className="px-4 py-4 font-semibold tracking-wider">Type</th>
-            <th className="px-4 py-4 font-semibold tracking-wider hidden sm:table-cell">Priority</th>
-            <th className="px-4 py-4 font-semibold tracking-wider">Status & Progress</th>
-            <th className="px-4 py-4 font-semibold tracking-wider hidden md:table-cell">Duration</th>
-            <th className="px-4 py-4 font-semibold tracking-wider hidden lg:table-cell">Created</th>
+            <th 
+              onClick={() => onSort?.('id')}
+              className="px-4 py-4 font-semibold tracking-wider cursor-pointer group hover:text-white transition-colors"
+            >
+              <div className="flex items-center">
+                <span>Job ID</span>
+                {renderSortIcon('id')}
+              </div>
+            </th>
+            <th 
+              onClick={() => onSort?.('type')}
+              className="px-4 py-4 font-semibold tracking-wider cursor-pointer group hover:text-white transition-colors"
+            >
+              <div className="flex items-center">
+                <span>Type</span>
+                {renderSortIcon('type')}
+              </div>
+            </th>
+            <th 
+              onClick={() => onSort?.('priority')}
+              className="px-4 py-4 font-semibold tracking-wider cursor-pointer group hover:text-white transition-colors hidden sm:table-cell"
+            >
+              <div className="flex items-center">
+                <span>Priority</span>
+                {renderSortIcon('priority')}
+              </div>
+            </th>
+            <th 
+              onClick={() => onSort?.('status')}
+              className="px-4 py-4 font-semibold tracking-wider cursor-pointer group hover:text-white transition-colors"
+            >
+              <div className="flex items-center">
+                <span>Status & Progress</span>
+                {renderSortIcon('status')}
+              </div>
+            </th>
+            <th 
+              onClick={() => onSort?.('duration')}
+              className="px-4 py-4 font-semibold tracking-wider cursor-pointer group hover:text-white transition-colors hidden md:table-cell"
+            >
+              <div className="flex items-center">
+                <span>Duration</span>
+                {renderSortIcon('duration')}
+              </div>
+            </th>
+            <th 
+              onClick={() => onSort?.('created_at')}
+              className="px-4 py-4 font-semibold tracking-wider cursor-pointer group hover:text-white transition-colors hidden lg:table-cell"
+            >
+              <div className="flex items-center">
+                <span>Created</span>
+                {renderSortIcon('created_at')}
+              </div>
+            </th>
             <th className="px-4 py-4 font-semibold tracking-wider hidden xl:table-cell">Note</th>
             <th className="px-4 py-4 font-semibold tracking-wider text-right">Actions</th>
           </tr>

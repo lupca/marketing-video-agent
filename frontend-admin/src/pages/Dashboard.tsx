@@ -1,4 +1,4 @@
-import { useState, useEffect } from "react";
+import { useState, useEffect, useMemo } from "react";
 import { useNavigate } from "react-router-dom";
 import { LayoutDashboard, RefreshCw } from "lucide-react";
 import { cn } from "../lib/utils";
@@ -24,6 +24,24 @@ export default function Dashboard() {
   const [activeTab, setActiveTab] = useState<string>("all");
   const [currentPage, setCurrentPage] = useState(1);
   const [itemsPerPage, setItemsPerPage] = useState(10);
+
+  // Sorting state for video jobs
+  const [sortField, setSortField] = useState<'id' | 'type' | 'priority' | 'status' | 'duration' | 'created_at'>('created_at');
+  const [sortDirection, setSortDirection] = useState<'asc' | 'desc'>('desc');
+
+  const handleSort = (field: 'id' | 'type' | 'priority' | 'status' | 'duration' | 'created_at') => {
+    if (sortField === field) {
+      setSortDirection(prev => prev === 'asc' ? 'desc' : 'asc');
+    } else {
+      setSortField(field);
+      setSortDirection(field === 'created_at' ? 'desc' : 'asc');
+    }
+  };
+
+  // Reset page when sorting changes
+  useEffect(() => {
+    setCurrentPage(1);
+  }, [sortField, sortDirection]);
 
   const handleRefresh = () => fetchJobs(true);
   
@@ -99,7 +117,41 @@ export default function Dashboard() {
 
   const jobTypes = Array.from(new Set(jobs.map(j => j.job_type))).sort();
   const displayJobs = jobs.filter(job => activeTab === "all" || job.job_type === activeTab);
-  const paginatedJobs = displayJobs.slice((currentPage - 1) * itemsPerPage, currentPage * itemsPerPage);
+
+  const sortedJobs = useMemo(() => {
+    const list = [...displayJobs];
+    list.sort((a, b) => {
+      let compareVal = 0;
+      if (sortField === "id") {
+        compareVal = a.id - b.id;
+      } else if (sortField === "type") {
+        compareVal = a.job_type.localeCompare(b.job_type);
+      } else if (sortField === "priority") {
+        compareVal = a.priority - b.priority;
+      } else if (sortField === "status") {
+        compareVal = a.status.localeCompare(b.status);
+      } else if (sortField === "duration") {
+        const getDurationMs = (j: VideoJob) => {
+          if (j.started_at && j.completed_at) {
+            return new Date(j.completed_at).getTime() - new Date(j.started_at).getTime();
+          }
+          if (j.started_at) {
+            return new Date().getTime() - new Date(j.started_at).getTime(); // Running
+          }
+          return 0;
+        };
+        compareVal = getDurationMs(a) - getDurationMs(b);
+      } else if (sortField === "created_at") {
+        compareVal = new Date(a.created_at).getTime() - new Date(b.created_at).getTime();
+      }
+      return sortDirection === "asc" ? compareVal : -compareVal;
+    });
+    return list;
+  }, [displayJobs, sortField, sortDirection]);
+
+  const paginatedJobs = useMemo(() => {
+    return sortedJobs.slice((currentPage - 1) * itemsPerPage, currentPage * itemsPerPage);
+  }, [sortedJobs, currentPage, itemsPerPage]);
 
   const formatJobType = (type: string) => {
     switch (type) {
@@ -221,6 +273,9 @@ export default function Dashboard() {
               onWatchJob={handleWatchJob}
               onCopyJob={handleCopyJob}
               onUpdateNote={updateJob}
+              sortField={sortField}
+              sortDirection={sortDirection}
+              onSort={handleSort}
             />
           )}
         </Card>

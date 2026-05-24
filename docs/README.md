@@ -6,49 +6,74 @@ Toàn bộ tài liệu hệ thống được đặt tại thư mục `docs/`.
 
 ## 📚 Mục Lục Tài Liệu
 
-1. [Tổng Quan & Cài Đặt (Quickstart)](./README.md) - Đọc file này trước!
-2. [Kiến Trúc Hệ Thống](./ARCHITECTURE.md) - Gồm sơ đồ hệ thống, luồng công việc, database
-3. [Hướng Dẫn Dành Cho Developer](./DEVELOPMENT_GUIDE.md) - Unit Tests, E2E, chạy Local
-4. [Tài Liệu Cấu Trúc API (Admin API)](./API_REFERENCE.md) - Auth, Projects, Jobs, Assets
-5. [Hướng Dẫn: Plugin Video Review](./WORKER_REVIEW.md) - Phù hợp tạo video Kể Chuyện, Đập hộp có Voiceover
-6. [Hướng Dẫn: Plugin Video Unbox](./WORKER_UNBOX.md) - Phù hợp tạo video ghép nhiều đoạn nhạc (Beat-drop sync)
-7. [Hướng Dẫn: Plugin Video Translify](./WORKER_TRANSLIFY.md) - Hướng dẫn dịch thuật, Việt hóa video, và xóa chữ bằng SOTA Inpainting
-
+1. **[Tổng Quan & Cài Đặt (Quickstart)](./README.md)** - Đọc tài liệu này trước!
+2. **[Kiến Trúc Hệ Thống](./ARCHITECTURE.md)** - Gồm sơ đồ hệ thống, luồng công việc, cơ sở dữ liệu.
+3. **[Hướng Dẫn Dành Cho Developer](./DEVELOPMENT_GUIDE.md)** - Thiết lập môi trường local host, E2E testing, và viết Plugin mới.
+4. **[Tài Liệu Cấu Trúc API (Admin API)](./API_REFERENCE.md)** - Đặc tả các router Auth, Projects, Folders, Assets, Jobs, Chat SSE, Translify, Downloads, và Worker-Config.
+5. **[Hướng Dẫn: Plugin Video Review](./WORKER_REVIEW.md)** - Phù hợp tạo video Kể Chuyện, Đạt Tỉ Lệ Giữ Chân Cao (Retention B-Roll).
+6. **[Hướng Dẫn: Plugin Video Unbox](./WORKER_UNBOX.md)** - Hỗ trợ cả 2 chế độ: Basic Unbox (Music sync beat-drop) và Viral Unbox (YOLO Smart Crop & Speed Ramping).
+7. **[Hướng Dẫn: Plugin Video Translify](./WORKER_TRANSLIFY.md)** - Dịch thuật, Việt hóa video Douyin/Kuaishou, và xóa chữ SOTA Inpainting (ProPainter).
+8. **[Hướng Hẫn: Worker TTS](./WORKER_TTS.md)** - *[NEW]* Quy trình sinh giọng thuyết minh tự động qua MeloTTS và Edge-TTS HoaiMy/NamMinh.
+9. **[Hướng Dẫn: Worker Text2Img](./WORKER_TEXT2IMG.md)** - Thiết kế sinh ảnh nghệ thuật độc lập qua ComfyUI FLUX GPU API.
+10. **[Tài Liệu: Kiến Trúc Chat Assistant](./WORKER_CHAT_STORAGE.md)** - Cơ chế lưu trữ dữ liệu chat và truyền nhận dữ liệu thời gian thực qua Stream Server-Sent Events (SSE).
+11. **[Kiến Trúc: AI Leader Agent & Webhook TMCP](./tmcp_integration_leader_agent.md)** - Bộ định tuyến tổng đạo diễn AI, tự sửa lỗi tham số (Self-Healing) và tiếp nhận webhook.
+12. **[Báo Cáo: Đánh Giá Database Audit](./DATABASE_AUDIT_REPORT.md)** - Phân tích, chuẩn hóa và tối ưu hóa cơ sở dữ liệu PostgreSQL.
+13. **[Báo Cáo: Cấu Trúc Thư Mục & MinIO Storage Audit](./FOLDER_ARCHITECTURE_AUDIT.md)** - Bản đồ tương thích thư mục CapCut-style và Hard Delete.
+14. **[Bản Thiết Kế: Nâng Cấp UI/UX Giao Diện Admin](./UI_UX_UPGRADES.md)** - Cải tiến bố cục sidebar, khu vực quản lý workers và nâng cao trải nghiệm người dùng.
 
 ---
 
-## 🚀 Quickstart (Chạy Nhanh)
+## 🚀 Quickstart (Khởi Chạy Nhanh Local)
 
-### 1. Yêu cầu (Prerequisites)
-- Docker & Docker Compose
-- Hệ thống có khả năng kết nối mạng tải model AI lần đầu
+Hệ thống được thiết kế để chạy **cực kỳ tối ưu trên máy local (Host Machine)** thông qua các bộ shell scripts, không sử dụng Docker cho các container Python/Node để đảm bảo hiệu năng GPU (CUDA) tối đa cho AI Models và dễ dàng debug trực tiếp.
 
-### 2. Khởi chạy với Docker
+### 1. Yêu cầu Hệ thống (Prerequisites)
+- Linux / WSL2 (Ubuntu 20.04 hoặc 22.04) đã cài đặt GPU Drivers (nếu cần render deep learning).
+- Docker & Docker Compose (chỉ dùng để chạy hạ tầng nền).
+- Python 3.10+ và Node.js 18+.
 
-```bash
-cd video-creator-platform
+### 2. Khởi Chạy Toàn Bộ Hệ Thống
 
-# Khởi chạy tất cả: DB, Redis, API, Worker (Review + Unbox), Frontend
-docker-compose up -d --build
-```
-
-**Các dịch vụ sẽ chạy tại local:**
-- **Frontend Admin**: `http://localhost:9173`
-- **Admin API (Swagger UI)**: `http://localhost:9100/docs`
-- **Database (PostgreSQL)**: Port ``
-- **Redis (Message Broker)**: Port `6379`
-- **MinIO (Storage)**: `http://localhost:9001` (Admin port) / `http://localhost:9000` (API)
-- **Celery Workers**: Chạy ngầm trong container `worker-review` và `worker-unbox`
-
-### 3. Xem Log worker
-
-Lệnh theo dõi tiến độ render video từ các Worker:
-```bash
-docker-compose logs -f worker-review worker-unbox
-```
-
-### 4. Tắt hệ thống
+Để khởi chạy tất cả hạ tầng (DB, Redis, MinIO) trong Docker và tự động cài đặt venvs, khởi động Admin API, 12 Celery Workers, và React Frontend trên host:
 
 ```bash
-docker-compose down
+cd marketing-video-agent
+
+# Chạy script khởi động toàn bộ
+./dev.sh
 ```
+
+### 3. Khởi Chạy Tiết Kiệm Tài Nguyên (Selective Workers)
+
+Nếu máy tính cá nhân của bạn bị giới hạn RAM/CPU, bạn không nên chạy cùng lúc cả 12 workers. Hãy sử dụng script chạy chọn lọc. Script này sẽ tự động đọc cấu hình trong database (`WorkerConfig` table) và chỉ khởi chạy các worker được đánh dấu **`is_enabled = True`**:
+
+```bash
+cd marketing-video-agent
+
+# Khởi chạy hạ tầng và chỉ bật các workers được enable trên Web Admin UI
+./dev-selective.sh
+```
+
+### 4. Dừng Toàn Bộ Hệ Thống
+
+Khi làm việc xong hoặc muốn khởi động lại sạch sẽ, hãy chạy script sau để dừng triệt để các tiến trình chạy ngầm (API, Celery workers, Vite frontend) và hạ container Docker:
+
+```bash
+cd marketing-video-agent
+
+# Tắt và dọn dẹp sạch sẽ tài nguyên
+./dev-stop.sh
+```
+
+---
+
+## 🖥️ Các Cổng Dịch Vụ Mặc Định (Port Mappings)
+
+Khi hệ thống khởi chạy thành công qua `./dev.sh` hoặc `./dev-selective.sh`:
+* **Frontend Admin**: `http://localhost:9173` (Giao diện quản trị, xem danh mục, chat, tạo video)
+* **Admin API (Swagger UI)**: `http://localhost:9100/docs` (FastAPI Swagger Docs)
+* **Database (PostgreSQL)**: `localhost:5432` (Username: `admin`, Password: `password123`, DB: `video_creator`)
+* **Redis Broker**: `localhost:6379`
+* **MinIO Object Storage Console**: `http://localhost:9001` (Username: `minioadmin`, Password: `minioadmin`)
+* **MinIO API Port**: `http://localhost:9000` (Endpoint dùng cho S3 upload)
+

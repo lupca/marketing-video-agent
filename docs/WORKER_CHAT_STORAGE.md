@@ -1,108 +1,118 @@
-# Hướng dẫn Lưu trữ Dữ liệu Chat AI (AI Chat Storage & Data Structure)
+# Hướng Dẫn Kỹ Thuật: Trợ Lý AI Chat & Kiến Trúc Lưu Trữ (Real-time SSE Chat)
 
-Tài liệu này mô tả chi tiết vị trí lưu trữ, bảng cơ sở dữ liệu và cấu trúc dữ liệu của tính năng **Trợ lý AI Chat (AI Chat Assistant)** hoạt động thông qua `worker_chat` trong hệ thống VidGenius.
-
----
-
-## 1. Bản/Bảng Cơ Sở Dữ Liệu Lưu Trữ (Database Table)
-
-Tất cả các phiên chat, câu hỏi của người dùng và câu trả lời của mô hình ngôn ngữ lớn (LLM) đều được lưu trữ trực tiếp trong cơ sở dữ liệu PostgreSQL ở hai bảng chính:
-
-1. **Bảng chính `video_jobs`** (Ánh xạ đến Model `VideoJob` trong file [shared_core/models.py](file:///\\wsl.localhost\server\root\marketing-video-agent\shared_core\models.py)):
-   * Đây là bảng quản lý trạng thái các tác vụ nền trong hệ thống (như review, unbox, tts...).
-   * Khi người dùng gửi tin nhắn chat, một công việc với loại `job_type = "chat"` sẽ được khởi tạo trong bảng này.
-   * **Nội dung câu trả lời của AI** sau khi xử lý thành công sẽ được ghi đè trực tiếp vào cột **`note`** (Kiểu dữ liệu `TEXT`) dưới dạng định dạng **Markdown**.
-
-2. **Bảng phụ `job_logs`** (Ánh xạ đến Model `JobLog`):
-   * Lưu trữ lịch sử vết các bước xử lý của Worker (ví dụ: *"Đang gọi Ollama chat..."*, *"AI Assistant phản hồi thành công"*).
-   * Liên kết trực tiếp với bảng `video_jobs` qua khóa ngoại `job_id`.
+Tài liệu này mô tả chi tiết kiến trúc kỹ thuật, luồng truyền nhận dữ liệu thời gian thực và cấu trúc lưu trữ cơ sở dữ liệu của tính năng **Trợ Lý AI Chat (AI Chat Assistant)** tích hợp trong VidGenius.
 
 ---
 
-## 2. Chi Tiết Cấu Trúc Dữ Liệu (Data Schema)
+## 🏗️ 1. Góc Nhìn Kiến Trúc: Luồng Stream Trực Tiếp SSE
 
-Dưới đây là sơ đồ cấu trúc của một bản ghi tác vụ chat trong bảng `video_jobs`:
-
-| Tên Cột (Column) | Kiểu Dữ Liệu (Type) | Mô Tả |
-| :--- | :--- | :--- |
-| `id` | `Integer` (PK) | Định danh duy nhất tự tăng của tác vụ chat. |
-| `project_id` | `String` (FK) | ID của Project đang làm việc (Cần thiết để liên kết tác vụ nền). |
-| `job_type` | `String` | Luôn luôn là `"chat"` đối với tác vụ chat AI. |
-| `status` | `String` | Trạng thái xử lý: `"PENDING"`, `"PROCESSING"`, `"SUCCESS"`, hoặc `"FAILED"`. |
-| `config_data` | `JSONB` | Chứa toàn bộ **Ngữ cảnh & Lịch sử chat** gửi từ giao diện UI lên (Chi tiết xem ở mục 3). |
-| `note` | `Text` | **Nơi lưu trữ câu trả lời hoàn chỉnh của AI (LLM)** sau khi xử lý thành công. |
-| `progress_percent`| `Integer` | Tiến trình xử lý (Ví dụ: `10%` khi bắt đầu, `50%` khi gọi LLM, `100%` khi hoàn thành). |
-| `error_message` | `Text` | Lưu thông báo lỗi chi tiết nếu trạng thái tác vụ là `"FAILED"`. |
-| `created_at` | `DateTime` | Thời gian người dùng nhấn gửi tin nhắn. |
-| `completed_at` | `DateTime` | Thời gian Worker hoàn thành tác vụ và trả về kết quả. |
+Hệ thống đã nâng cấp toàn diện phân hệ Chat:
+- **Loại bỏ hàng đợi Celery chậm**: Thay vì tạo Job PENDING trong `video_jobs` và đợi hàng đợi Celery của `worker_chat` kéo tin nhắn (mất 5-10 giây để nhận phản hồi đầu tiên), hệ thống sử dụng kết nối trực tiếp **Server-Sent Events (SSE)** qua giao thức HTTP truyền trực tiếp từng token (Stream) từ mô hình ngôn ngữ (Ollama/OpenAI) về giao diện người dùng.
+- **Trải nghiệm thời gian thực (Zero Latency)**: Giao diện hiển thị chữ chạy từng từ giống ChatGPT ngay khi mô hình vừa tính toán xong, đem lại trải nghiệm mượt mà vượt trội.
+- **Tự động lưu trữ bền vững**: Cả tin nhắn của User gửi lên và câu trả lời hoàn thiện từ AI đều được tự động ghi nhận vào cơ sở dữ liệu PostgreSQL ở cuối tiến trình.
 
 ---
 
-## 3. Cấu trúc trường `config_data` (Input & Chat History)
+## 🗄️ 2. Cấu Trúc Cơ Sở Dữ Liệu (PostgreSQL Schema)
 
-Trường `config_data` trong cơ sở dữ liệu lưu giữ trạng thái lịch sử chat (tối đa 10 tin nhắn gần nhất) để cung cấp bộ nhớ đệm (contextual memory) cho mô hình LLM khi xử lý tin nhắn tiếp theo.
+Hội thoại chat được phân tách riêng biệt khỏi bảng tác vụ video (`video_jobs`), lưu trữ trong hai bảng chuyên biệt liên kết với nhau:
 
-### Định dạng lưu trữ thực tế trong cột `config_data`:
-```json
-{
-  "model": "ollama-qwen2-5-3b", 
-  "text": "Hãy gợi ý cho tôi 3 tiêu đề video marketing ngắn gọn",
-  "history": [
-    {
-      "sender": "user",
-      "text": "Chào bạn! Tôi muốn làm video quảng cáo son môi.",
-      "timestamp": "2026-05-24T14:30:00.000Z"
-    },
-    {
-      "sender": "ai",
-      "text": "Chào bạn! Tôi có thể giúp gì cho bạn? Hãy chọn model và đưa ra yêu cầu.",
-      "timestamp": "2026-05-24T14:30:10.000Z"
-    }
-  ]
-}
-```
-* **`model`**: ID cấu hình LLM được lưu trong `system_settings` (key `"llm_models"`). Worker dùng ID này để truy vấn ngược lại Database lấy thông tin kết nối (Base URL, API Key, Model Tag).
-* **`text`**: Câu hỏi hiện tại (Prompt) của người dùng.
-* **`history`**: Mảng lưu trữ hội thoại trước đó để gửi kèm làm ngữ cảnh bộ nhớ cho LLM.
+### A. Bảng Phiên Hội Thoại (`chat_sessions`)
+Lưu thông tin các cuộc hội thoại khác nhau của người dùng trong từng dự án:
+
+| Tên Cột (Column) | Kiểu Dữ Liệu (Type) | Ràng Buộc | Mô Tả |
+| :--- | :--- | :--- | :--- |
+| `id` | `String` | PK (UUID) | Mã định danh duy nhất của phiên hội thoại. |
+| `project_id` | `String` | FK | Liên kết tới dự án chủ quản (`projects.id`). |
+| `user_id` | `Integer` | FK | Người sở hữu cuộc trò chuyện (`users.id`). |
+| `title` | `String` | Not Null | Tiêu đề cuộc hội thoại (do AI tự sinh hoặc user đặt). |
+| `selected_model_id`| `String` | Nullable | ID cấu hình LLM đang sử dụng (ví dụ: `qwen-2.5`). |
+| `created_at` | `DateTime` | Not Null | Thời gian khởi tạo phiên trò chuyện. |
+| `updated_at` | `DateTime` | Not Null | Thời gian cập nhật tin nhắn cuối cùng. |
+
+### B. Bảng Chi Tiết Tin Nhắn (`chat_messages`)
+Lưu trữ lịch sử chat chi tiết từng câu hỏi/đáp:
+
+| Tên Cột (Column) | Kiểu Dữ Liệu (Type) | Ràng Buộc | Mô Tả |
+| :--- | :--- | :--- | :--- |
+| `id` | `Integer` | PK (AutoInc) | Định danh duy nhất tự tăng của tin nhắn. |
+| `session_id` | `String` | FK | Thuộc về phiên hội thoại nào (`chat_sessions.id` - `ON DELETE CASCADE`). |
+| `sender` | `String` | Not Null | Vai trò người gửi: `"user"` (người dùng) hoặc `"assistant"` (AI). |
+| `content` | `Text` | Not Null | Nội dung chi tiết tin nhắn (định dạng Markdown đối với assistant). |
+| `created_at` | `DateTime` | Not Null | Thời gian gửi/nhận tin nhắn. |
 
 ---
 
-## 4. Luồng xử lý và đồng bộ dữ liệu (Data Flow)
+## 🔄 3. Luồng Truyền Dữ Liệu Thời Gian Thực (Sequence Diagram)
+
+Sơ đồ dưới đây biểu diễn quá trình từ khi người dùng nhập câu hỏi trên giao diện Admin UI đến khi nhận luồng token truyền ngược lại và lưu DB tự động:
 
 ```mermaid
 sequenceDiagram
     autonumber
-    participant UI as AgentChatWidget (Frontend)
-    participant API as FastAPI (admin-api)
-    participant DB as PostgreSQL (video_jobs)
-    participant Worker as worker_chat (Celery)
-    participant LLM as Ollama / OpenAI
+    participant UI as ChatWidget (React Frontend)
+    participant API as FastAPI Router (admin-api)
+    participant DB as PostgreSQL DB
+    participant LLM as LLM Engine (Ollama / OpenAI API)
 
-    UI->>API: Gửi tin nhắn (kèm prompt & history trong config_data)
-    Note over API: Tạo một bản ghi mới trong video_jobs với status="PENDING"
-    API->>DB: Ghi bản ghi video_jobs
-    API->>Worker: Đẩy task vào hàng đợi Celery (chat_queue)
-    API-->>UI: Trả về jobId lập tức (không chặn giao diện)
+    UI->>API: POST /api/chat/sessions/{session_id}/messages {"content": "..."}
     
-    Note over Worker: Nhận task và bắt đầu xử lý
-    Worker->>DB: Cập nhật status="PROCESSING", progress_percent=10%
-    Worker->>DB: Lấy cấu hình URL & API Key của model theo model_id
-    Worker->>LLM: Gửi request OpenAI-compatible /v1/chat/completions
-    LLM-->>Worker: Trả về nội dung câu trả lời (Markdown)
+    Note over API: 1. Lưu ngay tin nhắn của User vào DB
+    API->>DB: INSERT INTO chat_messages (sender="user")
     
-    Note over Worker: Nhận câu trả lời thành công
-    Worker->>DB: Cập nhật status="SUCCESS", progress_percent=100%, note=Câu trả lời của AI
+    Note over API: 2. Tải 10 tin nhắn gần nhất làm ngữ cảnh
+    API->>DB: SELECT * FROM chat_messages WHERE session_id = ... ORDER BY created_at ASC LIMIT 10
+    DB-->>API: Trả về mảng messages lịch sử
     
-    loop Cứ sau 1.5 giây
-        UI->>API: GET /api/jobs/{jobId}
-        API->>DB: Truy vấn trạng thái job
-        DB-->>API: Trả về bản ghi
-        API-->>UI: Trả về trạng thái job hiện tại
-        Note over UI: Nếu status="SUCCESS", đọc trường note và hiển thị lên màn hình chat
+    Note over API: 3. Lấy cấu hình LLM từ system_settings
+    API->>DB: SELECT value FROM system_settings WHERE key = 'llm_models'
+    DB-->>API: Trả về base_url, model_name, api_key
+    
+    Note over API: 4. Gọi HTTP POST /v1/chat/completions (stream=True)
+    API->>LLM: Gửi Prompt + Context + Stream=True
+    
+    activate LLM
+    loop Streaming Chunks
+        LLM-->>API: Trả về chunk (data: {"choices": [{"delta": {"content": "..."}}]})
+        API-->>UI: Yield Server-Sent Event (SSE) "data: {"token": "..."}"
+        Note over UI: Nhận token và nối text hiển thị lập tức
     end
+    deactivate LLM
+    
+    Note over API: 5. Stream kết thúc! Biên dịch toàn văn câu trả lời
+    API->>DB: INSERT INTO chat_messages (sender="assistant", content=full_text)
+    API->>DB: UPDATE chat_sessions SET updated_at = NOW()
+    
+    Note over API: Hoàn tất tiến trình kết nối SSE
 ```
 
-### Ưu điểm của cấu trúc này:
-1. **Lưu vết đầy đủ:** Mọi cuộc trò chuyện đều được lưu lại lịch sử trong cơ sở dữ liệu làm bằng chứng kiểm toán (Audit Trail) để sau này phân tích hành vi hoặc tính toán chi phí token.
-2. **Không chặn giao diện (Non-blocking UI):** Khách hàng có thể đóng khung chat, chuyển trang và quay lại sau mà không bị mất tin nhắn, giao diện liên tục cập nhật tiến độ từ DB thông qua cơ chế polling.
-3. **Quản lý tập trung:** Sử dụng chung mô hình hàng đợi tác vụ nền Celery cùng với các Worker sinh video, giúp hệ thống đồng bộ và dễ mở rộng.
+---
+
+## ⚡ 4. Chi Tiết Kỹ Thuật Router `chat.py`
+
+Khi người dùng gửi tin nhắn, FastAPI thực thi Generator Function `sse_generator()` bất đồng bộ:
+
+1. **Khởi tạo và Validate**:
+   Kiểm tra sự tồn tại của `session_id`, làm sạch chuỗi câu hỏi đầu vào, lưu bản ghi `user` vào DB ngay lập tức để tránh mất mát dữ liệu nếu kết nối bị đứt.
+2. **Nạp Ngữ Cảnh**:
+   Lấy 10 tin nhắn gần nhất trong bảng `chat_messages` sắp xếp tăng dần theo thời gian, định dạng lại thành cấu trúc `{"role": "user" | "assistant", "content": "..."}` để nạp làm `messages` payload cho LLM.
+3. **Phân Giải Mô Hình**:
+   Hàm `_resolve_llm_config` truy vấn cấu hình kết nối từ khoá `llm_models` của hệ thống. Nếu không tìm thấy cấu hình custom, hệ thống tự động fallback về cấu hình mặc định (ví dụ: Ollama chạy cục bộ `http://localhost:11434` với model `qwen3.5:latest`).
+4. **Stream Delivery**:
+   Thiết lập luồng gọi `httpx` hoặc `requests.post` có thuộc tính `stream=True`. Đọc liên tục các dòng trả về từ LLM, trích xuất chuỗi JSON `delta` và trả về Client dưới header `text/event-stream`.
+5. **Cơ Chế Thread-Safe Ghi Nhận**:
+   Vì kết nối client có thể bị ngắt giữa chừng, FastAPI sử dụng một Session DB độc lập (`SessionLocal`) ở cuối hàm generator để ghi nhận nội dung câu trả lời hoàn thiện từ AI vào PostgreSQL một cách an toàn.
+
+---
+
+## ⚠️ 5. Lưu Ý Về Tiến Trình `worker_chat` (Legacy)
+
+Trong file chạy `dev.sh`, bạn vẫn sẽ thấy tiến trình khởi chạy Celery queue `chat_queue` của `worker_chat`:
+
+```bash
+cd "$ROOT_DIR/worker_chat"
+"$CHAT_VENV/bin/celery" -A celery_worker worker -P solo -Q chat_queue ...
+```
+
+- **Mục đích**: Đây là tiến trình **Legacy (Tương thích ngược)** phục vụ các webhook cũ hoặc các tác vụ background job phân tích kịch bản hàng loạt không yêu cầu streaming thời gian thực.
+- **Khuyến nghị**: Khi phát triển tính năng chat mới cho người dùng trên Web UI, **luôn sử dụng router `/api/chat` trực tiếp** để tận dụng tối đa cơ chế Stream SSE tiết kiệm tài nguyên và nâng cao trải nghiệm người dùng.
