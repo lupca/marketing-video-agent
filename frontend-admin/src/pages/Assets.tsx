@@ -7,7 +7,6 @@ import { Modal } from "../components/ui/Modal";
 import { MoveFolderModal } from "../components/features/assets/MoveFolderModal";
 
 export default function Assets() {
-  const [filterType, setFilterType] = useState<string>("all");
   const [activeTab, setActiveTab] = useState<"my_files" | "ai_generations">("my_files");
   
   // Custom hook containing folders and assets state
@@ -28,7 +27,7 @@ export default function Assets() {
     deleteFolder,
     renameAsset,
     moveAsset
-  } = useAssets(filterType);
+  } = useAssets("all");
 
   // Rename/Move states
   const [deletingId, setDeletingId] = useState<string | null>(null);
@@ -227,57 +226,37 @@ export default function Assets() {
           )}
 
           {/* Action Bar Header */}
-          <div className="flex items-center justify-between gap-4 flex-wrap">
-            {/* Asset Type Filter Dropdown */}
-            <div className="flex items-center gap-3">
-              <span className="text-xs font-semibold text-muted-foreground uppercase tracking-wide">Show:</span>
-              <select
-                title="Filter Assets"
-                value={filterType}
-                onChange={(e) => setFilterType(e.target.value)}
-                className="px-4 py-2 rounded-xl bg-white/5 border border-white/10 text-white text-xs font-medium focus:outline-none focus:ring-1 focus:ring-primary transition-all cursor-pointer"
-              >
-                <option value="all" className="bg-[#1A1A24]">All Formats</option>
-                <option value="video" className="bg-[#1A1A24]">Videos</option>
-                <option value="subtitle" className="bg-[#1A1A24]">Subtitles</option>
-                <option value="image" className="bg-[#1A1A24]">Images</option>
-                <option value="audio" className="bg-[#1A1A24]">Music & Voice</option>
-              </select>
-            </div>
+          <div className="flex items-center justify-end gap-2">
+            <Button onClick={handleRefresh} variant="secondary" isLoading={refreshing} size="icon">
+              {!refreshing && <RefreshCw className="w-4 h-4" />}
+            </Button>
 
-            {/* Main Action Buttons */}
-            <div className="flex items-center gap-2">
-              <Button onClick={handleRefresh} variant="secondary" isLoading={refreshing} size="icon">
-                {!refreshing && <RefreshCw className="w-4 h-4" />}
-              </Button>
+            <Button
+              onClick={() => setIsFolderModalOpen(true)}
+              variant="secondary"
+              className="pr-5 pl-4"
+            >
+              <FolderPlus className="w-4 h-4 mr-2" />
+              Folder
+            </Button>
 
-              <Button
-                onClick={() => setIsFolderModalOpen(true)}
-                variant="secondary"
-                className="pr-5 pl-4"
-              >
-                <FolderPlus className="w-4 h-4 mr-2" />
-                Folder
-              </Button>
+            <Button
+              onClick={handleUploadClick}
+              disabled={uploading}
+              isLoading={uploading}
+              className="glowing-button pr-5 pl-4"
+            >
+              <UploadCloud className="w-4 h-4 mr-2" />
+              File
+            </Button>
 
-              <Button
-                onClick={handleUploadClick}
-                disabled={uploading}
-                isLoading={uploading}
-                className="glowing-button pr-5 pl-4"
-              >
-                <UploadCloud className="w-4 h-4 mr-2" />
-                File
-              </Button>
-
-              <input
-                type="file"
-                ref={fileInputRef}
-                onChange={handleFileChange}
-                className="hidden"
-                title="Upload Media"
-              />
-            </div>
+            <input
+              type="file"
+              ref={fileInputRef}
+              onChange={handleFileChange}
+              className="hidden"
+              title="Upload Media"
+            />
           </div>
 
           {/* Asset List Grid & Breadcrumbs Component */}

@@ -30,5 +30,7 @@ celery_app.conf.update(
         "worker_research.tasks.*": {"queue": "research_queue"},
         "worker_text2img.tasks.*": {"queue": "text2img_queue"},
         "worker_tts.tasks.*": {"queue": "tts_queue"},
+        "worker_chat.tasks.*": {"queue": "chat_queue"},
     },
+    broker_connection_retry_on_startup=True,
 )

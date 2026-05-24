@@ -1,5 +1,5 @@
 import { useState, useRef, useEffect } from "react";
-import { Send, Bot, User, Copy, Check, Sparkles, Loader2 } from "lucide-react";
+import { Send, Bot, User, Copy, Check, Sparkles, Loader2, Plus, MessageSquare, Trash2 } from "lucide-react";
 import api from "../../../../lib/api";
 import { cn } from "../../../../lib/utils";
 import { useProjects } from "../../../../hooks/useProjects";
@@ -18,6 +18,13 @@ interface Message {
   timestamp: Date;
 }
 
+interface ChatSession {
+  id: string;
+  title: string;
+  selected_model_id: string;
+  created_at: string;
+}
+
 export default function AgentChatWidget() {
   const { projects } = useProjects();
   
@@ -29,11 +36,16 @@ export default function AgentChatWidget() {
   const [selectedModel, setSelectedModel] = useState("qwen3.5:latest");
   const [selectedProjectId, setSelectedProjectId] = useState("");
 
+  // Sessions and History States
+  const [sessions, setSessions] = useState<ChatSession[]>([]);
+  const [activeSessionId, setActiveSessionId] = useState<string | null>(null);
+  const [showHistorySidebar, setShowHistorySidebar] = useState(false);
+
   // Chat State
   const [messages, setMessages] = useState<Message[]>([
     {
       sender: "ai",
-      text: "Xin chào! Tôi là Trợ lý AI hoạt động thông qua hệ thống Worker chạy nền. Tôi có thể giúp bạn viết kịch bản, đề xuất prompt ảnh FLUX, dịch thuật siêu tốc hoặc tư duy bối cảnh video marketing.\n\nHãy lựa chọn mô hình LLM ở phía trên để bắt đầu trò chuyện nhé!",
+      text: "Xin chào! Tôi là Trợ lý AI hoạt động thời gian thực. Tôi có thể giúp bạn viết kịch bản, đề xuất prompt ảnh FLUX, dịch thuật siêu tốc hoặc tư duy bối cảnh video marketing.\n\nHãy lựa chọn mô hình LLM ở phía trên để bắt đầu trò chuyện nhé!",
       timestamp: new Date()
     }
   ]);
@@ -50,7 +62,6 @@ export default function AgentChatWidget() {
         const res = await api.get("/api/system/chat-models");
         if (res.data && res.data.length > 0) {
           setModelsList(res.data);
-          // Set first model ID as default
           setSelectedModel(res.data[0].id);
         }
       } catch (err) {
@@ -66,6 +77,118 @@ export default function AgentChatWidget() {
       setSelectedProjectId(projects[0].id);
     }
   }, [projects, selectedProjectId]);
+
+  // Load chat sessions when project is changed
+  const fetchSessions = async (projId: string) => {
+    try {
+      const res = await api.get(`/api/chat/sessions?project_id=${projId}`);
+      setSessions(res.data);
+      if (res.data.length > 0) {
+        // Load messages for the most recent session
+        handleSelectSession(res.data[0].id, res.data[0].selected_model_id);
+      } else {
+        // Create first default session
+        handleCreateSession(projId);
+      }
+    } catch (err) {
+      console.error("Failed to fetch chat sessions:", err);
+    }
+  };
+
+  useEffect(() => {
+    if (selectedProjectId) {
+      fetchSessions(selectedProjectId);
+    }
+  }, [selectedProjectId]);
+
+  const handleSelectSession = async (sessionId: string, modelId?: string) => {
+    setActiveSessionId(sessionId);
+    if (modelId) setSelectedModel(modelId);
+    setShowHistorySidebar(false);
+    
+    try {
+      const res = await api.get(`/api/chat/sessions/${sessionId}/messages`);
+      if (res.data && res.data.length > 0) {
+        setMessages(res.data.map((m: any) => ({
+          sender: m.sender === "user" ? "user" : "ai",
+          text: m.content,
+          timestamp: new Date(m.created_at)
+        })));
+      } else {
+        setMessages([
+          {
+            sender: "ai",
+            text: "Cuộc trò chuyện mới đã bắt đầu. Hãy lựa chọn mô hình ở trên và đặt câu hỏi cho tôi nhé!",
+            timestamp: new Date()
+          }
+        ]);
+      }
+    } catch (err) {
+      console.error("Failed to load messages:", err);
+    }
+  };
+
+  const handleCreateSession = async (projId?: string) => {
+    const pId = projId || selectedProjectId;
+    if (!pId) return;
+
+    try {
+      const res = await api.post("/api/chat/sessions", {
+        project_id: pId,
+        title: `Hội thoại #${sessions.length + 1}`,
+        selected_model_id: selectedModel
+      });
+      setSessions((prev) => [res.data, ...prev]);
+      setActiveSessionId(res.data.id);
+      setMessages([
+        {
+          sender: "ai",
+          text: "Cuộc hội thoại mới đã được khởi tạo thành công. Hãy đặt câu hỏi ở ô nhập liệu phía dưới!",
+          timestamp: new Date()
+        }
+      ]);
+      setShowHistorySidebar(false);
+    } catch (err) {
+      console.error("Failed to create chat session:", err);
+    }
+  };
+
+  const handleDeleteSession = async (sessionId: string, e: React.MouseEvent) => {
+    e.stopPropagation();
+    if (!confirm("Bạn có chắc chắn muốn xóa cuộc hội thoại này không?")) return;
+
+    try {
+      await api.delete(`/api/chat/sessions/${sessionId}`);
+      setSessions((prev) => prev.filter((s) => s.id !== sessionId));
+      if (activeSessionId === sessionId) {
+        const remaining = sessions.filter((s) => s.id !== sessionId);
+        if (remaining.length > 0) {
+          handleSelectSession(remaining[0].id, remaining[0].selected_model_id);
+        } else {
+          setActiveSessionId(null);
+          setMessages([]);
+        }
+      }
+    } catch (err) {
+      console.error("Failed to delete session:", err);
+    }
+  };
+
+  // Sync selected model back to active session
+  const handleModelChange = async (modelId: string) => {
+    setSelectedModel(modelId);
+    if (activeSessionId) {
+      try {
+        await api.put(`/api/chat/sessions/${activeSessionId}`, {
+          selected_model_id: modelId
+        });
+        // Sync inside state list
+        setSessions((prev) => prev.map((s) => s.id === activeSessionId ? { ...s, selected_model_id: modelId } : s));
+      } catch (err) {
+        console.warn("Failed to sync selected model to active session:", err);
+      }
+    }
+  };
 
   const scrollToBottom = () => {
     messagesEndRef.current?.scrollIntoView({ behavior: "smooth" });
@@ -83,16 +206,9 @@ export default function AgentChatWidget() {
 
   const handleSendMessage = async (textToSend?: string) => {
     const query = textToSend || inputValue;
-    if (!query.trim()) return;
+    if (!query.trim() || !activeSessionId) return;
 
-    const projectId = selectedProjectId || (projects && projects.length > 0 ? projects[0].id : null);
-    if (!projectId) {
-      // If no project exists, we cannot post the job
-      alert("Vui lòng tạo ít nhất một Project trước khi bắt đầu chat!");
-      return;
-    }
-
-    // 1. Add user message to state
+    // 1. Add user message to state immediately
     const userMsg: Message = {
       sender: "user",
       text: query,
@@ -104,80 +220,74 @@ export default function AgentChatWidget() {
     setIsTyping(true);
 
     try {
-      // 2. Submit Chat Job to Celery Queue via API
-      // We pass the conversation history in config_data so the LLM retains memory!
-      const response = await api.post("/api/jobs", {
-        job_type: "chat",
-        project_id: projectId,
-        config_data: {
-          model: selectedModel,
-          text: query,
-          history: messages.slice(-10)  // Keep last 10 messages for memory context
-        }
+      const token = localStorage.getItem("token");
+      const baseURL = api.defaults.baseURL || "http://localhost:9100";
+      const response = await fetch(`${baseURL}/api/chat/sessions/${activeSessionId}/messages`, {
+        method: "POST",
+        headers: {
+          "Content-Type": "application/json",
+          ...(token ? { "Authorization": `Bearer ${token}` } : {})
+        },
+        body: JSON.stringify({ content: query })
       });
 
-      const jobId = response.data.id;
+      if (!response.ok) {
+        throw new Error(`Server returned HTTP error ${response.status}`);
+      }
+
+      const reader = response.body?.getReader();
+      const decoder = new TextDecoder("utf-8");
+
+      let aiResponseText = "";
+      const aiMsgIndex = updatedMessages.length;
       
-      // 3. Poll for Celery Job Success
-      startPolling(jobId);
+      // Inject blank message for AI typing visual update
+      setMessages((prev) => [...prev, { sender: "ai", text: "", timestamp: new Date() }]);
+
+      while (true) {
+        const { value, done } = await reader!.read();
+        if (done) break;
+
+        const chunk = decoder.decode(value, { stream: true });
+        const lines = chunk.split("\n");
+        for (const line of lines) {
+          const trimmed = line.trim();
+          if (trimmed.startsWith("data: ")) {
+            try {
+              const data = JSON.parse(trimmed.substring(6));
+              if (data.token) {
+                aiResponseText += data.token;
+                setMessages((prev) => {
+                  const copy = [...prev];
+                  copy[aiMsgIndex] = { ...copy[aiMsgIndex], text: aiResponseText };
+                  return copy;
+                });
+              } else if (data.error) {
+                aiResponseText += `\n\n🔴 Lỗi: ${data.error}`;
+                setMessages((prev) => {
+                  const copy = [...prev];
+                  copy[aiMsgIndex] = { ...copy[aiMsgIndex], text: aiResponseText };
+                  return copy;
+                });
+              }
+            } catch (err) {
+              // Ignore incomplete json chunks
+            }
+          }
+        }
+      }
+      setIsTyping(false);
 
     } catch (err: any) {
-      console.error("Failed to submit chat job:", err);
+      console.error("Failed to run streaming completions:", err);
       const errorMsg: Message = {
         sender: "ai",
-        text: `🔴 Lỗi hệ thống: ${err.response?.data?.detail || "Không thể gửi tin nhắn đến Chat Worker. Hãy kiểm tra lại kết nối server."}`,
+        text: `🔴 Lỗi kết nối trực tiếp: ${err.message || "Không thể kết nối đến máy chủ."}`,
         timestamp: new Date()
       };
       setMessages((prev) => [...prev, errorMsg]);
       setIsTyping(false);
     }
-  };
-
-  const startPolling = (jobId: number) => {
-    const interval = setInterval(async () => {
-      try {
-        const res = await api.get(`/api/jobs/${jobId}`);
-        const job = res.data;
-
-        if (job.status === "SUCCESS") {
-          // Read AI response from job's note field
-          const aiResponseText = job.note || "Worker hoàn thành nhưng không nhận được câu trả lời từ LLM.";
-          const aiMsg: Message = {
-            sender: "ai",
-            text: aiResponseText,
-            timestamp: new Date()
-          };
-          setMessages((prev) => [...prev, aiMsg]);
-          setIsTyping(false);
-          clearInterval(interval);
-        } else if (job.status === "FAILED") {
-          const aiMsg: Message = {
-            sender: "ai",
-            text: `🔴 Chat Worker báo lỗi: ${job.error_message || "Đã xảy ra lỗi khi gọi LLM."}`,
-            timestamp: new Date()
-          };
-          setMessages((prev) => [...prev, aiMsg]);
-          setIsTyping(false);
-          clearInterval(interval);
-        }
-      } catch (err) {
-        console.error("Error polling chat job:", err);
-      }
-    }, 1500);
-
-    // Safety Timeout after 3 minutes
-    setTimeout(() => {
-      clearInterval(interval);
-      if (isTyping) {
-        setIsTyping(false);
-        const timeoutMsg: Message = {
-          sender: "ai",
-          text: "🔴 Quá thời gian phản hồi từ Chat Worker. Vui lòng kiểm tra lại tình trạng Ollama server.",
-          timestamp: new Date()
-        };
-        setMessages((prev) => [...prev, timeoutMsg]);
-      }
-    }, 180000);
   };
 
   const quickPrompts = [
@@ -187,25 +297,88 @@ export default function AgentChatWidget() {
   ];
 
   return (
-    <div className="flex flex-col h-[calc(100vh-10rem)] bg-zinc-950/20 rounded-2xl border border-white/5 overflow-hidden">
-      {/* Model Selector Header */}
+    <div className="flex flex-col h-[calc(100vh-10rem)] bg-zinc-950/20 rounded-2xl border border-white/5 overflow-hidden relative">
+      
+      {/* Drawer Title & Session Controls */}
       <div className="p-3 bg-black/40 border-b border-white/5 flex items-center justify-between gap-3 shrink-0">
-        <span className="text-[10px] uppercase font-bold text-muted-foreground tracking-widest flex items-center gap-1.5 shrink-0">
-          <Bot className="w-3.5 h-3.5 text-primary animate-pulse" /> Mô hình
-        </span>
+        <div className="flex items-center gap-2">
+          <button 
+            onClick={() => setShowHistorySidebar(!showHistorySidebar)}
+            className="p-1.5 hover:bg-white/5 rounded-lg text-muted-foreground hover:text-white transition-colors"
+            title="Lịch sử hội thoại"
+          >
+            <MessageSquare className="w-4 h-4" />
+          </button>
+          <span className="text-[10px] uppercase font-bold text-muted-foreground tracking-widest flex items-center gap-1.5">
+            <Bot className="w-3.5 h-3.5 text-primary animate-pulse" /> Trợ Lý
+          </span>
+        </div>
+
+        {/* Dynamic Model Dropdown */}
         <select
           value={selectedModel}
-          onChange={(e) => setSelectedModel(e.target.value)}
+          onChange={(e) => handleModelChange(e.target.value)}
           disabled={isTyping}
-          className="flex-1 max-w-[240px] bg-zinc-900 border border-white/10 rounded-xl px-2.5 py-1.5 text-[11px] text-white focus:outline-none focus:ring-1 focus:ring-primary font-sans font-medium"
+          className="flex-1 max-w-[160px] bg-zinc-900 border border-white/10 rounded-xl px-2.5 py-1.5 text-[11px] text-white focus:outline-none focus:ring-1 focus:ring-primary font-sans font-medium"
         >
           {modelsList.map((m) => (
             <option key={m.id} value={m.id}>
-              {m.name} ({m.model_name})
+              {m.name}
             </option>
           ))}
         </select>
+
+        <button 
+          onClick={() => handleCreateSession()}
+          className="p-1.5 bg-primary/20 hover:bg-primary/40 rounded-lg text-primary border border-primary/20 hover:scale-105 active:scale-95 transition-all"
+          title="Tạo cuộc hội thoại mới"
+        >
+          <Plus className="w-3.5 h-3.5" />
+        </button>
       </div>
+
+      {/* History Sidebar Panel Overlay */}
+      {showHistorySidebar && (
+        <div className="absolute inset-0 z-20 flex">
+          {/* Backdrop */}
+          <div className="absolute inset-0 bg-black/60 backdrop-blur-sm" onClick={() => setShowHistorySidebar(false)} />
+          
+          {/* History drawer list */}
+          <div className="w-64 bg-zinc-950 border-r border-white/10 p-4 relative z-10 flex flex-col justify-between h-full animate-in slide-in-from-left duration-200">
+            <div className="space-y-4">
+              <div className="flex items-center justify-between border-b border-white/5 pb-2">
+                <span className="text-xs font-bold text-white tracking-wide">Lịch sử hội thoại</span>
+                <button 
+                  onClick={() => handleCreateSession()} 
+                  className="flex items-center gap-1 text-[10px] bg-primary/20 hover:bg-primary/30 border border-primary/30 text-primary px-2 py-1 rounded-lg"
+                >
+                  <Plus className="w-3 h-3" /> New
+                </button>
+              </div>
+              <div className="space-y-1.5 overflow-y-auto max-h-[calc(100vh-18rem)] custom-scrollbar">
+                {sessions.map((s) => (
+                  <div 
+                    key={s.id}
+                    onClick={() => handleSelectSession(s.id, s.selected_model_id)}
+                    className={cn(
+                      "flex items-center justify-between p-2.5 rounded-xl cursor-pointer transition-colors group",
+                      activeSessionId === s.id ? "bg-white/10 text-white" : "hover:bg-white/5 text-muted-foreground"
+                    )}
+                  >
+                    <span className="text-xs truncate font-medium flex-1 pr-2">{s.title}</span>
+                    <button 
+                      onClick={(e) => handleDeleteSession(s.id, e)}
+                      className="opacity-0 group-hover:opacity-100 p-1 hover:bg-red-500/20 text-muted-foreground hover:text-red-400 rounded-lg transition-all"
+                    >
+                      <Trash2 className="w-3 h-3" />
+                    </button>
+                  </div>
+                ))}
+              </div>
+            </div>
+          </div>
+        </div>
+      )}
 
       {/* Messages Window */}
       <div className="flex-1 p-4 overflow-y-auto space-y-4 custom-scrollbar">
@@ -219,7 +392,6 @@ export default function AgentChatWidget() {
                 isAI ? "self-start" : "self-end flex-row-reverse ml-auto"
               )}
             >
-              {/* Avatar */}
               <div
                 className={cn(
                   "w-8 h-8 rounded-full flex items-center justify-center border shrink-0",
@@ -231,7 +403,6 @@ export default function AgentChatWidget() {
                 {isAI ? <Bot className="w-4 h-4" /> : <User className="w-4 h-4" />}
               </div>
 
-              {/* Message Bubble */}
               <div className="space-y-1 group relative">
                 <div
                   className={cn(
@@ -244,7 +415,6 @@ export default function AgentChatWidget() {
                   {msg.text}
                 </div>
 
-                {/* AI Copy Button */}
                 {isAI && (
                   <button
                     onClick={() => handleCopyText(msg.text, index)}
@@ -269,8 +439,7 @@ export default function AgentChatWidget() {
           );
         })}
 
-        {/* AI Typing Indicator */}
-        {isTyping && (
+        {isTyping && messages[messages.length - 1]?.sender === "user" && (
           <div className="flex gap-3 max-w-[80%] self-start animate-pulse">
             <div className="w-8 h-8 rounded-full bg-primary/20 border border-primary/40 text-primary flex items-center justify-center shrink-0">
               <Bot className="w-4 h-4" />
@@ -278,13 +447,8 @@ export default function AgentChatWidget() {
             <div className="bg-white/5 border border-white/10 p-4 rounded-2xl rounded-tl-none flex flex-col gap-2 min-w-[200px]">
               <p className="text-[10px] text-muted-foreground font-semibold flex items-center gap-1.5 animate-pulse">
                 <Loader2 className="w-3 h-3 animate-spin text-primary" />
-                Chat Worker đang suy nghĩ...
+                Chat stream đang kết nối...
               </p>
-              <div className="flex items-center gap-1.5 pt-0.5">
-                <span className="w-1.5 h-1.5 bg-primary rounded-full animate-bounce delay-75"></span>
-                <span className="w-1.5 h-1.5 bg-primary rounded-full animate-bounce delay-150"></span>
-                <span className="w-1.5 h-1.5 bg-primary rounded-full animate-bounce delay-225"></span>
-              </div>
             </div>
           </div>
         )}
@@ -292,7 +456,7 @@ export default function AgentChatWidget() {
       </div>
 
       {/* Quick Suggestions */}
-      {messages.length === 1 && !isTyping && (
+      {messages.length <= 1 && !isTyping && (
         <div className="px-4 pb-2 space-y-2 shrink-0">
           <p className="text-[10px] uppercase font-bold text-muted-foreground tracking-widest flex items-center gap-1">
             <Sparkles className="w-3 h-3 text-primary animate-pulse" /> Đề xuất nhanh
@@ -325,15 +489,15 @@ export default function AgentChatWidget() {
             value={inputValue}
             onChange={(e) => setInputValue(e.target.value)}
             disabled={isTyping}
-            placeholder="Đặt câu hỏi, viết kịch bản..."
+            placeholder={activeSessionId ? "Đặt câu hỏi, viết kịch bản..." : "Đang khởi tạo kết nối hội thoại..."}
             className="flex-1 bg-white/5 border border-white/10 rounded-xl px-4 py-3 text-xs text-white placeholder:text-muted-foreground/60 focus:outline-none focus:ring-1 focus:ring-primary/40 focus:border-primary/40"
           />
           <button
             type="submit"
-            disabled={!inputValue.trim() || isTyping}
+            disabled={!inputValue.trim() || isTyping || !activeSessionId}
             className={cn(
               "p-3 rounded-xl flex items-center justify-center transition-all",
-              inputValue.trim() && !isTyping
+              inputValue.trim() && !isTyping && activeSessionId
                 ? "bg-primary text-white hover:scale-105 active:scale-95 cursor-pointer shadow-[0_0_15px_rgba(124,58,237,0.3)]"
                 : "bg-white/5 text-muted-foreground/40 cursor-not-allowed"
             )}

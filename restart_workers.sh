@@ -61,6 +61,10 @@ cd "$ROOT_DIR/worker_tts"
 ./venv/bin/celery -A celery_worker worker -P solo -Q tts_queue -n worker_tts@%h --loglevel=info &
 echo "  ✔ Worker TTS started."
 
+cd "$ROOT_DIR/worker_chat"
+./venv/bin/celery -A celery_worker worker -P solo -Q chat_queue -n worker_chat@%h --loglevel=info &
+echo "  ✔ Worker Chat started."
+
 cd "$ROOT_DIR/worker_translify"
 ./venv/bin/celery -A celery_worker worker -P solo -Q translify_queue -n worker_translify@%h --loglevel=info &
 echo "  ✔ Worker Translify started."

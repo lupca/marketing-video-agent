@@ -120,10 +120,21 @@ fi
 "$TRANSLIFY_VENV/bin/pip" install --upgrade pip -q
 "$TRANSLIFY_VENV/bin/pip" install -r "$ROOT_DIR/worker_translify/requirements.txt"
 
+# Force use of GPU-accelerated ONNX runtime and prevent CPU packages from overriding it
+echo -e "${YELLOW}  Forcing onnxruntime-gpu installation and resolving conflicts...${NC}"
+"$TRANSLIFY_VENV/bin/pip" uninstall -y onnxruntime onnxruntime-gpu -q
+"$TRANSLIFY_VENV/bin/pip" install onnxruntime-gpu -q
+
 # Fix cuDNN symlinks for PaddlePaddle
 TRANSLIFY_SITE_PACKAGES=$("$TRANSLIFY_VENV/bin/python" -c "import site; print(site.getsitepackages()[0])" 2>/dev/null || echo "$TRANSLIFY_VENV/lib/python3.10/site-packages")
 CUDNN_LIB_PATH="$TRANSLIFY_SITE_PACKAGES/nvidia/cudnn/lib"
 CUBLAS_LIB_PATH="$TRANSLIFY_SITE_PACKAGES/nvidia/cublas/lib"
+CUFFT_LIB_PATH="$TRANSLIFY_SITE_PACKAGES/nvidia/cufft/lib"
+CURAND_LIB_PATH="$TRANSLIFY_SITE_PACKAGES/nvidia/curand/lib"
+CUSOLVER_LIB_PATH="$TRANSLIFY_SITE_PACKAGES/nvidia/cusolver/lib"
+CUSPARSE_LIB_PATH="$TRANSLIFY_SITE_PACKAGES/nvidia/cusparse/lib"
+CUDA_RT_LIB_PATH="$TRANSLIFY_SITE_PACKAGES/nvidia/cuda_runtime/lib"
+NVJITLINK_LIB_PATH="$TRANSLIFY_SITE_PACKAGES/nvidia/nvjitlink/lib"
 
 if [ -d "$CUDNN_LIB_PATH" ]; then
   if [ ! -f "$CUDNN_LIB_PATH/libcudnn.so" ]; then
@@ -203,7 +214,7 @@ echo -e "${GREEN}  ✔ Worker Chat venv ready${NC}"
 # ----------------------------------------------------------
 # 3. Common env vars
 # ----------------------------------------------------------
-export LD_LIBRARY_PATH="$CUDNN_LIB_PATH:$CUBLAS_LIB_PATH:/usr/lib/wsl/lib:$LD_LIBRARY_PATH"
+export LD_LIBRARY_PATH="$CUDNN_LIB_PATH:$CUBLAS_LIB_PATH:$CUFFT_LIB_PATH:$CURAND_LIB_PATH:$CUSOLVER_LIB_PATH:$CUSPARSE_LIB_PATH:$CUDA_RT_LIB_PATH:$NVJITLINK_LIB_PATH:/usr/lib/wsl/lib:$LD_LIBRARY_PATH"
 export DATABASE_URL="postgresql://admin:password123@localhost:5432/video_creator"
 export REDIS_URL="redis://localhost:6379/0"
 export MINIO_ENDPOINT="localhost:9000"

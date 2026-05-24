@@ -424,3 +424,8 @@ class ChatSessionResponse(BaseModel):
     messages: Optional[List[ChatMessageResponse]] = []
 
     model_config = ConfigDict(from_attributes=True)
+
+
+class ChatSessionUpdate(BaseModel):
+    title: Optional[str] = None
+    selected_model_id: Optional[str] = None

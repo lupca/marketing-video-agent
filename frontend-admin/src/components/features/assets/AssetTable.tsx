@@ -3,7 +3,7 @@ import { format } from "date-fns";
 import { 
   Database, FileAudio, FileVideo, FileText, File, Loader2, 
   Download, ExternalLink, Trash2, Folder, ChevronRight, Play, 
-  Edit3, FolderSymlink 
+  Edit3, FolderSymlink, Search, X, SlidersHorizontal, ChevronUp, ChevronDown
 } from "lucide-react";
 import { cn } from "../../../lib/utils";
 import type { Asset, Folder as FolderType } from "../../../hooks/useAssets";
@@ -100,6 +100,18 @@ export function AssetTable({
   const [currentPage, setCurrentPage] = useState(1);
   const [itemsPerPage, setItemsPerPage] = useState(10);
 
+  // Local state for search and advanced filters
+  const [searchQuery, setSearchQuery] = useState("");
+  const [isFiltersExpanded, setIsFiltersExpanded] = useState(false);
+  const [filterFormat, setFilterFormat] = useState("all");
+  const [filterSource, setFilterSource] = useState("all");
+  const [filterSize, setFilterSize] = useState("all");
+  const [filterDate, setFilterDate] = useState("all");
+
+  // Local state for column sorting
+  const [sortField, setSortField] = useState<'name' | 'type' | 'size' | 'created_at'>('created_at');
+  const [sortDirection, setSortDirection] = useState<'asc' | 'desc'>('desc');
+
   // Determine if we are running in DB-backed folders mode or Virtual path fallback mode
   const isDbMode = folders !== undefined;
   
@@ -167,23 +179,176 @@ export function AssetTable({
   // Virtual breadcrumbs list
   const virtualBreadcrumbs = safeCurrentPath.split("/").filter(Boolean);
 
-  // Reset page when directory changes
+  // Active filters count helper
+  const activeFiltersCount = useMemo(() => {
+    let count = 0;
+    if (filterFormat !== "all") count++;
+    if (filterSource !== "all") count++;
+    if (filterSize !== "all") count++;
+    if (filterDate !== "all") count++;
+    return count;
+  }, [filterFormat, filterSource, filterSize, filterDate]);
+
+  const hasAnyFilterActive = searchQuery !== "" || activeFiltersCount > 0;
+
+  const resetAllFilters = () => {
+    setSearchQuery("");
+    setFilterFormat("all");
+    setFilterSource("all");
+    setFilterSize("all");
+    setFilterDate("all");
+  };
+
+  // Toggle sorting logic
+  const handleSort = (field: 'name' | 'type' | 'size' | 'created_at') => {
+    if (sortField === field) {
+      setSortDirection(prev => prev === 'asc' ? 'desc' : 'asc');
+    } else {
+      setSortField(field);
+      setSortDirection(field === 'created_at' ? 'desc' : 'asc');
+    }
+  };
+
+  // Reset page when directory or filters change
   React.useEffect(() => {
     setCurrentPage(1);
-  }, [currentFolderId, safeCurrentPath]);
+  }, [currentFolderId, safeCurrentPath, searchQuery, filterFormat, filterSource, filterSize, filterDate]);
 
-  // Merge folders and files
+  // Merge folders and files with advanced filtering and sorting
   const allItems = useMemo(() => {
-    if (isDbMode) {
-      const folderItems = currentFolders.map(f => ({ isFolder: true, folder: f, id: `folder-${f.id}` }));
-      const fileItems = assets.map(a => ({ isFolder: false, asset: a, id: a.id }));
-      return [...folderItems, ...fileItems];
-    } else {
-      const folderItems = virtualFolders.map(f => ({ isFolder: true, name: f, id: `folder-${f}` }));
-      const fileItems = virtualFiles.map(f => ({ isFolder: false, asset: f, id: f.id }));
-      return [...folderItems, ...fileItems];
+    // 1. Process Folders
+    let filteredFolders: any[] = [];
+    
+    // If any advanced filter is active, folders are hidden
+    const isAdvancedFilterActive = activeFiltersCount > 0;
+    
+    if (!isAdvancedFilterActive) {
+      if (isDbMode) {
+        let fList = [...currentFolders];
+        if (searchQuery.trim() !== "") {
+          const query = searchQuery.toLowerCase();
+          fList = fList.filter(f => f.name.toLowerCase().includes(query));
+        }
+        
+        // Sort folders
+        fList.sort((a, b) => {
+          let compareVal = 0;
+          if (sortField === "name") {
+            compareVal = a.name.localeCompare(b.name);
+          } else if (sortField === "created_at") {
+            compareVal = new Date(a.created_at).getTime() - new Date(b.created_at).getTime();
+          } else {
+            compareVal = a.name.localeCompare(b.name);
+          }
+          return sortDirection === "asc" ? compareVal : -compareVal;
+        });
+        
+        filteredFolders = fList.map(f => ({ isFolder: true, folder: f, id: `folder-${f.id}` }));
+      } else {
+        let fList = [...virtualFolders];
+        if (searchQuery.trim() !== "") {
+          const query = searchQuery.toLowerCase();
+          fList = fList.filter(name => name.toLowerCase().includes(query));
+        }
+        
+        fList.sort((a, b) => {
+          const compareVal = a.localeCompare(b);
+          return sortDirection === "asc" ? compareVal : -compareVal;
+        });
+        
+        filteredFolders = fList.map(name => ({ isFolder: true, name, id: `folder-${name}` }));
+      }
     }
-  }, [isDbMode, currentFolders, assets, virtualFolders, virtualFiles]);
+
+    // 2. Process Files
+    let rawFiles = isDbMode ? [...assets] : [...virtualFiles];
+    
+    // Apply filters to files
+    let filteredFilesList = rawFiles.filter(asset => {
+      // Name Search query
+      if (searchQuery.trim() !== "") {
+        const query = searchQuery.toLowerCase();
+        const dispName = (asset.display_name || asset.file_name).toLowerCase();
+        const fName = asset.file_name.toLowerCase();
+        if (!dispName.includes(query) && !fName.includes(query)) return false;
+      }
+      
+      // Format Filter
+      if (filterFormat !== "all") {
+        const type = asset.asset_type;
+        let matches = false;
+        if (filterFormat === "video") matches = type === "video" || type === "clip";
+        else if (filterFormat === "audio") matches = type === "audio" || type === "bgm" || type === "voiceover" || type === "voice";
+        else if (filterFormat === "script") matches = type === "script" || type === "doc" || type === "subtitle";
+        else if (filterFormat === "image") matches = type === "image";
+        else matches = type === filterFormat;
+        if (!matches) return false;
+      }
+      
+      // Source Filter
+      if (filterSource !== "all") {
+        if (filterSource === "generated" && asset.source !== "generated") return false;
+        if (filterSource === "uploaded" && asset.source !== "upload") return false;
+      }
+      
+      // Size Filter
+      if (filterSize !== "all") {
+        const size = asset.file_size_bytes;
+        if (filterSize === "small" && size >= 1024 * 1024) return false;
+        if (filterSize === "medium" && (size < 1024 * 1024 || size > 10 * 1024 * 1024)) return false;
+        if (filterSize === "large" && (size < 10 * 1024 * 1024 || size > 100 * 1024 * 1024)) return false;
+        if (filterSize === "huge" && size <= 100 * 1024 * 1024) return false;
+      }
+      
+      // Date Filter
+      if (filterDate !== "all") {
+        const now = new Date();
+        const created = new Date(asset.created_at);
+        const diffMs = now.getTime() - created.getTime();
+        const diffDays = diffMs / (1000 * 60 * 60 * 24);
+        if (filterDate === "24h" && diffDays > 1) return false;
+        if (filterDate === "7d" && diffDays > 7) return false;
+        if (filterDate === "30d" && diffDays > 30) return false;
+      }
+      
+      return true;
+    });
+
+    // Sort files
+    filteredFilesList.sort((a, b) => {
+      let compareVal = 0;
+      if (sortField === "name") {
+        const nameA = (a.display_name || a.file_name).toLowerCase();
+        const nameB = (b.display_name || b.file_name).toLowerCase();
+        compareVal = nameA.localeCompare(nameB);
+      } else if (sortField === "type") {
+        compareVal = a.asset_type.localeCompare(b.asset_type);
+      } else if (sortField === "size") {
+        compareVal = a.file_size_bytes - b.file_size_bytes;
+      } else if (sortField === "created_at") {
+        compareVal = new Date(a.created_at).getTime() - new Date(b.created_at).getTime();
+      }
+      return sortDirection === "asc" ? compareVal : -compareVal;
+    });
+
+    const mappedFiles = filteredFilesList.map(a => ({ isFolder: false, asset: a, id: a.id }));
+
+    return [...filteredFolders, ...mappedFiles];
+  }, [
+    isDbMode,
+    currentFolders,
+    assets,
+    virtualFolders,
+    virtualFiles,
+    searchQuery,
+    filterFormat,
+    filterSource,
+    filterSize,
+    filterDate,
+    sortField,
+    sortDirection,
+    activeFiltersCount
+  ]);
 
   const paginatedItems = useMemo(() => {
     const start = (currentPage - 1) * itemsPerPage;
@@ -277,16 +442,251 @@ export function AssetTable({
         )}
       </div>
 
+      {/* Premium Search and Filter Bar */}
+      <div className="px-4 py-3 border-b border-white/10 flex flex-col gap-3 bg-[#0a0a09]/60 backdrop-blur-md z-10 sticky top-[38px] select-none">
+        {/* Row 1: Search & Toggle Filter Button */}
+        <div className="flex items-center justify-between gap-3 flex-wrap sm:flex-nowrap">
+          <div className="relative flex-1 min-w-[200px]">
+            <Search className="absolute left-3.5 top-1/2 -translate-y-1/2 w-4 h-4 text-muted-foreground/60" />
+            <input 
+              type="text" 
+              placeholder="Search assets by name..." 
+              value={searchQuery}
+              onChange={e => setSearchQuery(e.target.value)}
+              className="w-full bg-white/5 border border-white/10 hover:border-white/20 focus:border-primary/50 text-white placeholder-muted-foreground/40 rounded-xl py-2 pl-10 pr-8 text-xs transition-all focus:outline-none focus:ring-1 focus:ring-primary/20"
+            />
+            {searchQuery && (
+              <button 
+                onClick={() => setSearchQuery("")} 
+                className="absolute right-2.5 top-1/2 -translate-y-1/2 p-1 hover:text-white text-muted-foreground/60 transition-colors"
+                title="Clear Search"
+              >
+                <X className="w-3.5 h-3.5" />
+              </button>
+            )}
+          </div>
+          
+          <div className="flex items-center gap-2 shrink-0">
+            <button 
+              onClick={() => setIsFiltersExpanded(!isFiltersExpanded)} 
+              className={cn(
+                "flex items-center gap-1.5 px-3.5 py-2 rounded-xl border transition-all text-xs font-semibold shadow-sm",
+                isFiltersExpanded 
+                  ? "bg-primary/25 text-primary border-primary/40 shadow-[0_0_15px_rgba(238,76,124,0.15)] hover:bg-primary/30" 
+                  : "bg-white/5 text-white/80 hover:text-white border-white/10 hover:border-white/20"
+              )}
+            >
+              <SlidersHorizontal className="w-3.5 h-3.5" />
+              <span>Advanced Filters</span>
+              {activeFiltersCount > 0 && (
+                <span className="w-4 h-4 rounded-full bg-primary text-white text-[9px] flex items-center justify-center font-black animate-pulse">
+                  {activeFiltersCount}
+                </span>
+              )}
+            </button>
+            
+            {hasAnyFilterActive && (
+              <button 
+                onClick={resetAllFilters} 
+                className="text-xs text-muted-foreground hover:text-primary transition-all underline decoration-dotted underline-offset-4 font-medium px-1"
+              >
+                Reset All
+              </button>
+            )}
+          </div>
+        </div>
+
+        {/* Row 2: Advanced Collapsible Panel */}
+        {isFiltersExpanded && (
+          <div className="grid grid-cols-2 sm:grid-cols-4 gap-3 p-3 rounded-xl bg-black/40 border border-white/5 animate-in slide-in-from-top-2 duration-300">
+            
+            {/* Format Filter */}
+            <div className="space-y-1">
+              <label className="text-[9px] font-bold uppercase tracking-wider text-muted-foreground/60">Format</label>
+              <select
+                title="Format Filter"
+                value={filterFormat}
+                onChange={e => setFilterFormat(e.target.value)}
+                className="w-full px-2 py-1.5 rounded-lg bg-white/5 border border-white/10 text-white text-xs font-medium focus:outline-none focus:ring-1 focus:ring-primary cursor-pointer transition-colors hover:bg-white/10"
+              >
+                <option value="all" className="bg-[#121212]">All Formats</option>
+                <option value="video" className="bg-[#121212]">Videos & Clips</option>
+                <option value="image" className="bg-[#121212]">Images</option>
+                <option value="audio" className="bg-[#121212]">Music & Voice</option>
+                <option value="script" className="bg-[#121212]">Scripts & Subtitles</option>
+              </select>
+            </div>
+
+            {/* Source Filter */}
+            <div className="space-y-1">
+              <label className="text-[9px] font-bold uppercase tracking-wider text-muted-foreground/60">Source</label>
+              <select
+                title="Source Filter"
+                value={filterSource}
+                onChange={e => setFilterSource(e.target.value)}
+                className="w-full px-2 py-1.5 rounded-lg bg-white/5 border border-white/10 text-white text-xs font-medium focus:outline-none focus:ring-1 focus:ring-primary cursor-pointer transition-colors hover:bg-white/10"
+              >
+                <option value="all" className="bg-[#121212]">All Sources</option>
+                <option value="uploaded" className="bg-[#121212]">Uploaded Files</option>
+                <option value="generated" className="bg-[#121212]">AI Generated ✨</option>
+              </select>
+            </div>
+
+            {/* Size Filter */}
+            <div className="space-y-1">
+              <label className="text-[9px] font-bold uppercase tracking-wider text-muted-foreground/60">File Size</label>
+              <select
+                title="Size Filter"
+                value={filterSize}
+                onChange={e => setFilterSize(e.target.value)}
+                className="w-full px-2 py-1.5 rounded-lg bg-white/5 border border-white/10 text-white text-xs font-medium focus:outline-none focus:ring-1 focus:ring-primary cursor-pointer transition-colors hover:bg-white/10"
+              >
+                <option value="all" className="bg-[#121212]">Any Size</option>
+                <option value="small" className="bg-[#121212]">Small (&lt; 1 MB)</option>
+                <option value="medium" className="bg-[#121212]">Medium (1 MB - 10 MB)</option>
+                <option value="large" className="bg-[#121212]">Large (10 MB - 100 MB)</option>
+                <option value="huge" className="bg-[#121212]">Huge (&gt; 100 MB)</option>
+              </select>
+            </div>
+
+            {/* Upload Date Filter */}
+            <div className="space-y-1">
+              <label className="text-[9px] font-bold uppercase tracking-wider text-muted-foreground/60">Upload Date</label>
+              <select
+                title="Upload Date Filter"
+                value={filterDate}
+                onChange={e => setFilterDate(e.target.value)}
+                className="w-full px-2 py-1.5 rounded-lg bg-white/5 border border-white/10 text-white text-xs font-medium focus:outline-none focus:ring-1 focus:ring-primary cursor-pointer transition-colors hover:bg-white/10"
+              >
+                <option value="all" className="bg-[#121212]">Any Time</option>
+                <option value="24h" className="bg-[#121212]">Last 24 Hours</option>
+                <option value="7d" className="bg-[#121212]">Last 7 Days</option>
+                <option value="30d" className="bg-[#121212]">Last 30 Days</option>
+              </select>
+            </div>
+
+          </div>
+        )}
+      </div>
+
       {/* Directory Table View */}
       <div className="w-full overflow-x-auto overflow-y-auto flex-1 custom-scrollbar">
         <table className="w-full text-sm text-left border-collapse">
-          <thead className="bg-[#121212]/95 backdrop-blur-md text-xs uppercase text-muted-foreground border-b border-white/10 sticky top-0 z-10">
+          <thead className="bg-[#121212]/95 backdrop-blur-md text-xs uppercase text-muted-foreground border-b border-white/10 sticky top-0 z-10 select-none">
             <tr>
               {multiSelect && <th className="px-4 py-4 font-semibold tracking-wider w-10 text-center"></th>}
-              <th className="px-4 py-4 font-semibold tracking-wider">File Name</th>
-              <th className="px-4 py-4 font-semibold tracking-wider hidden sm:table-cell">Type</th>
-              <th className="px-4 py-4 font-semibold tracking-wider hidden md:table-cell">Size</th>
-              <th className="px-4 py-4 font-semibold tracking-wider hidden lg:table-cell">Created</th>
+              <th 
+                onClick={() => handleSort('name')}
+                className="px-4 py-4 font-semibold tracking-wider cursor-pointer group hover:text-white transition-colors"
+              >
+                <div className="flex items-center">
+                  <span>File Name</span>
+                  {(() => {
+                    const isActive = sortField === 'name';
+                    if (!isActive) {
+                      return (
+                        <span className="inline-flex flex-col ml-1.5 opacity-30 group-hover:opacity-75 transition-opacity">
+                          <ChevronUp className="w-2.5 h-2.5 -mb-0.5" />
+                          <ChevronDown className="w-2.5 h-2.5" />
+                        </span>
+                      );
+                    }
+                    return (
+                      <span className="inline-flex ml-1.5 text-primary">
+                        {sortDirection === 'asc' ? (
+                          <ChevronUp className="w-3.5 h-3.5 drop-shadow-[0_0_8px_rgba(238,76,124,0.5)]" />
+                        ) : (
+                          <ChevronDown className="w-3.5 h-3.5 drop-shadow-[0_0_8px_rgba(238,76,124,0.5)]" />
+                        )}
+                      </span>
+                    );
+                  })()}
+                </div>
+              </th>
+              <th 
+                onClick={() => handleSort('type')}
+                className="px-4 py-4 font-semibold tracking-wider cursor-pointer group hover:text-white transition-colors hidden sm:table-cell"
+              >
+                <div className="flex items-center">
+                  <span>Type</span>
+                  {(() => {
+                    const isActive = sortField === 'type';
+                    if (!isActive) {
+                      return (
+                        <span className="inline-flex flex-col ml-1.5 opacity-30 group-hover:opacity-75 transition-opacity">
+                          <ChevronUp className="w-2.5 h-2.5 -mb-0.5" />
+                          <ChevronDown className="w-2.5 h-2.5" />
+                        </span>
+                      );
+                    }
+                    return (
+                      <span className="inline-flex ml-1.5 text-primary">
+                        {sortDirection === 'asc' ? (
+                          <ChevronUp className="w-3.5 h-3.5 drop-shadow-[0_0_8px_rgba(238,76,124,0.5)]" />
+                        ) : (
+                          <ChevronDown className="w-3.5 h-3.5 drop-shadow-[0_0_8px_rgba(238,76,124,0.5)]" />
+                        )}
+                      </span>
+                    );
+                  })()}
+                </div>
+              </th>
+              <th 
+                onClick={() => handleSort('size')}
+                className="px-4 py-4 font-semibold tracking-wider cursor-pointer group hover:text-white transition-colors hidden md:table-cell"
+              >
+                <div className="flex items-center">
+                  <span>Size</span>
+                  {(() => {
+                    const isActive = sortField === 'size';
+                    if (!isActive) {
+                      return (
+                        <span className="inline-flex flex-col ml-1.5 opacity-30 group-hover:opacity-75 transition-opacity">
+                          <ChevronUp className="w-2.5 h-2.5 -mb-0.5" />
+                          <ChevronDown className="w-2.5 h-2.5" />
+                        </span>
+                      );
+                    }
+                    return (
+                      <span className="inline-flex ml-1.5 text-primary">
+                        {sortDirection === 'asc' ? (
+                          <ChevronUp className="w-3.5 h-3.5 drop-shadow-[0_0_8px_rgba(238,76,124,0.5)]" />
+                        ) : (
+                          <ChevronDown className="w-3.5 h-3.5 drop-shadow-[0_0_8px_rgba(238,76,124,0.5)]" />
+                        )}
+                      </span>
+                    );
+                  })()}
+                </div>
+              </th>
+              <th 
+                onClick={() => handleSort('created_at')}
+                className="px-4 py-4 font-semibold tracking-wider cursor-pointer group hover:text-white transition-colors hidden lg:table-cell"
+              >
+                <div className="flex items-center">
+                  <span>Created</span>
+                  {(() => {
+                    const isActive = sortField === 'created_at';
+                    if (!isActive) {
+                      return (
+                        <span className="inline-flex flex-col ml-1.5 opacity-30 group-hover:opacity-75 transition-opacity">
+                          <ChevronUp className="w-2.5 h-2.5 -mb-0.5" />
+                          <ChevronDown className="w-2.5 h-2.5" />
+                        </span>
+                      );
+                    }
+                    return (
+                      <span className="inline-flex ml-1.5 text-primary">
+                        {sortDirection === 'asc' ? (
+                          <ChevronUp className="w-3.5 h-3.5 drop-shadow-[0_0_8px_rgba(238,76,124,0.5)]" />
+                        ) : (
+                          <ChevronDown className="w-3.5 h-3.5 drop-shadow-[0_0_8px_rgba(238,76,124,0.5)]" />
+                        )}
+                      </span>
+                    );
+                  })()}
+                </div>
+              </th>
               <th className="px-4 py-4 font-semibold tracking-wider text-right">Actions</th>
             </tr>
           </thead>

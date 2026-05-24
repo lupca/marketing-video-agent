@@ -54,6 +54,7 @@ def _get_dispatch_app() -> Celery:
             task_serializer="json",
             accept_content=["json"],
             result_serializer="json",
+            broker_connection_retry_on_startup=True,
         )
     return _dispatch_app
 

@@ -13,7 +13,8 @@ import {
   Music,
   AudioLines,
   Cpu,
-  CloudLightning
+  CloudLightning,
+  Trash2
 } from "lucide-react";
 import api from "../lib/api";
 import { cn } from "../lib/utils";
@@ -53,6 +54,74 @@ export default function SpeechStudio() {
       setSelectedProjectId(projects[0].id);
     }
   }, [projects, selectedProjectId]);
+
+  // Voice History States
+  const [savedAudioList, setSavedAudioList] = useState<any[]>([]);
+  const [loadingHistory, setLoadingHistory] = useState(false);
+  const [activeHistoryTab, setActiveHistoryTab] = useState<"history" | "suggestions">("history");
+  const [playingHistoryId, setPlayingHistoryId] = useState<string | null>(null);
+  const historyAudioRef = useRef<HTMLAudioElement | null>(null);
+
+  const fetchSavedAudio = async () => {
+    if (!selectedProjectId) return;
+    setLoadingHistory(true);
+    try {
+      const res = await api.get("/api/assets", {
+        params: { asset_type: "audio" }
+      });
+      // Filter for TTS generated assets
+      const ttsAssets = res.data.filter((a: any) => 
+        a.source === "generated" && (a.file_name.includes("tts") || a.file_name.includes("voice"))
+      );
+      setSavedAudioList(ttsAssets);
+    } catch (err) {
+      console.error("Failed to fetch saved audio list:", err);
+    } finally {
+      setLoadingHistory(false);
+    }
+  };
+
+  useEffect(() => {
+    if (selectedProjectId) {
+      fetchSavedAudio();
+    }
+  }, [selectedProjectId, saveStatus]);
+
+  const togglePlayHistory = (asset: any) => {
+    if (playingHistoryId === asset.id) {
+      if (historyAudioRef.current) {
+        historyAudioRef.current.pause();
+      }
+      setPlayingHistoryId(null);
+    } else {
+      if (historyAudioRef.current) {
+        historyAudioRef.current.pause();
+      }
+      const audioUrl = asset.presigned_url || asset.s3_url;
+      historyAudioRef.current = new Audio(audioUrl);
+      historyAudioRef.current.addEventListener("ended", () => setPlayingHistoryId(null));
+      historyAudioRef.current.addEventListener("pause", () => setPlayingHistoryId(null));
+      historyAudioRef.current.play().catch(err => console.error("Playback error:", err));
+      setPlayingHistoryId(asset.id);
+    }
+  };
+
+  const handleDeleteHistoryAsset = async (assetId: string, e: React.MouseEvent) => {
+    e.stopPropagation();
+    if (!confirm("Bạn có chắc chắn muốn xóa tệp âm thanh này khỏi thư viện và giải phóng bộ nhớ MinIO không?")) return;
+    try {
+      await api.delete(`/api/assets/${assetId}`);
+      setSavedAudioList((prev) => prev.filter((a) => a.id !== assetId));
+      if (playingHistoryId === assetId) {
+        if (historyAudioRef.current) {
+          historyAudioRef.current.pause();
+        }
+        setPlayingHistoryId(null);
+      }
+    } catch (err) {
+      console.error("Failed to delete asset:", err);
+    }
+  };
 
   // Adjust speaker default choice when model changes
   useEffect(() => {
@@ -504,27 +573,138 @@ export default function SpeechStudio() {
           <div className="absolute bottom-0 left-0 w-64 h-64 bg-indigo-500/5 blur-[120px] rounded-full -ml-32 -mb-32" />
         </div>
 
-        {/* Suggestions Panel */}
-        <div className="h-48 bg-black/20 border border-white/10 rounded-3xl p-6 flex flex-col gap-4">
-          <div className="flex items-center justify-between">
-            <h4 className="text-xs font-bold text-muted-foreground uppercase tracking-widest">Mẫu câu gợi ý</h4>
+        {/* Library & Suggestions Tabs Panel */}
+        <div className="min-h-[16rem] bg-black/20 border border-white/10 rounded-3xl p-6 flex flex-col gap-4 overflow-hidden relative">
+          
+          {/* Tab Headers */}
+          <div className="flex items-center gap-6 border-b border-white/5 pb-2 shrink-0">
+            <button
+              onClick={() => setActiveHistoryTab("history")}
+              className={cn(
+                "pb-2 text-xs font-bold uppercase tracking-widest transition-all cursor-pointer flex items-center gap-2",
+                activeHistoryTab === "history" 
+                  ? "text-primary border-b-2 border-primary" 
+                  : "text-muted-foreground hover:text-white"
+              )}
+            >
+              Lịch sử giọng đọc
+              {savedAudioList.length > 0 && (
+                <span className="px-1.5 py-0.5 bg-primary/20 border border-primary/30 text-primary text-[9px] rounded-full">
+                  {savedAudioList.length}
+                </span>
+              )}
+            </button>
+            <button
+              onClick={() => setActiveHistoryTab("suggestions")}
+              className={cn(
+                "pb-2 text-xs font-bold uppercase tracking-widest transition-all cursor-pointer",
+                activeHistoryTab === "suggestions" 
+                  ? "text-primary border-b-2 border-primary" 
+                  : "text-muted-foreground hover:text-white"
+              )}
+            >
+              Mẫu câu gợi ý
+            </button>
           </div>
-          <div className="flex gap-4 overflow-x-auto pb-2 custom-scrollbar">
-            {[
-              { name: "Mở đầu review", text: "Chào mừng các bạn đã quay trở lại với kênh của mình, hôm nay chúng ta sẽ cùng đánh giá một sản phẩm siêu hot nhé." },
-              { name: "Giới thiệu tính năng", text: "Sản phẩm này sở hữu thiết kế vô cùng tinh tế, nhỏ gọn nhưng hiệu năng thì vô cùng đáng kinh ngạc." },
-              { name: "Lời kêu gọi hành động", text: "Nếu các bạn thấy video này hữu ích, đừng quên nhấn Like, Share và Đăng ký kênh để ủng hộ mình nhé." },
-              { name: "Cảm ơn & Tạm biệt", text: "Xin cảm ơn các bạn đã dành thời gian theo dõi, xin chào và hẹn gặp lại trong những video tiếp theo." },
-            ].map((sample, i) => (
-              <button 
-                key={i}
-                onClick={() => setText(sample.text)}
-                className="flex-shrink-0 w-52 p-4 bg-white/5 border border-white/5 rounded-2xl hover:bg-white/10 hover:border-white/10 transition-all text-left space-y-1 group"
-              >
-                <p className="text-xs font-bold text-white group-hover:text-primary transition-colors">{sample.name}</p>
-                <p className="text-[10px] text-muted-foreground line-clamp-2">{sample.text}</p>
-              </button>
-            ))}
+
+          {/* Tab Contents */}
+          <div className="flex-1 overflow-y-auto custom-scrollbar">
+            {activeHistoryTab === "history" ? (
+              loadingHistory ? (
+                <div className="flex items-center justify-center py-10 gap-3">
+                  <Loader2 className="w-4 h-4 animate-spin text-primary" />
+                  <span className="text-xs text-muted-foreground">Đang tải lịch sử...</span>
+                </div>
+              ) : savedAudioList.length === 0 ? (
+                <div className="flex flex-col items-center justify-center py-8 text-center text-muted-foreground select-none">
+                  <AudioLines className="w-10 h-10 opacity-20 mb-2 animate-pulse" />
+                  <p className="text-xs">Chưa có giọng đọc nào được lưu.</p>
+                  <p className="text-[10px] opacity-70 mt-1">Hãy sinh giọng đọc phía trên và bấm "Lưu vào Assets" để lưu trữ.</p>
+                </div>
+              ) : (
+                <div className="space-y-2.5">
+                  {savedAudioList.map((asset) => (
+                    <div 
+                      key={asset.id}
+                      className="flex items-center justify-between p-3 bg-white/5 border border-white/5 rounded-2xl hover:bg-white/10 hover:border-white/10 transition-all group"
+                    >
+                      {/* Left: Info */}
+                      <div className="flex items-center gap-3 min-w-0 flex-1">
+                        <div className="p-2 bg-indigo-500/10 border border-indigo-500/20 text-indigo-400 rounded-xl shrink-0">
+                          <AudioLines className="w-4 h-4" />
+                        </div>
+                        <div className="min-w-0">
+                          <p className="text-xs font-bold text-white truncate max-w-[320px]" title={asset.display_name}>
+                            {asset.display_name}
+                          </p>
+                          <p className="text-[9px] text-muted-foreground mt-0.5">
+                            {new Date(asset.created_at).toLocaleString("vi-VN")} | Source: {asset.source}
+                          </p>
+                        </div>
+                      </div>
+
+                      {/* Right: Actions */}
+                      <div className="flex items-center gap-2 shrink-0">
+                        {/* Play/Pause Button */}
+                        <button
+                          onClick={() => togglePlayHistory(asset)}
+                          className={cn(
+                            "p-2 rounded-xl border transition-all cursor-pointer",
+                            playingHistoryId === asset.id 
+                              ? "bg-primary/20 border-primary text-primary shadow-[0_0_10px_rgba(124,58,237,0.2)]" 
+                              : "bg-white/5 border-white/10 text-muted-foreground hover:text-white"
+                          )}
+                          title={playingHistoryId === asset.id ? "Pause" : "Play"}
+                        >
+                          {playingHistoryId === asset.id ? (
+                            <Pause className="w-3.5 h-3.5" />
+                          ) : (
+                            <Play className="w-3.5 h-3.5 fill-current" />
+                          )}
+                        </button>
+
+                        {/* Download link */}
+                        <a
+                          href={asset.presigned_url || asset.s3_url}
+                          download={asset.display_name}
+                          className="p-2 bg-white/5 border border-white/10 text-muted-foreground hover:text-white rounded-xl transition-all cursor-pointer"
+                          title="Tải tệp âm thanh"
+                        >
+                          <Download className="w-3.5 h-3.5" />
+                        </a>
+
+                        {/* Hard Delete Button */}
+                        <button
+                          onClick={(e) => handleDeleteHistoryAsset(asset.id, e)}
+                          className="p-2 bg-white/5 border border-white/10 text-muted-foreground hover:text-red-400 hover:bg-red-500/10 rounded-xl transition-all cursor-pointer"
+                          title="Xóa triệt để"
+                        >
+                          <Trash2 className="w-3.5 h-3.5" />
+                        </button>
+                      </div>
+                    </div>
+                  ))}
+                </div>
+              )
+            ) : (
+              <div className="flex gap-4 overflow-x-auto pb-2 custom-scrollbar">
+                {[
+                  { name: "Mở đầu review", text: "Chào mừng các bạn đã quay trở lại với kênh của mình, hôm nay chúng ta sẽ cùng đánh giá một sản phẩm siêu hot nhé." },
+                  { name: "Giới thiệu tính năng", text: "Sản phẩm này sở hữu thiết kế vô cùng tinh tế, nhỏ gọn nhưng hiệu năng thì vô cùng đáng kinh ngạc." },
+                  { name: "Lời kêu gọi hành động", text: "Nếu các bạn thấy video này hữu ích, đừng quên nhấn Like, Share và Đăng ký kênh để ủng hộ mình nhé." },
+                  { name: "Cảm ơn & Tạm biệt", text: "Xin cảm ơn các bạn đã dành thời gian theo dõi, xin chào và hẹn gặp lại trong những video tiếp theo." },
+                ].map((sample, i) => (
+                  <button 
+                    key={i}
+                    onClick={() => setText(sample.text)}
+                    className="flex-shrink-0 w-52 p-4 bg-white/5 border border-white/5 rounded-2xl hover:bg-white/10 hover:border-white/10 transition-all text-left space-y-1 group cursor-pointer"
+                  >
+                    <p className="text-xs font-bold text-white group-hover:text-primary transition-colors">{sample.name}</p>
+                    <p className="text-[10px] text-muted-foreground line-clamp-2">{sample.text}</p>
+                  </button>
+                ))}
+              </div>
+            )}
           </div>
         </div>
       </div>

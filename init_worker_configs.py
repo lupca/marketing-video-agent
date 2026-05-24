@@ -29,6 +29,7 @@ def initialize_configs(reset=False):
         ("translify", "Translify Worker - Chinese-to-Vietnamese translator"),
         ("text2img", "Text-to-Image Worker - Generates images via ComfyUI (FLUX)"),
         ("tts", "Text-to-Speech Worker - Generates Vietnamese audio from text"),
+        ("chat", "Chat Worker - AI Chat Assistant supporting dynamic models"),
     ]
     
     if reset:
