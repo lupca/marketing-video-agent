@@ -57,6 +57,10 @@ cd "$ROOT_DIR/worker_text2img"
 ./venv/bin/celery -A celery_worker worker -Q text2img_queue -n worker_text2img@%h --loglevel=info -c 2 &
 echo "  ✔ Worker Text2Img started."
 
+cd "$ROOT_DIR/worker_tts"
+./venv/bin/celery -A celery_worker worker -P solo -Q tts_queue -n worker_tts@%h --loglevel=info &
+echo "  ✔ Worker TTS started."
+
 cd "$ROOT_DIR/worker_translify"
 ./venv/bin/celery -A celery_worker worker -P solo -Q translify_queue -n worker_translify@%h --loglevel=info &
 echo "  ✔ Worker Translify started."

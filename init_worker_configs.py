@@ -28,6 +28,7 @@ def initialize_configs(reset=False):
         ("leader", "AI Leader Agent - Analyzes scripts and orchestrates workflows"),
         ("translify", "Translify Worker - Chinese-to-Vietnamese translator"),
         ("text2img", "Text-to-Image Worker - Generates images via ComfyUI (FLUX)"),
+        ("tts", "Text-to-Speech Worker - Generates Vietnamese audio from text"),
     ]
     
     if reset:
