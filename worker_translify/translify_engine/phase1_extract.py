@@ -320,7 +320,7 @@ def _run_paddle_ocr_inprocess(video_path: str, work_dir: str) -> list[dict]:
         from paddleocr import PaddleOCR
         
         device = detect_torch_device()
-        use_gpu = True if device == "cuda" else False
+        use_gpu = False  # Force CPU for absolute stability & zero SIGSEGV crashes
         logger.info(f"Loading PaddleOCR with use_gpu={use_gpu} on device={device} (ultra-tight box params)...")
         
         # 1. TUNED PARAMETERS FOR TIGHT BOUNDING BOXES
@@ -329,7 +329,7 @@ def _run_paddle_ocr_inprocess(video_path: str, work_dir: str) -> list[dict]:
             lang="ch", 
             use_gpu=use_gpu,
             device="gpu" if use_gpu else "cpu", 
-            enable_mkldnn=False if use_gpu else True, 
+            enable_mkldnn=False,
             ocr_version="PP-OCRv4",
             det_db_unclip_ratio=1.15,  # Forces bounding box to hug the text tightly
             det_db_thresh=0.35,        # Ignores faded edges

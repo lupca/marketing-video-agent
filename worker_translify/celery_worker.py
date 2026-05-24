@@ -217,9 +217,76 @@ def analyze_video(self, job_id: int, config_data: Dict[str, Any]):
         update_job(db, job, progress_percent=90)
         
         # 3. Serialize VideoProject and save to config_data
+        # --- NEW: UPLOAD INTERMEDIATE AUDIO TO MINIO & REGISTER AS DATABASE ASSETS ---
+        from shared_core.minio_utils import upload_file_to_minio
+        from shared_core.models import Asset, User
+        import re
+        
+        user_id = None
+        if job.project and job.project.user_id:
+            user_id = job.project.user_id
+        if not user_id:
+            user = db.query(User).first()
+            user_id = user.id if user else None
+            
+        video_name = config_data.get("title") or config_data.get("name") or f"translify_Job_{job_id}"
+        video_name_cleaned = re.sub(r'[^a-zA-Z0-9_\-\u00C0-\u1EF9]', '_', video_name)
+        
+        # Get project folders
+        from shared_core.worker_base import get_or_create_job_folders
+        parent_folder_id, output_folder_id, _ = get_or_create_job_folders(db, job_id, user_id, video_name)
+        
+        # Upload & Register Vocal Wav
+        if project_db.vocal_url and os.path.exists(project_db.vocal_url):
+            vocal_obj = f"jobs/{job_id}_{video_name_cleaned}/vocal.wav"
+            vocal_s3_url = upload_file_to_minio(vocal_obj, project_db.vocal_url)
+            
+            # Save to Asset library in DB
+            vocal_asset = Asset(
+                user_id=user_id,
+                asset_type="audio",
+                file_name="vocal.wav",
+                display_name="separated_vocal.wav",
+                file_size_bytes=os.path.getsize(project_db.vocal_url) if os.path.exists(project_db.vocal_url) else 0,
+                s3_url=vocal_s3_url,
+                mime_type="audio/wav",
+                folder_id=parent_folder_id,
+                source="generated"
+            )
+            db.add(vocal_asset)
+            project_db.vocal_url = vocal_s3_url
+            insert_log(db, job_id, f"Uploaded and registered separated vocal: {vocal_obj}")
+            
+        # Upload & Register BGM Wav
+        bgm_s3_url = None
+        if project_db.bgm_url and os.path.exists(project_db.bgm_url):
+            bgm_obj = f"jobs/{job_id}_{video_name_cleaned}/bgm.wav"
+            bgm_s3_url = upload_file_to_minio(bgm_obj, project_db.bgm_url)
+            
+            # Save to Asset library in DB
+            bgm_asset = Asset(
+                user_id=user_id,
+                asset_type="audio",
+                file_name="bgm.wav",
+                display_name="separated_bgm.wav",
+                file_size_bytes=os.path.getsize(project_db.bgm_url) if os.path.exists(project_db.bgm_url) else 0,
+                s3_url=bgm_s3_url,
+                mime_type="audio/wav",
+                folder_id=parent_folder_id,
+                source="generated"
+            )
+            db.add(bgm_asset)
+            project_db.bgm_url = bgm_s3_url
+            insert_log(db, job_id, f"Uploaded and registered separated BGM: {bgm_obj}")
+            
+        db.commit()
+        # ------------------------------------------------------------------------------
+        
         project_dict = project_db.model_dump()
         updated_config = dict(config_data)
         updated_config["project_data"] = project_dict
+        if bgm_s3_url:
+            updated_config["bgm"] = bgm_s3_url
         
         # Set status to WAITING_FOR_REVIEW
         update_job(

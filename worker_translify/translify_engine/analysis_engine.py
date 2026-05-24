@@ -140,7 +140,9 @@ class AnalysisEngine:
             
         project = VideoProject(
             video_id=project_id,
-            scenes=scenes_data
+            scenes=scenes_data,
+            vocal_url=vocal_wav,
+            bgm_url=bgm_wav
         )
         
         # Save project JSON DB to the workspace

@@ -38,3 +38,6 @@ class Scene(BaseModel):
 class VideoProject(BaseModel):
     video_id: str = Field(..., description="Unique project / video ID")
     scenes: List[Scene] = Field(default_factory=list, description="List of scenes in this video project")
+    vocal_url: Optional[str] = Field(default=None, description="MinIO URL of the separated vocal track")
+    bgm_url: Optional[str] = Field(default=None, description="MinIO URL of the separated background music")
+

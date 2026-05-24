@@ -70,7 +70,7 @@ def _get_perframe_text_detector():
         from paddleocr import PaddleOCR
         
         device = detect_torch_device()
-        use_gpu = True if device == "cuda" else False
+        use_gpu = False  # Force CPU for absolute stability & zero SIGSEGV crashes
         logger.info(f"Initializing per-frame PaddleOCR detector on device={device} (use_gpu={use_gpu})...")
         
         instance = PaddleOCR(
@@ -78,7 +78,7 @@ def _get_perframe_text_detector():
             lang="ch",
             use_gpu=use_gpu,
             device="gpu" if use_gpu else "cpu",
-            enable_mkldnn=False if use_gpu else True,
+            enable_mkldnn=False,
             rec=False,
             ocr_version="PP-OCRv4",
             det_db_box_thresh=0.5,
