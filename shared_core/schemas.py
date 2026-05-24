@@ -376,3 +376,51 @@ class TMCPPayload(BaseModel):
     brand_context: BrandContext
     campaign_context: CampaignContext
     variant_data: VariantData
+
+
+# ── LLM Models CRUD ───────────────────────────────────────────────────────────
+
+class LLMModelConfig(BaseModel):
+    id: str
+    name: str
+    base_url: str
+    model_name: str
+    api_key: Optional[str] = ""
+
+class LLMModelCreate(BaseModel):
+    name: str
+    base_url: str
+    model_name: str
+    api_key: Optional[str] = ""
+
+
+# ── Chat Assistant Schemas ───────────────────────────────────────────────────
+
+class ChatMessageCreate(BaseModel):
+    content: str
+
+class ChatMessageResponse(BaseModel):
+    id: int
+    session_id: str
+    sender: str
+    content: str
+    created_at: datetime
+
+    model_config = ConfigDict(from_attributes=True)
+
+class ChatSessionCreate(BaseModel):
+    project_id: str
+    title: Optional[str] = "Cuộc hội thoại mới"
+    selected_model_id: Optional[str] = None
+
+class ChatSessionResponse(BaseModel):
+    id: str
+    project_id: str
+    user_id: str
+    title: str
+    selected_model_id: Optional[str] = None
+    created_at: datetime
+    updated_at: datetime
+    messages: Optional[List[ChatMessageResponse]] = []
+
+    model_config = ConfigDict(from_attributes=True)

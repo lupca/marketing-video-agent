@@ -1,6 +1,16 @@
 import { useState, useRef, useEffect } from "react";
-import { Send, Bot, User, Copy, Check, Sparkles } from "lucide-react";
+import { Send, Bot, User, Copy, Check, Sparkles, Loader2 } from "lucide-react";
+import api from "../../../../lib/api";
 import { cn } from "../../../../lib/utils";
+import { useProjects } from "../../../../hooks/useProjects";
+
+interface ModelConfig {
+  id: string;
+  name: string;
+  model_name: string;
+  base_url: string;
+  api_key?: string;
+}
 
 interface Message {
   sender: "user" | "ai";
@@ -9,10 +19,21 @@ interface Message {
 }
 
 export default function AgentChatWidget() {
+  const { projects } = useProjects();
+  
+  // Model & Projects State
+  const [modelsList, setModelsList] = useState<ModelConfig[]>([
+    { id: "qwen3.5:latest", name: "Ollama Qwen 3.5", model_name: "qwen3.5:latest", base_url: "http://localhost:11434" },
+    { id: "gemma4:latest", name: "Ollama Gemma 4", model_name: "gemma4:latest", base_url: "http://localhost:11434" },
+  ]);
+  const [selectedModel, setSelectedModel] = useState("qwen3.5:latest");
+  const [selectedProjectId, setSelectedProjectId] = useState("");
+
+  // Chat State
   const [messages, setMessages] = useState<Message[]>([
     {
       sender: "ai",
-      text: "Xin chào! Tôi là Trợ lý AI sáng tạo. Tôi có thể giúp bạn viết kịch bản, biên tập tiêu đề, dịch thuật hoặc thiết kế Prompt ảnh FLUX ngay tại đây. Bạn cần hỗ trợ gì hôm nay?",
+      text: "Xin chào! Tôi là Trợ lý AI hoạt động thông qua hệ thống Worker chạy nền. Tôi có thể giúp bạn viết kịch bản, đề xuất prompt ảnh FLUX, dịch thuật siêu tốc hoặc tư duy bối cảnh video marketing.\n\nHãy lựa chọn mô hình LLM ở phía trên để bắt đầu trò chuyện nhé!",
       timestamp: new Date()
     }
   ]);
@@ -21,6 +42,30 @@ export default function AgentChatWidget() {
   const [copiedIndex, setCopiedIndex] = useState<number | null>(null);
 
   const messagesEndRef = useRef<HTMLDivElement>(null);
+
+  // Fetch Ollama models from backend on mount
+  useEffect(() => {
+    const fetchModels = async () => {
+      try {
+        const res = await api.get("/api/system/chat-models");
+        if (res.data && res.data.length > 0) {
+          setModelsList(res.data);
+          // Set first model ID as default
+          setSelectedModel(res.data[0].id);
+        }
+      } catch (err) {
+        console.warn("Failed to fetch Ollama models, using default fallbacks:", err);
+      }
+    };
+    fetchModels();
+  }, []);
+
+  // Set default project behind the scenes
+  useEffect(() => {
+    if (projects && projects.length > 0 && !selectedProjectId) {
+      setSelectedProjectId(projects[0].id);
+    }
+  }, [projects, selectedProjectId]);
 
   const scrollToBottom = () => {
     messagesEndRef.current?.scrollIntoView({ behavior: "smooth" });
@@ -36,91 +81,103 @@ export default function AgentChatWidget() {
     setTimeout(() => setCopiedIndex(null), 2000);
   };
 
-  const getAIResponse = (input: string): string => {
-    const text = input.toLowerCase();
-    if (text.includes("unbox") || text.includes("kịch bản unbox")) {
-      return `### 📝 KỊCH BẢN VIDEO UNBOX GỢI Ý (Độ dài: 30s - 45s)
-
-**Phân cảnh 1 [0-5s]**: Cận cảnh tay bóc hộp sản phẩm cực kỳ nhanh và dứt khoát. Tiếng xé băng dính sắc sảo (ASMR).
-*Hiệu ứng*: Zoom nhẹ 1.2x, chèn nhạc beat đập mạnh.
-*Voiceover*: "Bóc hộp cực phẩm công nghệ hot nhất tuần này. Liệu có đáng đồng tiền bát gạo?"
-
-**Phân cảnh 2 [5-15s]**: Show trọn vẹn sản phẩm dưới ánh đèn studio. Xoay các góc cạnh đẹp mắt.
-*Voiceover*: "Ấn tượng đầu tiên là thiết kế nhôm nguyên khối siêu mờ lì. Cầm cực đầm tay và cao cấp!"
-
-**Phân cảnh 3 [15-30s]**: Trải nghiệm nhanh một tính năng đắt giá nhất của sản phẩm.
-*Voiceover*: "Điểm ăn tiền nằm ở tốc độ xử lý nhanh gấp 2 lần bản cũ nhờ chip AI mới. Gen ảnh, dựng video trong chớp mắt!"
-
-**Phân cảnh 4 [30-45s]**: Kêu gọi hành động (Call to action).
-*Voiceover*: "Click ngay giỏ hàng bên dưới để nhận ưu đãi giảm 20% trong hôm nay!"`;
-    }
-
-    if (text.includes("prompt") || text.includes("vẽ ảnh") || text.includes("flux")) {
-      return `### 🎨 BỘ PROMPTS VẼ ẢNH FLUX AI CỰC ĐẸP CHO MARKETING:
-
-**1. Phong cách Sản phẩm Tương lai (Cyberpunk Tech):**
-\`\`\`text
-A futuristic wireless headphone floating in mid-air, dark cyberpunk background with neon purple and cyan lasers, cinematic lighting, highly detailed 3D render, octane render, photorealistic, 8k resolution
-\`\`\`
-
-**2. Phong cách Nhân vật sáng tạo (Creator Avatar):**
-\`\`\`text
-A friendly AI robot holding a professional cinema camera, working inside a neon glowing high-tech video production studio, cinematic shot, beautiful colors, Pixar style 3D render, soft lighting
-\`\`\`
-
-**3. Phong cách Bối cảnh bán hàng (E-commerce Banner):**
-\`\`\`text
-Premium cosmetic bottle standing on a sleek clean water surface with gentle ripples, pink and gold pastel background, studio lighting, hyperrealistic, elegant minimal aesthetics, commercial photography
-\`\`\`
-
-*Mẹo: Bạn có thể copy một trong các prompt trên, mở tab **Image Studio** ở Dock bên phải và dán vào để gen ảnh ngay lập tức!*`;
-    }
-
-    if (text.includes("dịch") || text.includes("translate") || text.includes("english")) {
-      return `### 🌐 BẢN DỊCH SONG NGỮ VIỆT - ANH GỢI Ý:
-
-**Tiếng Việt:**
-"Chào mừng bạn đến với VidGenius - Nền tảng tự động sản xuất video marketing bằng AI hàng đầu hiện nay. Hãy cùng tạo ra những thước phim viral đỉnh cao!"
-
-**Tiếng Anh (English):**
-"Welcome to VidGenius - The leading AI-powered marketing video automation platform today. Let's create ultimate viral videos together!"`;
-    }
-
-    return `Tôi đã ghi nhận yêu cầu của bạn về: "${input}". 
-
-Dưới đây là một số ý tưởng đề xuất để tối ưu hóa video marketing:
-1. **Tiêu đề giật gân (Hook):** Sử dụng các từ khóa kích thích như "Bí mật...", "Tại sao bạn không nên mua...", "Sự thật về..."
-2. **Hình ảnh thu hút (Thumbnail):** Hãy dùng **Image Studio Addon** để tạo một bức ảnh nhân vật thể hiện cảm xúc ngạc nhiên kèm theo sản phẩm dưới ánh sáng tương phản cao (neon blue/red).
-3. **Nhịp điệu video (Pacing):** Đối với các dòng video Shorts/Reels, hãy đảm bảo chuyển cảnh tối thiểu 2-3 giây/lần để giữ chân người xem lâu nhất.
-
-Bạn có muốn tôi viết chi tiết kịch bản cụ thể cho sản phẩm nào của bạn không?`;
-  };
-
-  const handleSendMessage = (textToSend?: string) => {
+  const handleSendMessage = async (textToSend?: string) => {
     const query = textToSend || inputValue;
     if (!query.trim()) return;
 
-    // Add user message
+    const projectId = selectedProjectId || (projects && projects.length > 0 ? projects[0].id : null);
+    if (!projectId) {
+      // If no project exists, we cannot post the job
+      alert("Vui lòng tạo ít nhất một Project trước khi bắt đầu chat!");
+      return;
+    }
+
+    // 1. Add user message to state
     const userMsg: Message = {
       sender: "user",
       text: query,
       timestamp: new Date()
     };
-    setMessages((prev) => [...prev, userMsg]);
+    const updatedMessages = [...messages, userMsg];
+    setMessages(updatedMessages);
     setInputValue("");
     setIsTyping(true);
 
-    // Simulate AI response delay
-    setTimeout(() => {
-      const aiResponse = getAIResponse(query);
-      const aiMsg: Message = {
+    try {
+      // 2. Submit Chat Job to Celery Queue via API
+      // We pass the conversation history in config_data so the LLM retains memory!
+      const response = await api.post("/api/jobs", {
+        job_type: "chat",
+        project_id: projectId,
+        config_data: {
+          model: selectedModel,
+          text: query,
+          history: messages.slice(-10)  // Keep last 10 messages for memory context
+        }
+      });
+
+      const jobId = response.data.id;
+      
+      // 3. Poll for Celery Job Success
+      startPolling(jobId);
+
+    } catch (err: any) {
+      console.error("Failed to submit chat job:", err);
+      const errorMsg: Message = {
         sender: "ai",
-        text: aiResponse,
+        text: `🔴 Lỗi hệ thống: ${err.response?.data?.detail || "Không thể gửi tin nhắn đến Chat Worker. Hãy kiểm tra lại kết nối server."}`,
         timestamp: new Date()
       };
-      setMessages((prev) => [...prev, aiMsg]);
+      setMessages((prev) => [...prev, errorMsg]);
       setIsTyping(false);
-    }, 1200);
+    }
+  };
+
+  const startPolling = (jobId: number) => {
+    const interval = setInterval(async () => {
+      try {
+        const res = await api.get(`/api/jobs/${jobId}`);
+        const job = res.data;
+
+        if (job.status === "SUCCESS") {
+          // Read AI response from job's note field
+          const aiResponseText = job.note || "Worker hoàn thành nhưng không nhận được câu trả lời từ LLM.";
+          const aiMsg: Message = {
+            sender: "ai",
+            text: aiResponseText,
+            timestamp: new Date()
+          };
+          setMessages((prev) => [...prev, aiMsg]);
+          setIsTyping(false);
+          clearInterval(interval);
+        } else if (job.status === "FAILED") {
+          const aiMsg: Message = {
+            sender: "ai",
+            text: `🔴 Chat Worker báo lỗi: ${job.error_message || "Đã xảy ra lỗi khi gọi LLM."}`,
+            timestamp: new Date()
+          };
+          setMessages((prev) => [...prev, aiMsg]);
+          setIsTyping(false);
+          clearInterval(interval);
+        }
+      } catch (err) {
+        console.error("Error polling chat job:", err);
+      }
+    }, 1500);
+
+    // Safety Timeout after 3 minutes
+    setTimeout(() => {
+      clearInterval(interval);
+      if (isTyping) {
+        setIsTyping(false);
+        const timeoutMsg: Message = {
+          sender: "ai",
+          text: "🔴 Quá thời gian phản hồi từ Chat Worker. Vui lòng kiểm tra lại tình trạng Ollama server.",
+          timestamp: new Date()
+        };
+        setMessages((prev) => [...prev, timeoutMsg]);
+      }
+    }, 180000);
   };
 
   const quickPrompts = [
@@ -131,7 +188,26 @@ Bạn có muốn tôi viết chi tiết kịch bản cụ thể cho sản phẩm
 
   return (
     <div className="flex flex-col h-[calc(100vh-10rem)] bg-zinc-950/20 rounded-2xl border border-white/5 overflow-hidden">
-      {/* Khung tin nhắn */}
+      {/* Model Selector Header */}
+      <div className="p-3 bg-black/40 border-b border-white/5 flex items-center justify-between gap-3 shrink-0">
+        <span className="text-[10px] uppercase font-bold text-muted-foreground tracking-widest flex items-center gap-1.5 shrink-0">
+          <Bot className="w-3.5 h-3.5 text-primary animate-pulse" /> Mô hình
+        </span>
+        <select
+          value={selectedModel}
+          onChange={(e) => setSelectedModel(e.target.value)}
+          disabled={isTyping}
+          className="flex-1 max-w-[240px] bg-zinc-900 border border-white/10 rounded-xl px-2.5 py-1.5 text-[11px] text-white focus:outline-none focus:ring-1 focus:ring-primary font-sans font-medium"
+        >
+          {modelsList.map((m) => (
+            <option key={m.id} value={m.id}>
+              {m.name} ({m.model_name})
+            </option>
+          ))}
+        </select>
+      </div>
+
+      {/* Messages Window */}
       <div className="flex-1 p-4 overflow-y-auto space-y-4 custom-scrollbar">
         {messages.map((msg, index) => {
           const isAI = msg.sender === "ai";
@@ -155,11 +231,11 @@ Bạn có muốn tôi viết chi tiết kịch bản cụ thể cho sản phẩm
                 {isAI ? <Bot className="w-4 h-4" /> : <User className="w-4 h-4" />}
               </div>
 
-              {/* Bong bóng tin nhắn */}
+              {/* Message Bubble */}
               <div className="space-y-1 group relative">
                 <div
                   className={cn(
-                    "p-3.5 rounded-2xl text-xs leading-relaxed border whitespace-pre-wrap",
+                    "p-3.5 rounded-2xl text-xs leading-relaxed border whitespace-pre-wrap font-sans",
                     isAI
                       ? "bg-white/5 border-white/10 text-white/95 rounded-tl-none"
                       : "bg-primary/10 border-primary/30 text-white rounded-tr-none"
@@ -168,7 +244,7 @@ Bạn có muốn tôi viết chi tiết kịch bản cụ thể cho sản phẩm
                   {msg.text}
                 </div>
 
-                {/* Nút Copy nhanh cho câu trả lời của AI */}
+                {/* AI Copy Button */}
                 {isAI && (
                   <button
                     onClick={() => handleCopyText(msg.text, index)}
@@ -193,23 +269,29 @@ Bạn có muốn tôi viết chi tiết kịch bản cụ thể cho sản phẩm
           );
         })}
 
-        {/* Trạng thái AI đang soạn tin nhắn */}
+        {/* AI Typing Indicator */}
         {isTyping && (
           <div className="flex gap-3 max-w-[80%] self-start animate-pulse">
             <div className="w-8 h-8 rounded-full bg-primary/20 border border-primary/40 text-primary flex items-center justify-center shrink-0">
               <Bot className="w-4 h-4" />
             </div>
-            <div className="bg-white/5 border border-white/10 p-4 rounded-2xl rounded-tl-none flex items-center gap-1.5">
-              <span className="w-1.5 h-1.5 bg-primary rounded-full animate-bounce delay-75"></span>
-              <span className="w-1.5 h-1.5 bg-primary rounded-full animate-bounce delay-150"></span>
-              <span className="w-1.5 h-1.5 bg-primary rounded-full animate-bounce delay-225"></span>
+            <div className="bg-white/5 border border-white/10 p-4 rounded-2xl rounded-tl-none flex flex-col gap-2 min-w-[200px]">
+              <p className="text-[10px] text-muted-foreground font-semibold flex items-center gap-1.5 animate-pulse">
+                <Loader2 className="w-3 h-3 animate-spin text-primary" />
+                Chat Worker đang suy nghĩ...
+              </p>
+              <div className="flex items-center gap-1.5 pt-0.5">
+                <span className="w-1.5 h-1.5 bg-primary rounded-full animate-bounce delay-75"></span>
+                <span className="w-1.5 h-1.5 bg-primary rounded-full animate-bounce delay-150"></span>
+                <span className="w-1.5 h-1.5 bg-primary rounded-full animate-bounce delay-225"></span>
+              </div>
             </div>
           </div>
         )}
         <div ref={messagesEndRef} />
       </div>
 
-      {/* Gợi ý Prompt nhanh */}
+      {/* Quick Suggestions */}
       {messages.length === 1 && !isTyping && (
         <div className="px-4 pb-2 space-y-2 shrink-0">
           <p className="text-[10px] uppercase font-bold text-muted-foreground tracking-widest flex items-center gap-1">
@@ -229,7 +311,7 @@ Bạn có muốn tôi viết chi tiết kịch bản cụ thể cho sản phẩm
         </div>
       )}
 
-      {/* Nhập tin nhắn ở đáy */}
+      {/* Input Form Box */}
       <div className="p-3 border-t border-white/5 bg-zinc-950/40 shrink-0">
         <form
           onSubmit={(e) => {
@@ -242,6 +324,7 @@ Bạn có muốn tôi viết chi tiết kịch bản cụ thể cho sản phẩm
             type="text"
             value={inputValue}
             onChange={(e) => setInputValue(e.target.value)}
+            disabled={isTyping}
             placeholder="Đặt câu hỏi, viết kịch bản..."
             className="flex-1 bg-white/5 border border-white/10 rounded-xl px-4 py-3 text-xs text-white placeholder:text-muted-foreground/60 focus:outline-none focus:ring-1 focus:ring-primary/40 focus:border-primary/40"
           />

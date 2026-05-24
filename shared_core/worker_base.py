@@ -94,6 +94,7 @@ def create_celery_app(name: str, worker_type: str = None) -> Celery:
         worker_prefetch_multiplier=1,
         task_acks_late=True,
         task_reject_on_worker_lost=True,
+        broker_connection_retry_on_startup=True,
     )
     return app
 

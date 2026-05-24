@@ -20,6 +20,7 @@ import CreateTranslifyJob from "./pages/CreateTranslifyJob";
 import CreateLeaderJob from "./pages/CreateLeaderJob";
 import Login from "./pages/Login";
 import Register from "./pages/Register";
+import ModelSettings from "./pages/ModelSettings";
 import { AuthProvider, useAuth } from "./context/AuthContext";
 import { AIStudioAddonProvider } from "./context/AIStudioAddonContext";
 
@@ -67,6 +68,7 @@ function MainLayout() {
           <Route path="/translify/editor/:id" element={<TranslifyEditor />} />
           <Route path="/create-translify" element={<CreateTranslifyJob />} />
           <Route path="/create-leader" element={<CreateLeaderJob />} />
+          <Route path="/settings/models" element={<ModelSettings />} />
         </Routes>
       </main>
       <AIAddonDock />

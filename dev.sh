@@ -190,6 +190,16 @@ fi
 "$TTS_VENV/bin/pip" install -r "$ROOT_DIR/worker_tts/requirements.txt" -q
 echo -e "${GREEN}  ✔ Worker TTS venv ready${NC}"
 
+# Worker Chat venv
+CHAT_VENV="$ROOT_DIR/worker_chat/venv"
+if [ ! -d "$CHAT_VENV" ]; then
+  echo -e "${YELLOW}  Creating Worker Chat venv...${NC}"
+  python3 -m venv "$CHAT_VENV"
+fi
+"$CHAT_VENV/bin/pip" install --upgrade pip -q
+"$CHAT_VENV/bin/pip" install -r "$ROOT_DIR/worker_chat/requirements.txt" -q
+echo -e "${GREEN}  ✔ Worker Chat venv ready${NC}"
+
 # ----------------------------------------------------------
 # 3. Common env vars
 # ----------------------------------------------------------
@@ -281,6 +291,12 @@ TTS_PID=$!
 cd "$ROOT_DIR"
 echo -e "${GREEN}  ✔ Worker TTS PID: $TTS_PID${NC}"
 
+cd "$ROOT_DIR/worker_chat"
+"$CHAT_VENV/bin/celery" -A celery_worker worker -P solo -Q chat_queue -n worker_chat@%h --loglevel=info &
+CHAT_PID=$!
+cd "$ROOT_DIR"
+echo -e "${GREEN}  ✔ Worker Chat PID: $CHAT_PID${NC}"
+
 cd "$ROOT_DIR/worker_translify"
 "$TRANSLIFY_VENV/bin/celery" -A celery_worker worker -P solo -Q translify_queue -n worker_translify@%h --loglevel=info &
 TRANSLIFY_PID=$!
@@ -316,7 +332,7 @@ echo -e "\n${YELLOW}Press Ctrl+C to stop all services${NC}\n"
 # ----------------------------------------------------------
 cleanup() {
   echo -e "\n${YELLOW}Shutting down all processes...${NC}"
-  kill $API_PID $REVIEW_PID $UNBOX_PID $DOWNLOAD_PID $SLIDESHOW_PID $PROMOTION_PID $RESEARCH_PID $TEXT2IMG_PID $TTS_PID $AGENT_PID $LEADER_PID $TRANSLIFY_PID $FRONTEND_PID 2>/dev/null
+  kill $API_PID $REVIEW_PID $UNBOX_PID $DOWNLOAD_PID $SLIDESHOW_PID $PROMOTION_PID $RESEARCH_PID $TEXT2IMG_PID $TTS_PID $CHAT_PID $AGENT_PID $LEADER_PID $TRANSLIFY_PID $FRONTEND_PID 2>/dev/null
   docker compose -f "$ROOT_DIR/docker-compose.dev.yml" down
   echo -e "${GREEN}✔ All stopped.${NC}"
   exit 0
