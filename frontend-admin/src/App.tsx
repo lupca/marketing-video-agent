@@ -21,8 +21,11 @@ import CreateLeaderJob from "./pages/CreateLeaderJob";
 import Login from "./pages/Login";
 import Register from "./pages/Register";
 import { AuthProvider, useAuth } from "./context/AuthContext";
+import { AIStudioAddonProvider } from "./context/AIStudioAddonContext";
 
 import Sidebar from "./components/layout/Sidebar";
+import AIAddonDock from "./components/layout/addons/AIAddonDock";
+import AIAddonDrawer from "./components/layout/addons/AIAddonDrawer";
 
 function ProtectedRoute({ children }: { children: React.ReactNode }) {
   const { user, loading } = useAuth();
@@ -66,6 +69,8 @@ function MainLayout() {
           <Route path="/create-leader" element={<CreateLeaderJob />} />
         </Routes>
       </main>
+      <AIAddonDock />
+      <AIAddonDrawer />
     </div>
   );
 }
@@ -73,17 +78,19 @@ function MainLayout() {
 function App() {
   return (
     <AuthProvider>
-      <Router>
-        <Routes>
-          <Route path="/login" element={<Login />} />
-          <Route path="/register" element={<Register />} />
-          <Route path="*" element={
-            <ProtectedRoute>
-              <MainLayout />
-            </ProtectedRoute>
-          } />
-        </Routes>
-      </Router>
+      <AIStudioAddonProvider>
+        <Router>
+          <Routes>
+            <Route path="/login" element={<Login />} />
+            <Route path="/register" element={<Register />} />
+            <Route path="*" element={
+              <ProtectedRoute>
+                <MainLayout />
+              </ProtectedRoute>
+            } />
+          </Routes>
+        </Router>
+      </AIStudioAddonProvider>
     </AuthProvider>
   );
 }
