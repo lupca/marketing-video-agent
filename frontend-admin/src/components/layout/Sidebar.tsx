@@ -80,6 +80,8 @@ export default function Sidebar() {
       links: [
         { name: "Agent Studio", path: "/agent-studio", icon: Bot, description: "Thiết lập danh tính, tính cách và chỉ thị cho AI Agents" },
         { name: "Cấu hình Model", path: "/settings/models", icon: Settings, description: "Quản lý các mô hình LLM (Ollama, OpenAI) kết nối vào hệ thống" },
+        { name: "Cấu hình CapCut", path: "/settings/capcut", icon: Settings, description: "Quản lý mô hình LLM dịch tham số & Kỹ năng CapCut" },
+
         { name: "Hướng Dẫn Kỹ Thuật", path: "/guides", icon: BookOpen, description: "Tài liệu kỹ thuật định dạng cấu trúc JSON API cho Workers" },
         { name: "System Health", path: "/health", icon: Activity, description: "Giám sát trạng thái hoạt động của Render Farm & các Workers" }
       ]

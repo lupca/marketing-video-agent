@@ -122,6 +122,80 @@ def update_model_settings(
     }
 
 
+# --- CapCut Settings schemas ---
+from pydantic import BaseModel
+from typing import Optional
+
+class CapCutSettingsResponse(BaseModel):
+    selected_model_id: str
+    custom_base_url: str
+    custom_model_name: str
+    custom_api_key: str
+    source: str
+
+class CapCutSettingsUpdate(BaseModel):
+    selected_model_id: str
+    custom_base_url: Optional[str] = ""
+    custom_model_name: Optional[str] = ""
+    custom_api_key: Optional[str] = ""
+
+@router.get("/system/capcut-settings", response_model=CapCutSettingsResponse)
+def get_capcut_settings(
+    db: Session = Depends(database.get_db),
+    current_user: models.User = Depends(auth_module.get_current_user),
+):
+    """Lấy cấu hình model LLM chuyên biệt cho CapCut worker."""
+    from shared_core.config import get_settings
+    settings = get_settings()
+    
+    db_setting = db.query(models.SystemSetting).filter(models.SystemSetting.key == "capcut_settings").first()
+    if db_setting and db_setting.value:
+        return {
+            "selected_model_id": db_setting.value.get("selected_model_id", "default"),
+            "custom_base_url": db_setting.value.get("custom_base_url", ""),
+            "custom_model_name": db_setting.value.get("custom_model_name", ""),
+            "custom_api_key": db_setting.value.get("custom_api_key", ""),
+            "source": "database"
+        }
+    return {
+        "selected_model_id": "default",
+        "custom_base_url": "",
+        "custom_model_name": "",
+        "custom_api_key": "",
+        "source": "environment"
+    }
+
+@router.put("/system/capcut-settings", response_model=CapCutSettingsResponse)
+def update_capcut_settings(
+    update: CapCutSettingsUpdate,
+    db: Session = Depends(database.get_db),
+    current_user: models.User = Depends(auth_module.get_current_user),
+):
+    """Cập nhật cấu hình model LLM chuyên biệt cho CapCut worker."""
+    db_setting = db.query(models.SystemSetting).filter(models.SystemSetting.key == "capcut_settings").first()
+    if not db_setting:
+        db_setting = models.SystemSetting(key="capcut_settings")
+        db.add(db_setting)
+    
+    db_setting.value = {
+        "selected_model_id": update.selected_model_id,
+        "custom_base_url": update.custom_base_url or "",
+        "custom_model_name": update.custom_model_name or "",
+        "custom_api_key": update.custom_api_key or ""
+    }
+    db_setting.updated_by = current_user.id
+    db.commit()
+    db.refresh(db_setting)
+    
+    return {
+        "selected_model_id": db_setting.value["selected_model_id"],
+        "custom_base_url": db_setting.value["custom_base_url"],
+        "custom_model_name": db_setting.value["custom_model_name"],
+        "custom_api_key": db_setting.value["custom_api_key"],
+        "source": "database"
+    }
+
+
 @router.get("/system/chat-models", response_model=List[schemas.LLMModelConfig])
 def get_chat_models(
     db: Session = Depends(database.get_db),

@@ -9,6 +9,7 @@ import { Button } from "../components/ui/Button";
 import { AssetSelector } from "../components/ui/AssetSelector";
 import type { UploadedFile } from "../components/features/review/types";
 import { JobCreationLayout } from "../components/ui/JobCreationLayout";
+import { JobActionButtons } from "../components/ui/JobActionButtons";
 
 interface ProductInput {
   image: UploadedFile | null;
@@ -226,7 +227,298 @@ export default function CreateSlideshowJob() {
       navigate("/");
     } catch (err: any) {
       console.error(err);
-      setError(err?.response?.data?.detail || err.message || "Failed to create slideshow job");
+      const detail = err?.response?.data?.detail;
+      const msg = Array.isArray(detail)
+        ? detail.map((e: any) => e.msg || JSON.stringify(e)).join("; ")
+        : typeof detail === "string" ? detail : err.message || "Failed to create slideshow job";
+      setError(msg);
+    } finally {
+      setLoading(false);
+      setUploadStatus("");
+    }
+  };
+
+  const handleSaveDraft = async () => {
+    if (!cloneJobId) {
+      setError("Không thể lưu nháp cho job mới. Chức năng lưu nháp chỉ áp dụng cho job được tạo từ AI Leader hoặc chỉnh sửa Draft.");
+      return;
+    }
+
+    setLoading(true);
+    setError(null);
+    try {
+      let targetProjectId = selectedProjectId;
+      if (isCreatingProject && newProjectName.trim()) {
+        setUploadStatus("Đang tạo dự án...");
+        const proj = await createProject(newProjectName.trim());
+        targetProjectId = proj.id;
+      }
+
+      const allAssetIds: string[] = [];
+      const customAssets: Record<string, string> = {};
+
+      if (bgMusic) {
+        setUploadStatus("Đang upload nhạc nền...");
+        if (bgMusic.file) {
+          const res = await uploadAsset(bgMusic.file as File, "audio");
+          customAssets.bg_music = res.s3_url;
+          allAssetIds.push(res.id);
+        } else if (bgMusic.asset) {
+          customAssets.bg_music = bgMusic.asset.s3_url;
+          allAssetIds.push(bgMusic.asset.id);
+        }
+      }
+
+      if (logo) {
+        setUploadStatus("Đang upload logo...");
+        if (logo.file) {
+          const res = await uploadAsset(logo.file as File, "image");
+          customAssets.logo = res.s3_url;
+          allAssetIds.push(res.id);
+        } else if (logo.asset) {
+          customAssets.logo = logo.asset.s3_url;
+          allAssetIds.push(logo.asset.id);
+        }
+      }
+
+      const finalProducts: any[] = [];
+      for (let i = 0; i < products.length; i++) {
+        const item = products[i];
+        let imageUrl = "";
+        if (item.image?.file) {
+          setUploadStatus(`Đang upload ảnh ${i + 1}/${products.length}...`);
+          const res = await uploadAsset(item.image.file as File, "image");
+          imageUrl = res.s3_url;
+          allAssetIds.push(res.id);
+        } else if (item.image?.asset) {
+          imageUrl = item.image.asset.s3_url;
+          allAssetIds.push(item.image.asset.id);
+        } else if (item.image?.s3_url) {
+          imageUrl = item.image.s3_url;
+        }
+
+        finalProducts.push({
+          image: imageUrl || "",
+          text: item.text || "",
+          hook: item.hook || ""
+        });
+      }
+
+      setUploadStatus("Đang lưu bản nháp...");
+      const payload = {
+        project_id: targetProjectId || null,
+        priority,
+        asset_ids: allAssetIds,
+        status: "DRAFT",
+        config_data: {
+          metadata: {
+            project_id: targetProjectId || undefined,
+            ...(tmcpContext ? { tmcp_context: tmcpContext } : {})
+          },
+          variant,
+          assets: Object.keys(customAssets).length > 0 ? customAssets : undefined,
+          input_json: {
+            intro_text: introText,
+            outro_text: outroText,
+            products: finalProducts
+          }
+        }
+      };
+
+      await api.patch(`/api/jobs/${cloneJobId}`, payload);
+    } catch (err: any) {
+      console.error(err);
+      const detail = err?.response?.data?.detail;
+      const msg = Array.isArray(detail)
+        ? detail.map((e: any) => e.msg || JSON.stringify(e)).join("; ")
+        : typeof detail === "string" ? detail : err.message || "Failed to save draft";
+      setError(msg);
+      throw err;
+    } finally {
+      setLoading(false);
+      setUploadStatus("");
+    }
+  };
+
+  const convertToCapCutConfig = (
+    productImages: string[],
+    bgMusicUrl: string,
+    logoUrl: string,
+    targetProjectId: string
+  ) => {
+    const videoFolders: Record<string, string> = {};
+    const timelineScript: any[] = [];
+    const segmentDuration = 4.0;
+
+    productImages.forEach((url, idx) => {
+      const key = (idx + 1).toString();
+      videoFolders[key] = url;
+    });
+
+    products.forEach((p, idx) => {
+      const key = (idx + 1).toString();
+      const timeStart = idx * segmentDuration;
+      const timeEnd = (idx + 1) * segmentDuration;
+
+      timelineScript.push({
+        segment: `seg_${key}_product`,
+        video_source: key,
+        time_range: [timeStart, timeEnd],
+        text_overlay: `${p.text}${p.hook ? ` (${p.hook})` : ""}`,
+        highlight_words: [],
+        visual_effects: [],
+        transition: idx > 0 ? "fade_in" : undefined
+      });
+    });
+
+    return {
+      metadata: {
+        project_id: targetProjectId,
+        ...(tmcpContext ? { tmcp_context: tmcpContext } : {})
+      },
+      assets: {
+        audio: {
+          bgm_path: bgMusicUrl,
+          voiceover_path: ""
+        },
+        logo: logoUrl ? {
+          logo_path: logoUrl,
+          width: 160,
+          x: 48,
+          y: 160,
+          opacity: 0.9
+        } : undefined,
+        video_folders: videoFolders
+      },
+      timeline_script: timelineScript,
+      render_settings: {
+        resolution: [1080, 1920],
+        auto_subtitle: false,
+        pacing: { min_clip_duration: 1.2, max_clip_duration: 1.8 }
+      }
+    };
+  };
+
+  const handleCapCutSubmit = async () => {
+    if (!isCreatingProject && !selectedProjectId) return setError("Vui lòng chọn dự án");
+    if (isCreatingProject && !newProjectName.trim()) return setError("Vui lòng nhập tên dự án mới");
+    if (products.length < 2) return setError("Cần ít nhất 2 sản phẩm");
+    for (let i = 0; i < products.length; i++) {
+      if (!products[i].image) return setError(`Sản phẩm ${i + 1} thiếu ảnh`);
+      if (!products[i].text) return setError(`Sản phẩm ${i + 1} thiếu mô tả`);
+    }
+
+    setLoading(true);
+    setError(null);
+    try {
+      let targetProjectId = selectedProjectId;
+      if (isCreatingProject && newProjectName.trim()) {
+        setUploadStatus("Đang tạo dự án...");
+        const proj = await createProject(newProjectName.trim());
+        targetProjectId = proj.id;
+      }
+
+      const allAssetIds: string[] = [];
+      const customAssets: Record<string, string> = {};
+
+      let bgMusicUrl = "";
+      if (bgMusic) {
+        setUploadStatus("Đang upload nhạc nền...");
+        if (bgMusic.file) {
+          const res = await uploadAsset(bgMusic.file as File, "audio");
+          bgMusicUrl = res.s3_url;
+          customAssets.bg_music = res.s3_url;
+          allAssetIds.push(res.id);
+        } else if (bgMusic.asset) {
+          bgMusicUrl = bgMusic.asset.s3_url;
+          customAssets.bg_music = bgMusic.asset.s3_url;
+          allAssetIds.push(bgMusic.asset.id);
+        }
+      }
+
+      let logoUrl = "";
+      if (logo) {
+        setUploadStatus("Đang upload logo...");
+        if (logo.file) {
+          const res = await uploadAsset(logo.file as File, "image");
+          logoUrl = res.s3_url;
+          customAssets.logo = res.s3_url;
+          allAssetIds.push(res.id);
+        } else if (logo.asset) {
+          logoUrl = logo.asset.s3_url;
+          customAssets.logo = logo.asset.s3_url;
+          allAssetIds.push(logo.asset.id);
+        }
+      }
+
+      const finalImages: string[] = [];
+      const finalProducts: any[] = [];
+      for (let i = 0; i < products.length; i++) {
+        setUploadStatus(`Đang upload ảnh ${i + 1}/${products.length}...`);
+        const item = products[i];
+        let imageUrl = "";
+        if (item.image?.file) {
+          const res = await uploadAsset(item.image.file as File, "image");
+          imageUrl = res.s3_url;
+          allAssetIds.push(res.id);
+        } else if (item.image?.asset) {
+          imageUrl = item.image.asset.s3_url;
+          allAssetIds.push(item.image.asset.id);
+        }
+        finalImages.push(imageUrl);
+        finalProducts.push({
+          image: imageUrl,
+          text: item.text,
+          hook: item.hook
+        });
+      }
+
+      setUploadStatus("Saving draft & creating CapCut job...");
+      const capCutConfigData = convertToCapCutConfig(finalImages, bgMusicUrl, logoUrl, targetProjectId);
+
+      const url = new URL(window.location.href);
+      url.searchParams.delete('delete_draft');
+      window.history.replaceState({}, '', url.toString());
+
+      if (cloneJobId) {
+        const slideshowDraftPayload = {
+          project_id: targetProjectId,
+          priority,
+          asset_ids: allAssetIds,
+          status: "DRAFT",
+          config_data: {
+            metadata: {
+              project_id: targetProjectId,
+              ...(tmcpContext ? { tmcp_context: tmcpContext } : {})
+            },
+            variant,
+            assets: Object.keys(customAssets).length > 0 ? customAssets : undefined,
+            input_json: {
+              intro_text: introText,
+              outro_text: outroText,
+              products: finalProducts
+            }
+          }
+        };
+        await api.patch(`/api/jobs/${cloneJobId}`, slideshowDraftPayload);
+      }
+
+      await api.post(`/api/jobs`, {
+        job_type: "capcut",
+        project_id: targetProjectId,
+        priority,
+        config_data: capCutConfigData,
+        asset_ids: allAssetIds.filter(Boolean)
+      });
+
+      navigate("/");
+    } catch (err: any) {
+      console.error(err);
+      const detail = err?.response?.data?.detail;
+      const msg = Array.isArray(detail)
+        ? detail.map((e: any) => e.msg || JSON.stringify(e)).join("; ")
+        : typeof detail === "string" ? detail : err.message || "Failed to create CapCut job";
+      setError(msg);
     } finally {
       setLoading(false);
       setUploadStatus("");
@@ -238,6 +530,9 @@ export default function CreateSlideshowJob() {
     { id: 2, name: "Danh sách sản phẩm", icon: ImagePlus },
     { id: 3, name: "Kiểm tra & Gửi", icon: Send }
   ];
+
+  const canGoStep2 = isCreatingProject ? !!newProjectName.trim() : !!selectedProjectId;
+  const canGoStep3 = products.length >= 2 && products.every(p => p.image && p.text) && bgMusic && logo;
 
   return (
     <JobCreationLayout jobType="slideshow" tmcpContext={tmcpContext}>
@@ -419,16 +714,6 @@ export default function CreateSlideshowJob() {
                   }}
                 />
               </div>
-
-              <div className="flex justify-end pt-4">
-                <Button
-                  onClick={() => setStep(2)}
-                  disabled={(isCreatingProject && !newProjectName) || (!isCreatingProject && !selectedProjectId)}
-                  className="glowing-button border-rose-500/50 bg-rose-500/20 text-rose-300 hover:bg-rose-500/30 px-8 py-3 rounded-xl font-medium"
-                >
-                  Tiếp tục: Sản phẩm <ChevronRight className="w-5 h-5 ml-2" />
-                </Button>
-              </div>
             </div>
           )}
 
@@ -501,22 +786,6 @@ export default function CreateSlideshowJob() {
                   </div>
                 ))}
               </div>
-
-              <div className="flex justify-between pt-4 border-t border-white/10">
-                <button
-                  onClick={() => setStep(1)}
-                  className="px-6 py-3 rounded-xl font-medium text-white/80 hover:text-white hover:bg-white/5 transition-colors"
-                >
-                  Trở lại
-                </button>
-                <Button
-                  onClick={() => setStep(3)}
-                  disabled={products.length < 2 || products.some(p => !p.image || !p.text) || !bgMusic || !logo}
-                  className="glowing-button border-rose-500/50 bg-rose-500/20 text-rose-300 hover:bg-rose-500/30 px-8 py-3 rounded-xl font-medium"
-                >
-                  Kiểm tra & Render <ChevronRight className="w-5 h-5 ml-2" />
-                </Button>
-              </div>
             </div>
           )}
 
@@ -572,26 +841,22 @@ export default function CreateSlideshowJob() {
                   </div>
                 </div>
               </div>
-
-              <div className="flex justify-between pt-4">
-                <button
-                  onClick={() => setStep(2)}
-                  className="px-6 py-3 rounded-xl font-medium text-white/80 hover:text-white hover:bg-white/5 transition-colors"
-                  disabled={loading}
-                >
-                  Trở lại
-                </button>
-                <Button
-                  onClick={handleSubmit}
-                  isLoading={loading}
-                  className="glowing-button border-rose-500/50 bg-rose-500/20 text-white hover:bg-rose-500/40 px-10 py-3 rounded-xl font-medium shadow-[0_0_30px_rgba(244,63,94,0.4)]"
-                >
-                  {!loading && <Send className="w-5 h-5 mr-2" />}
-                  {loading ? (uploadStatus || "Đang xử lý...") : "Bắt đầu Render"}
-                </Button>
-              </div>
             </div>
           )}
+
+          <JobActionButtons
+            currentStep={step}
+            totalSteps={3}
+            loading={loading}
+            uploadStatus={uploadStatus}
+            isDraft={!!cloneJobId}
+            canGoNext={step === 1 ? !!canGoStep2 : true}
+            onPrev={() => setStep(prev => prev - 1)}
+            onNext={() => setStep(prev => prev + 1)}
+            onSubmit={handleSubmit}
+            onCapCutSubmit={handleCapCutSubmit}
+            onSaveDraft={cloneJobId ? handleSaveDraft : undefined}
+          />
         </div>
         )}
       </div>

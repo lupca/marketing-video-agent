@@ -18,9 +18,12 @@ import AgentStudio from "./pages/AgentStudio";
 import TranslifyEditor from "./pages/TranslifyEditor";
 import CreateTranslifyJob from "./pages/CreateTranslifyJob";
 import CreateLeaderJob from "./pages/CreateLeaderJob";
+import CreateCapCutJob from "./pages/CreateCapCutJob";
 import Login from "./pages/Login";
 import Register from "./pages/Register";
 import ModelSettings from "./pages/ModelSettings";
+import CapCutSettings from "./pages/CapCutSettings";
+
 import { AuthProvider, useAuth } from "./context/AuthContext";
 import { AIStudioAddonProvider } from "./context/AIStudioAddonContext";
 
@@ -68,7 +71,10 @@ function MainLayout() {
           <Route path="/translify/editor/:id" element={<TranslifyEditor />} />
           <Route path="/create-translify" element={<CreateTranslifyJob />} />
           <Route path="/create-leader" element={<CreateLeaderJob />} />
+          <Route path="/create-capcut" element={<CreateCapCutJob />} />
           <Route path="/settings/models" element={<ModelSettings />} />
+          <Route path="/settings/capcut" element={<CapCutSettings />} />
+
         </Routes>
       </main>
       <AIAddonDock />

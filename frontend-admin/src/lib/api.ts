@@ -44,6 +44,15 @@ api.interceptors.response.use(
     return response;
   },
   (error) => {
+    if (error.response && error.response.data && Array.isArray(error.response.data.detail)) {
+      const formattedMsg = error.response.data.detail
+        .map((d: any) => {
+          const field = d.loc ? d.loc.filter((l: any) => l !== "body").join(".") : "field";
+          return `${field}: ${d.msg}`;
+        })
+        .join(", ");
+      error.response.data.detail = formattedMsg;
+    }
     return Promise.reject(error);
   }
 );

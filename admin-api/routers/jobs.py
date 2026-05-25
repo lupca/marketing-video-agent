@@ -50,6 +50,8 @@ def resolve_celery_task_and_queue(job_type: str) -> tuple[str, str]:
         task_name = "worker_text2img.tasks.generate_image"
     elif job_type == "tts":
         task_name = "worker_tts.tasks.generate_tts"
+    elif job_type == "capcut":
+        task_name = "worker_capcut.tasks.process_capcut_job"
         
     return task_name, queue_name
 

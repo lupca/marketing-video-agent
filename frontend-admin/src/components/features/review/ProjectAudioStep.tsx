@@ -22,8 +22,6 @@ interface ProjectAudioStepProps {
   setBgm: (f: UploadedFile | null) => void;
   language: string;
   setLanguage: (val: string) => void;
-  onNext: () => void;
-  canGoNext: boolean;
 }
 
 export function ProjectAudioStep(props: ProjectAudioStepProps) {
@@ -127,12 +125,6 @@ export function ProjectAudioStep(props: ProjectAudioStepProps) {
           <option value="vi" className="bg-[#1A1A24]">🇻🇳 Tiếng Việt</option>
           <option value="en" className="bg-[#1A1A24]">🇺🇸 English</option>
         </select>
-      </div>
-
-      <div className="flex justify-end pt-4">
-        <Button onClick={props.onNext} disabled={!props.canGoNext} className="glowing-button px-8 py-3 rounded-xl font-medium">
-          Tiếp tục <ChevronRight className="w-5 h-5 ml-2" />
-        </Button>
       </div>
     </div>
   );

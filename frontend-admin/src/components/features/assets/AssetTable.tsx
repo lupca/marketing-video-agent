@@ -18,12 +18,12 @@ export function formatBytes(bytes: number, decimals = 2) {
   return `${parseFloat((bytes / Math.pow(k, i)).toFixed(dm))} ${sizes[i]}`;
 }
 
-export function getMinioDownloadUrl(s3Url: string): string {
+function getMinioDownloadUrl(s3Url: string): string {
   if (!s3Url) return "";
   return s3Url.replace("s3://", "http://localhost:9000/");
 }
 
-export function getMinioBrowserUrl(s3Url: string): string {
+function getMinioBrowserUrl(s3Url: string): string {
   if (!s3Url) return "";
   return s3Url.replace("s3://", "http://localhost:9001/browser/");
 }

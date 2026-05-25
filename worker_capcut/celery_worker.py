@@ -9,14 +9,83 @@ from datetime import datetime, timezone
 from shared_core.worker_base import create_celery_app, update_job, insert_log
 from shared_core.database import SessionLocal
 from shared_core.models import VideoJob
+from shared_core.minio_utils import is_minio_path, get_object_name, get_presigned_url
+try:
+    from agent import CapCutSkillAgent
+except ImportError:
+    from .agent import CapCutSkillAgent
+
 
 logger = logging.getLogger(__name__)
+
+IMAGE_EXTENSIONS = {".jpg", ".jpeg", ".png", ".gif", ".webp", ".bmp", ".tiff", ".tif", ".heic"}
+
+def is_image_url(url: str) -> bool:
+    """Detect if a URL points to an image file based on extension or Content-Type."""
+    if not url:
+        return False
+    # Strip query string for extension check
+    path = url.split("?")[0].lower()
+    ext = os.path.splitext(path)[1]
+    if ext in IMAGE_EXTENSIONS:
+        return True
+    # Fallback: HEAD request to check Content-Type
+    try:
+        resp = requests.head(url, timeout=5, allow_redirects=True)
+        content_type = resp.headers.get("Content-Type", "")
+        return content_type.startswith("image/")
+    except Exception:
+        pass
+    return False
+
+def resolve_api_url(url: str) -> str:
+    """
+    If url points to localhost/127.0.0.1 and we are running inside WSL,
+    automatically resolve and use the Windows host IP address.
+    """
+    if "localhost" in url or "127.0.0.1" in url:
+        is_wsl = False
+        try:
+            with open("/proc/version", "r") as f:
+                if "microsoft" in f.read().lower():
+                    is_wsl = True
+        except Exception:
+            pass
+            
+        if is_wsl:
+            try:
+                with open("/proc/net/route", "r") as f:
+                    lines = f.readlines()
+                for line in lines[1:]:
+                    parts = line.split()
+                    if parts[1] == "00000000":  # default route
+                        gw_hex = parts[2]
+                        gw_bytes = [int(gw_hex[i:i+2], 16) for i in range(0, 8, 2)]
+                        gw_bytes.reverse()
+                        host_ip = ".".join(map(str, gw_bytes))
+                        new_url = url.replace("localhost", host_ip).replace("127.0.0.1", host_ip)
+                        return new_url
+            except Exception as e:
+                pass
+    return url
+
+def resolve_asset_url(path: str) -> str:
+    """
+    If the path is an S3 URI (s3://...), convert it to a presigned HTTP URL
+    so VectCutAPI can download it directly.
+    """
+    if path and is_minio_path(path):
+        obj_name = get_object_name(path)
+        presigned = get_presigned_url(obj_name, expires_seconds=86400) # 24 hours
+        logger.info(f"Resolved S3 path '{path}' to URL: {presigned}")
+        return presigned
+    return path
 
 # Khởi tạo Celery App dùng cơ sở hạ tầng chung của marketing-video-agent
 celery_app = create_celery_app("worker_capcut", worker_type="capcut")
 
 # Đường dẫn API và Thư mục Draft có thể cấu hình qua biến môi trường
-VECTCUT_API_URL = os.getenv("VECTCUT_API_URL", "http://localhost:9001").rstrip('/')
+VECTCUT_API_URL = resolve_api_url(os.getenv("VECTCUT_API_URL", "http://localhost:9002").rstrip('/'))
 CAPCUT_DRAFT_FOLDER = os.getenv("CAPCUT_DRAFT_FOLDER", "E:\\capcut\\CapCut Drafts")
 
 @celery_app.task(name="worker_capcut.tasks.process_capcut_job", bind=True)
@@ -43,7 +112,6 @@ def process_capcut_job(self, job_id: int, config_data: dict = None):
         try:
             res_json = res.json()
         except Exception:
-            # Nếu phản hồi chứa HTML của MinIO Console thay vì JSON
             if "MinIO Console" in res.text or "<!doctype html>" in res.text:
                 raise RuntimeError(
                     f"Xung đột cổng mạng! Cổng 9001 hiện tại đang được sử dụng bởi MinIO Console của Docker, "
@@ -78,7 +146,6 @@ def process_capcut_job(self, job_id: int, config_data: dict = None):
             "height": 1920
         }, timeout=15)
         
-        # Nhận draft_id thực tế được sinh bởi VectCutAPI Server
         actual_draft_id = create_res["output"]["draft_id"]
         logger.info(f"VectCutAPI Server cấp Draft ID thực tế: {actual_draft_id}")
         insert_log(db, job_id, f"VectCutAPI Server cấp Draft ID thực tế: {actual_draft_id}")
@@ -88,16 +155,23 @@ def process_capcut_job(self, job_id: int, config_data: dict = None):
         # 4. Trích xuất tài nguyên âm thanh (Audio Assets)
         assets = config.get("assets", {})
         audio_cfg = assets.get("audio", {})
-        bgm_url = audio_cfg.get("bgm_path")
-        voiceover_url = audio_cfg.get("voiceover_path")
+        bgm_url = resolve_asset_url(audio_cfg.get("bgm_path"))
+        voiceover_url = resolve_asset_url(audio_cfg.get("voiceover_path"))
         
-        # Tính toán tổng thời lượng video dựa trên timeline_script
+        # Trích xuất và dịch thuật timeline bằng CapCutSkillAgent
         timeline = config.get("timeline_script", [])
+        
+        insert_log(db, job_id, "Đang khởi tạo CapCut Skill Agent để phân tích kịch bản...")
+        agent = CapCutSkillAgent()
+        timeline = agent.translate_timeline(timeline)
+        insert_log(db, job_id, "CapCut Skill Agent đã hoàn thành dịch tham số chuyển cảnh/hoạt cảnh chuẩn CapCut.")
+
+        # Tính toán tổng thời lượng video dựa trên timeline dịch thuật
         total_duration = 0.0
         if timeline:
             total_duration = float(timeline[-1]["time_range"][1])
         else:
-            total_duration = 10.0 # Thời lượng dự phòng mặc định
+            total_duration = 10.0
 
         # Chèn nhạc nền BGM
         if bgm_url:
@@ -134,30 +208,111 @@ def process_capcut_job(self, job_id: int, config_data: dict = None):
         for idx, seg in enumerate(timeline):
             segment_name = seg.get("segment", f"segment_{idx+1}")
             video_src_id = seg.get("video_source")
-            video_url = video_folders.get(video_src_id)
+            video_url = resolve_asset_url(video_folders.get(video_src_id))
             start, end = seg.get("time_range", [0, 5])
             text_overlay = seg.get("text_overlay")
+            
+            # Đọc các tham số chuyển cảnh và hoạt cảnh đã dịch từ Agent
             transition = seg.get("transition")
+            intro_animation = seg.get("intro_animation")
+            intro_animation_duration = seg.get("intro_animation_duration", 0.5)
+            outro_animation = seg.get("outro_animation")
+            outro_animation_duration = seg.get("outro_animation_duration", 0.5)
             visual_effects = seg.get("visual_effects", [])
 
             logger.info(f"Đang xử lý phân cảnh [{segment_name}]: {start}s -> {end}s")
             insert_log(db, job_id, f"Đang xử lý phân cảnh {idx+1}/{total_segments}: {segment_name} ({start}s -> {end}s)")
 
-            # Thêm Video Track
+            # Thêm Video Track hoặc Image Track
             if video_url:
-                logger.info(f"Thêm video source {video_src_id}: {video_url}")
-                vid_payload = {
-                    "draft_id": actual_draft_id,
-                    "video_url": video_url,
-                    "start": start,
-                    "end": end,
-                    "track_name": "video_main",
-                }
-                if transition:
-                    vid_payload["transition"] = transition
-                    vid_payload["transition_duration"] = 0.5
-                
-                _safe_post(f"{VECTCUT_API_URL}/add_video", vid_payload, timeout=15)
+                asset_is_image = is_image_url(video_url)
+                logger.info(f"Thêm {'ảnh' if asset_is_image else 'video'} source {video_src_id}: {video_url}")
+
+                if asset_is_image:
+                    img_payload = {
+                        "draft_id": actual_draft_id,
+                        "image_url": video_url,
+                        "start": start,
+                        "end": end,
+                        "track_name": "video_main",
+                    }
+                    if transition:
+                        img_payload["transition"] = transition
+                        img_payload["transition_duration"] = 0.5
+                    if intro_animation:
+                        img_payload["intro_animation"] = intro_animation
+                        img_payload["intro_animation_duration"] = intro_animation_duration
+                    if outro_animation:
+                        img_payload["outro_animation"] = outro_animation
+                        img_payload["outro_animation_duration"] = outro_animation_duration
+                    
+                    try:
+                        _safe_post(f"{VECTCUT_API_URL}/add_image", img_payload, timeout=15)
+                    except Exception as img_err:
+                        err_str = str(img_err).lower()
+                        # Xử lý phòng thủ nếu VectCutAPI trả lỗi chuyển cảnh không hợp lệ
+                        if "unsupported transition" in err_str or "transition setting skipped" in err_str:
+                            logger.warning(f"Bỏ qua transition '{transition}' không hỗ trợ ở ảnh: {img_err}")
+                            insert_log(db, job_id, f"Cảnh báo: Bỏ qua transition '{transition}' không hỗ trợ cho ảnh. Đang thử lại...")
+                            try:
+                                img_payload.pop("transition", None)
+                                img_payload.pop("transition_duration", None)
+                                _safe_post(f"{VECTCUT_API_URL}/add_image", img_payload, timeout=15)
+                                logger.info("Đã chèn ảnh thành công không chứa transition.")
+                            except Exception as retry_err:
+                                raise retry_err
+                        else:
+                            try:
+                                img_payload.pop("transition", None)
+                                img_payload.pop("transition_duration", None)
+                                _safe_post(f"{VECTCUT_API_URL}/add_image", img_payload, timeout=15)
+                            except Exception as retry_err:
+                                raise retry_err
+                else:
+                    vid_payload = {
+                        "draft_id": actual_draft_id,
+                        "video_url": video_url,
+                        "start": start,
+                        "end": end,
+                        "track_name": "video_main",
+                    }
+                    if transition:
+                        vid_payload["transition"] = transition
+                        vid_payload["transition_duration"] = 0.5
+                    if intro_animation:
+                        vid_payload["intro_animation"] = intro_animation
+                        vid_payload["intro_animation_duration"] = intro_animation_duration
+                    if outro_animation:
+                        vid_payload["outro_animation"] = outro_animation
+                        vid_payload["outro_animation_duration"] = outro_animation_duration
+                    
+                    try:
+                        _safe_post(f"{VECTCUT_API_URL}/add_video", vid_payload, timeout=15)
+                    except Exception as vid_err:
+                        err_str = str(vid_err).lower()
+                        if "unsupported transition" in err_str or "transition setting skipped" in err_str:
+                            logger.warning(f"Bỏ qua transition '{transition}' không hỗ trợ ở video: {vid_err}")
+                            insert_log(db, job_id, f"Cảnh báo: Bỏ qua transition '{transition}' không hỗ trợ cho video. Đang thử lại...")
+                            try:
+                                vid_payload.pop("transition", None)
+                                vid_payload.pop("transition_duration", None)
+                                _safe_post(f"{VECTCUT_API_URL}/add_video", vid_payload, timeout=15)
+                                logger.info("Đã chèn video thành công không chứa transition.")
+                            except Exception as retry_err:
+                                if "overlap" in str(retry_err).lower():
+                                    logger.info("Video đã tồn tại trong draft (trùng khớp dòng thời gian), tiếp tục...")
+                                else:
+                                    raise retry_err
+                        else:
+                            try:
+                                vid_payload.pop("transition", None)
+                                vid_payload.pop("transition_duration", None)
+                                _safe_post(f"{VECTCUT_API_URL}/add_video", vid_payload, timeout=15)
+                            except Exception as retry_err:
+                                if "overlap" in str(retry_err).lower():
+                                    logger.info("Video đã tồn tại trong draft (trùng khớp dòng thời gian), tiếp tục...")
+                                else:
+                                    raise retry_err
 
             # Thêm Phụ Đề Text Overlay
             if text_overlay:
@@ -189,7 +344,6 @@ def process_capcut_job(self, job_id: int, config_data: dict = None):
                     logger.warning(f"Không thể chèn hiệu ứng '{effect_name}': {eff_err}")
                     insert_log(db, job_id, f"Cảnh báo: Không thể thêm hiệu ứng '{effect_name}' (Bỏ qua). Chi tiết: {eff_err}", "WARNING")
 
-            # Tính toán tiến trình động khi duyệt phân cảnh (từ 40% -> 80%)
             prog = 40 + int((idx + 1) / total_segments * 40)
             update_job(db, job, progress_percent=prog)
 
@@ -200,7 +354,7 @@ def process_capcut_job(self, job_id: int, config_data: dict = None):
         _safe_post(f"{VECTCUT_API_URL}/save_draft", {
             "draft_id": actual_draft_id,
             "draft_folder": CAPCUT_DRAFT_FOLDER
-        }, timeout=60)  # Tăng timeout cho tác vụ download và save
+        }, timeout=60)
         
         update_job(db, job, progress_percent=95)
 

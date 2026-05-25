@@ -25,12 +25,9 @@ const EFFECTS_OPTIONS = [
 interface SegmentEditorStepProps {
   segments: Segment[];
   setSegments: (segments: Segment[]) => void;
-  onPrev: () => void;
-  onNext: () => void;
-  canGoNext: boolean;
 }
 
-export function SegmentEditorStep({ segments, setSegments, onPrev, onNext, canGoNext }: SegmentEditorStepProps) {
+export function SegmentEditorStep({ segments, setSegments }: SegmentEditorStepProps) {
   const [modalOpenIdx, setModalOpenIdx] = useState<number | null>(null);
 
   const handleSegmentClips = (index: number, files: FileList | null) => {
@@ -240,15 +237,6 @@ export function SegmentEditorStep({ segments, setSegments, onPrev, onNext, canGo
             />
           </div>
         ))}
-      </div>
-
-      <div className="flex justify-between pt-4 border-t border-white/10">
-        <button onClick={onPrev} className="px-6 py-3 rounded-xl font-medium text-white/80 hover:text-white hover:bg-white/5 transition-colors">
-          Quay lại
-        </button>
-        <Button onClick={onNext} disabled={!canGoNext} className="glowing-button px-8 py-3 rounded-xl font-medium">
-          Cài đặt Render <ChevronRight className="w-5 h-5 ml-2" />
-        </Button>
       </div>
     </div>
   );

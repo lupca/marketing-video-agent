@@ -12,7 +12,7 @@ function getCreatePath(jobType: string): string {
   return jobType;
 }
 
-export function getMinioBrowserUrl(s3Url: string): string {
+function getMinioBrowserUrl(s3Url: string): string {
   // s3://videos/outputs/review_job_4.mp4 → http://localhost:9001/browser/videos/outputs/review_job_4.mp4
   // We keep this purely for linking directly to minio console.
   return s3Url.replace("s3://", "http://localhost:9001/browser/");
@@ -171,9 +171,10 @@ export function JobTable({
                     job.job_type === "leader" ? "text-violet-300 border-violet-500/20 bg-violet-500/5 shadow-[0_0_8px_rgba(139,92,246,0.15)]" :
                     job.job_type === "translify" ? "text-emerald-300 border-emerald-500/20" :
                     job.job_type === "slideshow" ? "text-amber-300 border-amber-500/20" :
+                    job.job_type === "capcut" ? "text-rose-300 border-rose-500/20 bg-rose-500/5 shadow-[0_0_8px_rgba(244,63,94,0.15)]" :
                     "text-cyan-300"
                   )}>
-                    {job.job_type === "leader" ? "AI Leader" : job.job_type}
+                    {job.job_type === "leader" ? "AI Leader" : job.job_type === "capcut" ? "CapCut Draft" : job.job_type}
                   </span>
                 </td>
                 <td className="px-4 py-3 whitespace-nowrap hidden sm:table-cell">
@@ -358,6 +359,15 @@ export function JobTable({
                         {reopeningId === job.id ? <Clock className="h-3 w-3 animate-spin" /> : <Play className="h-3 w-3 fill-current" />}
                         Retry
                       </button>
+                    )}
+                    {job.job_type === "capcut" && (
+                      <Link
+                        to={`/create-capcut?clone=${job.id}`}
+                        className="inline-flex items-center justify-center rounded-lg bg-rose-500/10 hover:bg-rose-500/20 text-rose-400 border border-rose-500/30 transition-all h-8 px-2.5 text-[10px] uppercase font-bold hover:shadow-[0_0_15px_rgba(244,63,94,0.3)] gap-1.5 shrink-0"
+                        title="Chỉnh sửa dòng thời gian CapCut"
+                      >
+                        <Wand2 className="h-3 w-3" /> Sửa Draft
+                      </Link>
                     )}
                     <button
                       onClick={() => onViewDetails(job)}

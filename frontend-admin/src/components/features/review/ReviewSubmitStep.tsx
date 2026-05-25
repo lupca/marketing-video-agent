@@ -1,7 +1,6 @@
-import { CheckCircle2, Send } from "lucide-react";
+import { CheckCircle2 } from "lucide-react";
 import type { Project } from "../../../hooks/useProjects";
 import type { Segment, UploadedFile } from "./types";
-import { Button } from "../../ui/Button";
 
 interface ReviewSubmitStepProps {
   projects: Project[];
@@ -15,10 +14,6 @@ interface ReviewSubmitStepProps {
   segments: Segment[];
   autoSubtitle: boolean;
   priority: number;
-  loading: boolean;
-  uploadStatus: string;
-  onSubmit: () => void;
-  onPrev: () => void;
 }
 
 export function ReviewSubmitStep(props: ReviewSubmitStepProps) {
@@ -66,20 +61,6 @@ export function ReviewSubmitStep(props: ReviewSubmitStepProps) {
             ))}
           </div>
         </div>
-      </div>
-
-      <div className="flex justify-between pt-4">
-        <button onClick={props.onPrev} className="px-6 py-3 rounded-xl font-medium text-white/80 hover:text-white hover:bg-white/5 transition-colors" disabled={props.loading}>
-          Quay lại
-        </button>
-        <Button
-          onClick={props.onSubmit}
-          isLoading={props.loading}
-          className="glowing-button px-10 py-3 rounded-xl font-medium shadow-[0_0_30px_rgba(124,58,237,0.6)]"
-        >
-          {!props.loading && <Send className="w-5 h-5 mr-2" />}
-          {props.loading ? (props.uploadStatus || "Đang xử lý...") : "Gửi Render Video"}
-        </Button>
       </div>
     </div>
   );

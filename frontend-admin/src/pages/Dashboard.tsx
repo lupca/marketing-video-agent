@@ -160,6 +160,7 @@ export default function Dashboard() {
       case 'review': return "Review Details";
       case 'slideshow': return "Slideshow";
       case 'promotion': return "Viral Promotion";
+      case 'capcut': return "CapCut Draft";
       default: return type.replace(/_/g, ' ').replace(/\b\w/g, c => c.toUpperCase());
     }
   };
@@ -172,6 +173,7 @@ export default function Dashboard() {
         case 'unbox_viral': return "bg-amber-500/20 text-amber-500 shadow-sm ring-1 ring-amber-500/30";
         case 'slideshow': return "bg-pink-500/20 text-pink-400 shadow-sm ring-1 ring-pink-500/30";
         case 'promotion': return "bg-orange-500/20 text-orange-400 shadow-sm ring-1 ring-orange-500/30";
+        case 'capcut': return "bg-rose-500/20 text-rose-400 shadow-sm ring-1 ring-rose-500/30";
         default: return "bg-primary/20 text-primary shadow-sm ring-1 ring-primary/30";
       }
     }

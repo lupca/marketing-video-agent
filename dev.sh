@@ -224,6 +224,7 @@ export MINIO_BUCKET_NAME="videos"
 export MINIO_SECURE="false"
 export PYTHONPATH="$ROOT_DIR"
 export OBJC_DISABLE_INITIALIZE_FORK_SAFETY=YES
+export VECTCUT_API_URL="http://localhost:9002"
 
 echo -e "${GREEN}  ✔ Env vars exported${NC}"
 
@@ -314,6 +315,12 @@ TRANSLIFY_PID=$!
 cd "$ROOT_DIR"
 echo -e "${GREEN}  ✔ Worker Translify PID: $TRANSLIFY_PID${NC}"
 
+cd "$ROOT_DIR/worker_capcut"
+PYTHONPATH="$ROOT_DIR" "$ROOT_DIR/.venv-api/bin/celery" -A celery_worker worker -P solo -Q capcut_queue -n worker_capcut@%h --loglevel=info &
+CAPCUT_PID=$!
+cd "$ROOT_DIR"
+echo -e "${GREEN}  ✔ Worker CapCut PID: $CAPCUT_PID${NC}"
+
 # ----------------------------------------------------------
 # 6. Start Frontend
 # ----------------------------------------------------------
@@ -343,7 +350,7 @@ echo -e "\n${YELLOW}Press Ctrl+C to stop all services${NC}\n"
 # ----------------------------------------------------------
 cleanup() {
   echo -e "\n${YELLOW}Shutting down all processes...${NC}"
-  kill $API_PID $REVIEW_PID $UNBOX_PID $DOWNLOAD_PID $SLIDESHOW_PID $PROMOTION_PID $RESEARCH_PID $TEXT2IMG_PID $TTS_PID $CHAT_PID $AGENT_PID $LEADER_PID $TRANSLIFY_PID $FRONTEND_PID 2>/dev/null
+  kill $API_PID $REVIEW_PID $UNBOX_PID $DOWNLOAD_PID $SLIDESHOW_PID $PROMOTION_PID $RESEARCH_PID $TEXT2IMG_PID $TTS_PID $CHAT_PID $AGENT_PID $LEADER_PID $TRANSLIFY_PID $CAPCUT_PID $FRONTEND_PID 2>/dev/null
   docker compose -f "$ROOT_DIR/docker-compose.dev.yml" down
   echo -e "${GREEN}✔ All stopped.${NC}"
   exit 0

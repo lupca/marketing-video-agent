@@ -11,8 +11,6 @@ interface RenderSettingsStepProps {
   setFontSize: (val: number) => void;
   textColor: string;
   setTextColor: (val: string) => void;
-  onPrev: () => void;
-  onNext: () => void;
 }
 
 export function RenderSettingsStep(props: RenderSettingsStepProps) {
@@ -73,15 +71,6 @@ export function RenderSettingsStep(props: RenderSettingsStepProps) {
             ))}
           </div>
         </div>
-      </div>
-
-      <div className="flex justify-between pt-4 border-t border-white/10">
-        <button onClick={props.onPrev} className="px-6 py-3 rounded-xl font-medium text-white/80 hover:text-white hover:bg-white/5 transition-colors">
-          Quay lại
-        </button>
-        <Button onClick={props.onNext} className="glowing-button px-8 py-3 rounded-xl font-medium">
-          Xem lại & Gửi <ChevronRight className="w-5 h-5 ml-2" />
-        </Button>
       </div>
     </div>
   );
