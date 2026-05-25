@@ -14,7 +14,9 @@ import {
   AudioLines,
   Cpu,
   CloudLightning,
-  Trash2
+  Trash2,
+  Key,
+  Database
 } from "lucide-react";
 import api from "../lib/api";
 import { cn } from "../lib/utils";
@@ -28,15 +30,33 @@ interface GenerationResult {
   error?: string;
 }
 
+interface TTSModelConfig {
+  id: string;
+  name: string;
+  provider: string;
+  base_url?: string;
+  api_key?: string;
+  model_name?: string;
+}
+
 export default function SpeechStudio() {
   const { projects, loading: projectsLoading } = useProjects();
   
+  // Dynamic TTS Models
+  const [ttsModels, setTtsModels] = useState<TTSModelConfig[]>([]);
+  const [loadingModels, setLoadingModels] = useState(true);
+
   // Form State
   const [selectedProjectId, setSelectedProjectId] = useState("");
   const [text, setText] = useState("");
-  const [model, setModel] = useState<"edge-tts" | "melotts">("edge-tts");
+  const [model, setModel] = useState<string>(""); // Model Config ID
   const [speed, setSpeed] = useState<number>(1.0);
   const [speaker, setSpeaker] = useState("vi-VN-HoaiMyNeural");
+  const [customVoiceId, setCustomVoiceId] = useState("");
+
+  // ElevenLabs specific state overrides (for premium experience)
+  const [stability, setStability] = useState<number>(0.5);
+  const [similarityBoost, setSimilarityBoost] = useState<number>(0.75);
 
   // UI State
   const [isGenerating, setIsGenerating] = useState(false);
@@ -48,19 +68,41 @@ export default function SpeechStudio() {
   // Audio Ref for playing
   const audioRef = useRef<HTMLAudioElement | null>(null);
 
-  // Set default project
-  useEffect(() => {
-    if (projects.length > 0 && !selectedProjectId) {
-      setSelectedProjectId(projects[0].id);
-    }
-  }, [projects, selectedProjectId]);
-
   // Voice History States
   const [savedAudioList, setSavedAudioList] = useState<any[]>([]);
   const [loadingHistory, setLoadingHistory] = useState(false);
   const [activeHistoryTab, setActiveHistoryTab] = useState<"history" | "suggestions">("history");
   const [playingHistoryId, setPlayingHistoryId] = useState<string | null>(null);
   const historyAudioRef = useRef<HTMLAudioElement | null>(null);
+
+  // Fetch TTS models on mount
+  const fetchTtsModels = async () => {
+    setLoadingModels(true);
+    try {
+      const res = await api.get("/api/system/tts-models");
+      setTtsModels(res.data);
+      if (res.data.length > 0) {
+        // Select edge-tts model as default if available, else first model
+        const defaultModel = res.data.find((m: any) => m.provider === "edge-tts") || res.data[0];
+        setModel(defaultModel.id);
+      }
+    } catch (err) {
+      console.error("Failed to fetch TTS models:", err);
+    } finally {
+      setLoadingModels(false);
+    }
+  };
+
+  useEffect(() => {
+    fetchTtsModels();
+  }, []);
+
+  // Set default project
+  useEffect(() => {
+    if (projects.length > 0 && !selectedProjectId) {
+      setSelectedProjectId(projects[0].id);
+    }
+  }, [projects, selectedProjectId]);
 
   const fetchSavedAudio = async () => {
     if (!selectedProjectId) return;
@@ -123,14 +165,20 @@ export default function SpeechStudio() {
     }
   };
 
-  // Adjust speaker default choice when model changes
+  // Resolve current active model object
+  const activeModelObj = ttsModels.find((m) => m.id === model);
+  const activeProvider = activeModelObj?.provider || "edge-tts";
+
+  // Adjust speaker default choice when model/provider changes
   useEffect(() => {
-    if (model === "edge-tts") {
+    if (activeProvider === "edge-tts") {
       setSpeaker("vi-VN-HoaiMyNeural");
-    } else {
+    } else if (activeProvider === "melotts") {
       setSpeaker("VI-default");
+    } else if (activeProvider === "elevenlabs") {
+      setSpeaker("EXAVITQu4vr4xnSDxMaL"); // Default Bella
     }
-  }, [model]);
+  }, [activeProvider, model]);
 
   // Audio ended listener
   useEffect(() => {
@@ -170,21 +218,39 @@ export default function SpeechStudio() {
       setError("Vui lòng chọn hoặc tạo một Project.");
       return;
     }
+    if (!model) {
+      setError("Vui lòng chọn một cấu hình mô hình TTS.");
+      return;
+    }
 
     setError(null);
     setIsGenerating(true);
     setSaveStatus("idle");
     setIsPlaying(false);
 
+    // Resolve final speaker choice (for elevenlabs custom voice)
+    const finalSpeaker = (activeProvider === "elevenlabs" && speaker === "custom") 
+      ? customVoiceId 
+      : speaker;
+
+    if (activeProvider === "elevenlabs" && speaker === "custom" && !customVoiceId.trim()) {
+      setError("Vui lòng nhập Voice ID tùy chỉnh của ElevenLabs.");
+      setIsGenerating(false);
+      return;
+    }
+
     try {
       const response = await api.post("/api/jobs", {
         job_type: "tts",
         project_id: selectedProjectId,
         config_data: {
-          model: model,
+          model: model, // Passes the system database config ID
           text: text,
           speed: speed,
-          speaker: speaker
+          speaker: finalSpeaker,
+          // Premium ElevenLabs variables
+          stability: stability,
+          similarity_boost: similarityBoost
         }
       });
 
@@ -276,7 +342,7 @@ export default function SpeechStudio() {
             <div className="p-2 bg-primary/20 rounded-lg">
               <Volume2 className="w-5 h-5 text-primary" />
             </div>
-            <h2 className="text-xl font-bold text-white font-sans">Speech Studio</h2>
+            <h2 className="text-xl font-bold text-white font-sans font-sans">Speech Studio</h2>
           </div>
 
           <div className="space-y-6">
@@ -294,39 +360,31 @@ export default function SpeechStudio() {
               </select>
             </div>
 
-            {/* TTS Model Choice */}
+            {/* Dynamic TTS Model Selection from DB */}
             <div className="space-y-2">
-              <label className="text-sm font-medium text-muted-foreground">Mô hình TTS (Model)</label>
-              <div className="grid grid-cols-2 gap-2">
-                <button
-                  type="button"
-                  onClick={() => setModel("edge-tts")}
-                  className={cn(
-                    "py-2.5 px-3 rounded-xl text-xs font-bold border transition-all flex flex-col items-center gap-1",
-                    model === "edge-tts"
-                      ? "bg-primary/20 border-primary text-primary shadow-[0_0_15px_rgba(124,58,237,0.2)]"
-                      : "bg-white/5 border-white/10 text-muted-foreground hover:bg-white/10"
-                  )}
+              <label className="text-sm font-medium text-muted-foreground flex items-center justify-between">
+                <span>Cấu hình mô hình TTS</span>
+                <span className="text-[9px] uppercase tracking-wider text-muted-foreground/60 flex items-center gap-0.5">
+                  <Database className="w-2.5 h-2.5" /> Database
+                </span>
+              </label>
+              {loadingModels ? (
+                <div className="flex items-center gap-2 py-3 bg-white/5 border border-white/10 rounded-xl px-4 text-xs text-muted-foreground">
+                  <Loader2 className="w-4 h-4 animate-spin text-primary" /> Đang quét mô hình...
+                </div>
+              ) : (
+                <select
+                  value={model}
+                  onChange={(e) => setModel(e.target.value)}
+                  className="w-full bg-zinc-900 border border-white/10 rounded-xl px-4 py-3 text-sm text-white focus:outline-none focus:ring-2 focus:ring-primary/50"
                 >
-                  <CloudLightning className="w-4 h-4" />
-                  <span>Edge-TTS</span>
-                  <span className="text-[8px] opacity-70 font-normal">Nhiều giọng, Free</span>
-                </button>
-                <button
-                  type="button"
-                  onClick={() => setModel("melotts")}
-                  className={cn(
-                    "py-2.5 px-3 rounded-xl text-xs font-bold border transition-all flex flex-col items-center gap-1",
-                    model === "melotts"
-                      ? "bg-primary/20 border-primary text-primary shadow-[0_0_15px_rgba(124,58,237,0.2)]"
-                      : "bg-white/5 border-white/10 text-muted-foreground hover:bg-white/10"
-                  )}
-                >
-                  <Cpu className="w-4 h-4" />
-                  <span>MeloTTS</span>
-                  <span className="text-[8px] opacity-70 font-normal">Offline, 1 giọng</span>
-                </button>
-              </div>
+                  {ttsModels.map((m) => (
+                    <option key={m.id} value={m.id} className="bg-zinc-900">
+                      {m.name} ({m.provider === "melotts" ? "MeloTTS" : m.provider === "elevenlabs" ? "ElevenLabs" : "Edge-TTS"})
+                    </option>
+                  ))}
+                </select>
+              )}
             </div>
 
             {/* Vietnamese Text Input */}
@@ -336,7 +394,7 @@ export default function SpeechStudio() {
                 value={text}
                 onChange={(e) => setText(e.target.value)}
                 placeholder="Nhập đoạn văn bản tiếng Việt bạn muốn chuyển đổi thành giọng nói..."
-                className="w-full h-36 bg-white/5 border border-white/10 rounded-xl px-4 py-3 text-sm text-white placeholder:text-muted-foreground focus:outline-none focus:ring-2 focus:ring-primary/50 resize-none font-sans leading-relaxed"
+                className="w-full h-32 bg-white/5 border border-white/10 rounded-xl px-4 py-3 text-sm text-white placeholder:text-muted-foreground focus:outline-none focus:ring-2 focus:ring-primary/50 resize-none font-sans leading-relaxed text-xs"
                 maxLength={2000}
               />
               <div className="text-right text-[10px] text-muted-foreground">
@@ -344,33 +402,107 @@ export default function SpeechStudio() {
               </div>
             </div>
 
-            {/* Voice & Speaker (Dynamically render options based on selected model) */}
+            {/* Voice & Speaker (Dynamically render options based on selected model provider) */}
             <div className="space-y-2">
               <label className="text-sm font-medium text-muted-foreground">Người nói (Speaker)</label>
-              {model === "edge-tts" ? (
+              
+              {activeProvider === "edge-tts" ? (
                 <select
                   value={speaker}
                   onChange={(e) => setSpeaker(e.target.value)}
-                  className="w-full bg-white/5 border border-white/10 rounded-xl px-4 py-3 text-sm text-white focus:outline-none focus:ring-2 focus:ring-primary/50 font-sans"
+                  className="w-full bg-white/5 border border-white/10 rounded-xl px-4 py-3 text-xs text-white focus:outline-none focus:ring-2 focus:ring-primary/50 font-sans"
                 >
-                  <option value="vi-VN-HoaiMyNeural" className="bg-zinc-900">Hoài Mỹ (Giọng Nữ Bắc cực hay)</option>
+                  <option value="vi-VN-HoaiMyNeural" className="bg-zinc-900">Hoài Mỹ (Giọng Nữ Bắc truyền cảm)</option>
                   <option value="vi-VN-NamMinhNeural" className="bg-zinc-900">Nam Minh (Giọng Nam trầm ấm)</option>
                 </select>
-              ) : (
+              ) : activeProvider === "melotts" ? (
                 <select
                   value={speaker}
                   onChange={(e) => setSpeaker(e.target.value)}
-                  className="w-full bg-white/5 border border-white/10 rounded-xl px-4 py-3 text-sm text-white focus:outline-none focus:ring-2 focus:ring-primary/50 font-sans"
+                  className="w-full bg-white/5 border border-white/10 rounded-xl px-4 py-3 text-xs text-white focus:outline-none focus:ring-2 focus:ring-primary/50 font-sans"
                 >
-                  <option value="VI-default" className="bg-zinc-900">VI-default (Mặc định)</option>
+                  <option value="VI-default" className="bg-zinc-900">VI-default (MeloTTS Mặc định)</option>
                 </select>
+              ) : (
+                /* ElevenLabs Premium options */
+                <div className="space-y-3">
+                  <select
+                    value={speaker}
+                    onChange={(e) => setSpeaker(e.target.value)}
+                    className="w-full bg-white/5 border border-white/10 rounded-xl px-4 py-3 text-xs text-white focus:outline-none focus:ring-2 focus:ring-primary/50 font-sans"
+                  >
+                    <option value="EXAVITQu4vr4xnSDxMaL" className="bg-zinc-900">Bella (Nữ truyền cảm - Multilingual)</option>
+                    <option value="21m00Tcm4TlvDq8ikWAM" className="bg-zinc-900">Rachel (Nữ ấm áp - Multilingual)</option>
+                    <option value="pNInz6obpgDQGcFmaJgB" className="bg-zinc-900">Adam (Nam sâu lắng - Multilingual)</option>
+                    <option value="custom" className="bg-zinc-900">Voice ID Tùy chọn (Cloned Voice)</option>
+                  </select>
+
+                  {speaker === "custom" && (
+                    <div className="space-y-1.5 animate-in fade-in duration-200">
+                      <label className="text-[10px] font-semibold text-muted-foreground flex items-center gap-1">
+                        <Key className="w-3.5 h-3.5 text-primary" /> Nhập ElevenLabs Voice ID tùy chọn
+                      </label>
+                      <input
+                        type="text"
+                        required
+                        value={customVoiceId}
+                        onChange={(e) => setCustomVoiceId(e.target.value)}
+                        placeholder="Ví dụ: pNInz6obpgq5mWzIA5Bj"
+                        className="w-full bg-white/5 border border-white/10 rounded-xl px-4 py-2 text-xs text-white focus:outline-none focus:ring-1 focus:ring-primary font-mono text-[10px]"
+                      />
+                    </div>
+                  )}
+                </div>
               )}
             </div>
+
+            {/* Premium ElevenLabs Settings Override */}
+            {activeProvider === "elevenlabs" && (
+              <div className="p-4 bg-white/5 border border-white/5 rounded-2xl space-y-4 animate-in slide-in-from-top-2 duration-200">
+                <h4 className="text-xs font-bold text-violet-400 uppercase tracking-wider flex items-center gap-1.5">
+                  <Sliders className="w-3.5 h-3.5" /> ElevenLabs Premium Controls
+                </h4>
+                
+                {/* Stability */}
+                <div className="space-y-1">
+                  <div className="flex justify-between text-[10px]">
+                    <span className="text-muted-foreground">Độ ổn định (Stability):</span>
+                    <span className="text-white font-bold">{stability.toFixed(2)}</span>
+                  </div>
+                  <input
+                    type="range"
+                    min="0"
+                    max="1"
+                    step="0.05"
+                    value={stability}
+                    onChange={(e) => setStability(parseFloat(e.target.value))}
+                    className="w-full h-1 bg-white/10 rounded-lg cursor-pointer accent-primary"
+                  />
+                </div>
+
+                {/* Similarity Boost */}
+                <div className="space-y-1">
+                  <div className="flex justify-between text-[10px]">
+                    <span className="text-muted-foreground">Độ tự nhiên (Clarity/Similarity):</span>
+                    <span className="text-white font-bold">{similarityBoost.toFixed(2)}</span>
+                  </div>
+                  <input
+                    type="range"
+                    min="0"
+                    max="1"
+                    step="0.05"
+                    value={similarityBoost}
+                    onChange={(e) => setSimilarityBoost(parseFloat(e.target.value))}
+                    className="w-full h-1 bg-white/10 rounded-lg cursor-pointer accent-primary"
+                  />
+                </div>
+              </div>
+            )}
 
             {/* Speed Option */}
             <div className="space-y-3 pt-1">
               <div className="flex justify-between items-center">
-                <label className="text-sm font-medium text-muted-foreground flex items-center gap-2">
+                <label className="text-xs font-medium text-muted-foreground flex items-center gap-2">
                   <Sliders className="w-4 h-4 text-primary" /> Tốc độ đọc (Speed)
                 </label>
                 <span className="text-xs text-primary font-bold">{speed.toFixed(1)}x</span>
@@ -384,7 +516,7 @@ export default function SpeechStudio() {
                 onChange={(e) => setSpeed(parseFloat(e.target.value))}
                 className="w-full h-1 bg-white/10 rounded-lg appearance-none cursor-pointer accent-primary"
               />
-              <div className="flex justify-between text-[10px] text-muted-foreground px-1">
+              <div className="flex justify-between text-[9px] text-muted-foreground px-1">
                 <span>Chậm (0.5x)</span>
                 <span>Bình thường</span>
                 <span>Nhanh (2.0x)</span>
@@ -402,7 +534,7 @@ export default function SpeechStudio() {
               onClick={handleGenerate}
               disabled={isGenerating || projectsLoading}
               className={cn(
-                "w-full py-4 rounded-xl font-bold text-white transition-all flex items-center justify-center gap-3 shadow-lg",
+                "w-full py-4 rounded-xl font-bold text-white transition-all flex items-center justify-center gap-3 shadow-lg cursor-pointer",
                 isGenerating 
                   ? "bg-zinc-800 cursor-not-allowed" 
                   : "bg-gradient-to-r from-violet-600 to-indigo-600 hover:scale-[1.02] active:scale-[0.98] shadow-violet-600/20"
@@ -428,9 +560,11 @@ export default function SpeechStudio() {
             <Volume2 className="w-4 h-4 text-primary" />
           </div>
           <p className="text-[10px] text-muted-foreground leading-tight">
-            {model === "edge-tts" 
+            {activeProvider === "edge-tts" 
               ? "Microsoft Edge-TTS cung cấp giọng Nam/Nữ Bắc vô cùng tự nhiên qua đám mây, hoàn toàn miễn phí."
-              : "MeloTTS Vietnamese chạy hoàn toàn offline trên GPU local, được tối ưu hóa cho giọng nói tự nhiên."}
+              : activeProvider === "melotts"
+              ? "MeloTTS Vietnamese chạy hoàn toàn offline trên GPU local, được tối ưu hóa cho giọng nói tự nhiên."
+              : "ElevenLabs cloud cung cấp giọng nói trí tuệ nhân tạo premium đa ngôn ngữ xuất sắc với đầy đủ biểu cảm cảm xúc."}
           </p>
         </div>
       </div>
@@ -458,11 +592,9 @@ export default function SpeechStudio() {
               </div>
             </div>
           ) : currentJob?.url ? (
-            <div className="relative group w-full h-full p-8 flex flex-col items-center justify-center space-y-8">
+            <div className="relative group w-full h-full p-8 flex flex-col items-center justify-center space-y-8 animate-in zoom-in-95 duration-200">
               
-              {/* Styled Audio Visualizer mock / premium card */}
-              <div className="w-72 h-72 bg-gradient-to-tr from-violet-600/10 to-indigo-600/10 border border-white/10 rounded-full flex items-center justify-center shadow-2xl relative">
-                {/* Wave animations when playing */}
+              <div className="w-64 h-64 bg-gradient-to-tr from-violet-600/10 to-indigo-600/10 border border-white/10 rounded-full flex items-center justify-center shadow-2xl relative">
                 {isPlaying && (
                   <>
                     <div className="absolute inset-0 rounded-full bg-primary/20 animate-ping opacity-70" />
@@ -472,7 +604,7 @@ export default function SpeechStudio() {
                 
                 <button 
                   onClick={togglePlay}
-                  className="w-28 h-28 bg-gradient-to-r from-violet-600 to-indigo-600 rounded-full hover:scale-105 active:scale-95 transition-all shadow-xl flex items-center justify-center text-white z-10"
+                  className="w-28 h-28 bg-gradient-to-r from-violet-600 to-indigo-600 rounded-full hover:scale-105 active:scale-95 transition-all shadow-xl flex items-center justify-center text-white z-10 cursor-pointer"
                 >
                   {isPlaying ? (
                     <Pause className="w-12 h-12 fill-white text-white ml-0" />
@@ -489,10 +621,10 @@ export default function SpeechStudio() {
                 </p>
                 <div className="flex items-center justify-center gap-4 mt-2">
                   <span className="text-[10px] bg-white/5 border border-white/10 px-2.5 py-1 rounded text-muted-foreground uppercase font-bold">
-                    Model: {model.toUpperCase()}
+                    Provider: {activeProvider.toUpperCase()}
                   </span>
                   <span className="text-[10px] bg-white/5 border border-white/10 px-2.5 py-1 rounded text-muted-foreground uppercase font-bold">
-                    Voice: {speaker.replace("vi-VN-", "").replace("Neural", "")}
+                    Voice: {speaker === "custom" ? "Custom" : speaker.replace("vi-VN-", "").replace("Neural", "")}
                   </span>
                   <span className="text-[10px] bg-white/5 border border-white/10 px-2.5 py-1 rounded text-muted-foreground uppercase font-bold">
                     Speed: {speed}x
@@ -506,7 +638,7 @@ export default function SpeechStudio() {
                   onClick={handleSaveToAssets}
                   disabled={saveStatus !== "idle"}
                   className={cn(
-                    "flex items-center gap-2 text-sm font-medium transition-all px-4 py-2 rounded-xl",
+                    "flex items-center gap-2 text-sm font-medium transition-all px-4 py-2 rounded-xl cursor-pointer",
                     saveStatus === "success" ? "text-green-400" : "text-white hover:text-primary"
                   )}
                 >
@@ -531,7 +663,7 @@ export default function SpeechStudio() {
                 <div className="w-px h-4 bg-white/10" />
                 <button 
                   onClick={handleGenerate}
-                  className="flex items-center gap-2 text-sm font-medium text-white hover:text-primary transition-all px-4 py-2"
+                  className="flex items-center gap-2 text-sm font-medium text-white hover:text-primary transition-all px-4 py-2 cursor-pointer"
                 >
                   <RefreshCw className="w-4 h-4" />
                   Thử lại (Regen)
@@ -539,7 +671,7 @@ export default function SpeechStudio() {
               </div>
             </div>
           ) : currentJob?.status === "FAILED" ? (
-            <div className="text-center space-y-4 p-8 max-w-md">
+            <div className="text-center space-y-4 p-8 max-w-md animate-in zoom-in-95 duration-200">
               <div className="w-16 h-16 bg-red-500/10 rounded-full flex items-center justify-center mx-auto border border-red-500/20">
                 <AlertCircle className="w-8 h-8 text-red-500" />
               </div>
@@ -549,7 +681,7 @@ export default function SpeechStudio() {
               </div>
               <button 
                 onClick={handleGenerate}
-                className="px-6 py-2 bg-white/5 hover:bg-white/10 border border-white/10 rounded-xl text-sm font-medium text-white transition-all"
+                className="px-6 py-2 bg-white/5 hover:bg-white/10 border border-white/10 rounded-xl text-sm font-medium text-white transition-all cursor-pointer"
               >
                 Thử lại lần nữa
               </button>
@@ -628,7 +760,6 @@ export default function SpeechStudio() {
                       key={asset.id}
                       className="flex items-center justify-between p-3 bg-white/5 border border-white/5 rounded-2xl hover:bg-white/10 hover:border-white/10 transition-all group"
                     >
-                      {/* Left: Info */}
                       <div className="flex items-center gap-3 min-w-0 flex-1">
                         <div className="p-2 bg-indigo-500/10 border border-indigo-500/20 text-indigo-400 rounded-xl shrink-0">
                           <AudioLines className="w-4 h-4" />
@@ -643,9 +774,7 @@ export default function SpeechStudio() {
                         </div>
                       </div>
 
-                      {/* Right: Actions */}
                       <div className="flex items-center gap-2 shrink-0">
-                        {/* Play/Pause Button */}
                         <button
                           onClick={() => togglePlayHistory(asset)}
                           className={cn(
@@ -663,7 +792,6 @@ export default function SpeechStudio() {
                           )}
                         </button>
 
-                        {/* Download link */}
                         <a
                           href={asset.presigned_url || asset.s3_url}
                           download={asset.display_name}
@@ -673,7 +801,6 @@ export default function SpeechStudio() {
                           <Download className="w-3.5 h-3.5" />
                         </a>
 
-                        {/* Hard Delete Button */}
                         <button
                           onClick={(e) => handleDeleteHistoryAsset(asset.id, e)}
                           className="p-2 bg-white/5 border border-white/10 text-muted-foreground hover:text-red-400 hover:bg-red-500/10 rounded-xl transition-all cursor-pointer"

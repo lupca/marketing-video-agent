@@ -30,6 +30,7 @@ def initialize_configs(reset=False):
         ("text2img", "Text-to-Image Worker - Generates images via ComfyUI (FLUX)"),
         ("tts", "Text-to-Speech Worker - Generates Vietnamese audio from text"),
         ("chat", "Chat Worker - AI Chat Assistant supporting dynamic models"),
+        ("capcut", "CapCut Draft Worker - Generates CapCut/Jianying draft projects using VectCutAPI"),
     ]
     
     if reset:

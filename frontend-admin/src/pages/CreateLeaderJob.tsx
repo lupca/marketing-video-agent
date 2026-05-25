@@ -1,6 +1,6 @@
 import { useEffect, useState } from "react";
-import { useNavigate } from "react-router-dom";
-import { Folder, Plus, Bot, Send, AlertTriangle, Megaphone, Palette, FileText, Clock } from "lucide-react";
+import { useNavigate, useSearchParams } from "react-router-dom";
+import { Folder, Plus, Bot, Send, AlertTriangle, Megaphone, Palette, FileText, Clock, Copy } from "lucide-react";
 import api from "../lib/api";
 import { cn } from "../lib/utils";
 import { useProjects } from "../hooks/useProjects";
@@ -8,6 +8,8 @@ import { Button } from "../components/ui/Button";
 
 export default function CreateLeaderJob() {
   const navigate = useNavigate();
+  const [searchParams] = useSearchParams();
+  const cloneJobId = searchParams.get("clone");
   const { projects, createProject } = useProjects();
 
   // Project State
@@ -35,11 +37,63 @@ export default function CreateLeaderJob() {
   const [loading, setLoading] = useState(false);
   const [error, setError] = useState<string | null>(null);
   const [statusMessage, setStatusMessage] = useState("");
+  const [cloneLoading, setCloneLoading] = useState(!!cloneJobId);
 
   useEffect(() => {
     if (projects.length > 0 && !selectedProjectId) setSelectedProjectId(projects[0].id);
     if (projects.length === 0) setIsCreatingProject(true);
   }, [projects, selectedProjectId]);
+
+  // Clone pre-fill: fetch original job data and populate form
+  useEffect(() => {
+    if (!cloneJobId) return;
+    let cancelled = false;
+    const loadClone = async () => {
+      try {
+        setCloneLoading(true);
+        const res = await api.get(`/api/jobs/${cloneJobId}`);
+        const job = res.data;
+        if (cancelled) return;
+
+        // Pre-fill project
+        if (job.project_id) setSelectedProjectId(job.project_id);
+
+        const cfg = job.config_data || {};
+        if (cfg.brand_context) {
+          setBrandName(cfg.brand_context.brand_name || "");
+          setToneOfVoice(cfg.brand_context.tone_of_voice || "");
+          if (Array.isArray(cfg.brand_context.brand_colors)) {
+            setBrandColors(cfg.brand_context.brand_colors.join(", "));
+          }
+        }
+
+        if (cfg.campaign_context) {
+          setCampaignName(cfg.campaign_context.campaign_name || "");
+          setTargetAudience(cfg.campaign_context.target_audience || "");
+          setObjective(cfg.campaign_context.objective || "");
+        }
+
+        if (cfg.variant_data) {
+          setTitle(cfg.variant_data.title || "");
+          setScriptContent(cfg.variant_data.script_content || "");
+          if (Array.isArray(cfg.variant_data.media_hints)) {
+            setMediaHints(cfg.variant_data.media_hints.join("\n"));
+          }
+          if (cfg.variant_data.suggested_duration !== undefined) {
+            setSuggestedDuration(Number(cfg.variant_data.suggested_duration));
+          }
+        }
+      } catch (err) {
+        console.error("Failed to load cloned leader job:", err);
+      } finally {
+        if (!cancelled) setCloneLoading(false);
+      }
+    };
+    loadClone();
+    return () => {
+      cancelled = true;
+    };
+  }, [cloneJobId]);
 
   const handleSubmit = async () => {
     if (!isCreatingProject && !selectedProjectId) return setError("Vui lòng chọn một dự án.");
@@ -138,7 +192,23 @@ export default function CreateLeaderJob() {
         </div>
       )}
 
-      <div className="glass-panel p-6 lg:p-10 flex flex-col space-y-10">
+      {cloneJobId && (
+        <div className="glass-panel p-4 flex items-center gap-3 bg-amber-500/10 border border-amber-500/20 rounded-xl animate-in fade-in">
+          <Copy className="w-5 h-5 text-amber-400 shrink-0" />
+          <div>
+            <p className="text-sm font-medium text-amber-300">Bản sao từ Job #{cloneJobId}</p>
+            <p className="text-xs text-amber-400/70">Chỉnh sửa nội dung bên dưới rồi gửi để chạy AI Leader phân tích mới.</p>
+          </div>
+        </div>
+      )}
+
+      {cloneLoading ? (
+        <div className="glass-panel p-16 flex flex-col items-center justify-center gap-4 text-muted-foreground">
+          <div className="w-8 h-8 border-2 border-primary border-t-transparent rounded-full animate-spin"></div>
+          <p>Đang tải dữ liệu từ Job #{cloneJobId}...</p>
+        </div>
+      ) : (
+        <div className="glass-panel p-6 lg:p-10 flex flex-col space-y-10">
         
         {/* Step 1: Project Selection */}
         <div className="space-y-4">
@@ -386,6 +456,7 @@ export default function CreateLeaderJob() {
         </div>
 
       </div>
+      )}
     </div>
   );
 }

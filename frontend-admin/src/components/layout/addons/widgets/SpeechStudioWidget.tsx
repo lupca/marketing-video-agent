@@ -1,5 +1,5 @@
 import { useState, useEffect, useRef } from "react";
-import { Volume2, Play, Pause, Save, RefreshCw, AlertCircle, Loader2, CheckCircle2 } from "lucide-react";
+import { Volume2, Play, Pause, Save, RefreshCw, AlertCircle, Loader2, CheckCircle2, Key, Database } from "lucide-react";
 import api from "../../../../lib/api";
 import { cn } from "../../../../lib/utils";
 import { useProjects } from "../../../../hooks/useProjects";
@@ -13,15 +13,29 @@ interface GenerationResult {
   error?: string;
 }
 
+interface TTSModelConfig {
+  id: string;
+  name: string;
+  provider: string;
+  base_url?: string;
+  api_key?: string;
+  model_name?: string;
+}
+
 export default function SpeechStudioWidget() {
   const { projects, loading: projectsLoading } = useProjects();
   const { initialData } = useAIStudioAddon();
   
+  // Dynamic TTS Models
+  const [ttsModels, setTtsModels] = useState<TTSModelConfig[]>([]);
+  const [loadingModels, setLoadingModels] = useState(true);
+
   // Form State
   const [selectedProjectId, setSelectedProjectId] = useState("");
   const [text, setText] = useState("");
-  const [model, setModel] = useState<"edge-tts" | "melotts">("edge-tts");
+  const [model, setModel] = useState<string>(""); // Database model ID
   const [speaker, setSpeaker] = useState("vi-VN-HoaiMyNeural");
+  const [customVoiceId, setCustomVoiceId] = useState("");
 
   // UI & Audio State
   const [isGenerating, setIsGenerating] = useState(false);
@@ -32,6 +46,27 @@ export default function SpeechStudioWidget() {
 
   // Audio Playback Ref
   const audioRef = useRef<HTMLAudioElement | null>(null);
+
+  // Fetch TTS Models on mount
+  const fetchTtsModels = async () => {
+    setLoadingModels(true);
+    try {
+      const res = await api.get("/api/system/tts-models");
+      setTtsModels(res.data);
+      if (res.data.length > 0) {
+        const defaultModel = res.data.find((m: any) => m.provider === "edge-tts") || res.data[0];
+        setModel(defaultModel.id);
+      }
+    } catch (err) {
+      console.error("Failed to fetch TTS models in widget:", err);
+    } finally {
+      setLoadingModels(false);
+    }
+  };
+
+  useEffect(() => {
+    fetchTtsModels();
+  }, []);
 
   // Tự động nạp kịch bản được truyền nhanh từ màn hình chính (Deep-linking)
   useEffect(() => {
@@ -50,14 +85,20 @@ export default function SpeechStudioWidget() {
     }
   }, [projects, selectedProjectId]);
 
-  // Đổi người nói khi model đổi
+  // Resolve current active model provider
+  const activeModelObj = ttsModels.find((m) => m.id === model);
+  const activeProvider = activeModelObj?.provider || "edge-tts";
+
+  // Đổi người nói khi model/provider đổi
   useEffect(() => {
-    if (model === "edge-tts") {
+    if (activeProvider === "edge-tts") {
       setSpeaker("vi-VN-HoaiMyNeural");
-    } else {
+    } else if (activeProvider === "melotts") {
       setSpeaker("VI-default");
+    } else if (activeProvider === "elevenlabs") {
+      setSpeaker("EXAVITQu4vr4xnSDxMaL"); // Bella
     }
-  }, [model]);
+  }, [activeProvider, model]);
 
   // Quản lý trạng thái Audio Player
   useEffect(() => {
@@ -97,11 +138,26 @@ export default function SpeechStudioWidget() {
       setError("Vui lòng chọn Dự án để lưu giọng nói.");
       return;
     }
+    if (!model) {
+      setError("Chưa chọn cấu hình mô hình TTS.");
+      return;
+    }
 
     setError(null);
     setIsGenerating(true);
     setSaveStatus("idle");
     setIsPlaying(false);
+
+    // Resolve final speaker choice (for elevenlabs custom voice)
+    const finalSpeaker = (activeProvider === "elevenlabs" && speaker === "custom") 
+      ? customVoiceId 
+      : speaker;
+
+    if (activeProvider === "elevenlabs" && speaker === "custom" && !customVoiceId.trim()) {
+      setError("Vui lòng nhập Voice ID tùy chỉnh ElevenLabs.");
+      setIsGenerating(false);
+      return;
+    }
 
     try {
       const response = await api.post("/api/jobs", {
@@ -111,7 +167,7 @@ export default function SpeechStudioWidget() {
           model: model,
           text: text,
           speed: 1.0,
-          speaker: speaker
+          speaker: finalSpeaker
         }
       });
 
@@ -296,31 +352,30 @@ export default function SpeechStudioWidget() {
           </select>
         </div>
 
-        {/* Lựa chọn mô hình */}
+        {/* Lựa chọn mô hình từ DB */}
         <div className="space-y-1.5">
-          <label className="text-[11px] font-semibold text-muted-foreground">Mô hình lồng tiếng (Model)</label>
-          <div className="grid grid-cols-2 gap-2">
-            {[
-              { id: "edge-tts", name: "Edge Cloud", desc: "Giọng đọc rất thật" },
-              { id: "melotts", name: "MeloTTS", desc: "Chạy offline local" }
-            ].map((m) => (
-              <button
-                key={m.id}
-                type="button"
-                onClick={() => setModel(m.id as any)}
-                disabled={isGenerating}
-                className={cn(
-                  "py-2 rounded-xl text-[10px] font-bold border transition-all cursor-pointer text-center flex flex-col gap-0.5",
-                  model === m.id
-                    ? "bg-primary/20 border-primary text-primary"
-                    : "bg-white/5 border-white/10 text-muted-foreground hover:bg-white/10"
-                )}
-              >
-                <span>{m.name}</span>
-                <span className="text-[7.5px] opacity-60 font-normal">{m.desc}</span>
-              </button>
-            ))}
-          </div>
+          <label className="text-[11px] font-semibold text-muted-foreground flex items-center justify-between">
+            <span>Mô hình thuyết minh (Model)</span>
+            <span className="text-[8px] opacity-40 flex items-center gap-0.5"><Database className="w-2.5 h-2.5" /> DB Loaded</span>
+          </label>
+          {loadingModels ? (
+            <div className="flex items-center gap-1.5 py-2.5 bg-white/5 border border-white/10 rounded-xl px-3 text-[10px] text-muted-foreground">
+              <Loader2 className="w-3.5 h-3.5 animate-spin text-primary" /> Đang quét mô hình...
+            </div>
+          ) : (
+            <select
+              value={model}
+              onChange={(e) => setModel(e.target.value)}
+              disabled={isGenerating}
+              className="w-full bg-zinc-900 border border-white/10 rounded-xl px-3 py-2.5 text-xs text-white focus:outline-none focus:ring-1 focus:ring-primary"
+            >
+              {ttsModels.map((m) => (
+                <option key={m.id} value={m.id}>
+                  {m.name} ({m.provider === "melotts" ? "MeloTTS" : m.provider === "elevenlabs" ? "ElevenLabs" : "Edge-TTS"})
+                </option>
+              ))}
+            </select>
+          )}
         </div>
 
         {/* Văn bản cần gen giọng nói */}
@@ -331,14 +386,14 @@ export default function SpeechStudioWidget() {
             onChange={(e) => setText(e.target.value)}
             disabled={isGenerating}
             placeholder="Nhập nội dung kịch bản hoặc lời thoại cần AI thuyết minh tiếng Việt..."
-            className="w-full h-28 bg-white/5 border border-white/10 rounded-xl px-3 py-2.5 text-xs text-white placeholder:text-muted-foreground/50 focus:outline-none focus:ring-1 focus:ring-primary resize-none font-sans leading-relaxed"
+            className="w-full h-24 bg-white/5 border border-white/10 rounded-xl px-3 py-2 text-xs text-white placeholder:text-muted-foreground/50 focus:outline-none focus:ring-1 focus:ring-primary resize-none font-sans leading-relaxed"
           />
         </div>
 
         {/* Chọn Speaker */}
         <div className="space-y-1.5">
           <label className="text-[11px] font-semibold text-muted-foreground">Chọn Giọng đọc (Speaker)</label>
-          {model === "edge-tts" ? (
+          {activeProvider === "edge-tts" ? (
             <select
               value={speaker}
               onChange={(e) => setSpeaker(e.target.value)}
@@ -348,7 +403,7 @@ export default function SpeechStudioWidget() {
               <option value="vi-VN-HoaiMyNeural">Hoài Mỹ (Giọng Nữ Bắc ngọt ngào)</option>
               <option value="vi-VN-NamMinhNeural">Nam Minh (Giọng Nam trầm ấm)</option>
             </select>
-          ) : (
+          ) : activeProvider === "melotts" ? (
             <select
               value={speaker}
               onChange={(e) => setSpeaker(e.target.value)}
@@ -357,6 +412,36 @@ export default function SpeechStudioWidget() {
             >
               <option value="VI-default">VI-default (MeloTTS Mặc định)</option>
             </select>
+          ) : (
+            <div className="space-y-2">
+              <select
+                value={speaker}
+                onChange={(e) => setSpeaker(e.target.value)}
+                disabled={isGenerating}
+                className="w-full bg-zinc-900 border border-white/10 rounded-xl px-3 py-2 text-xs text-white focus:outline-none focus:ring-1 focus:ring-primary font-sans"
+              >
+                <option value="EXAVITQu4vr4xnSDxMaL">Bella (Nữ - Multilingual)</option>
+                <option value="21m00Tcm4TlvDq8ikWAM">Rachel (Nữ - Multilingual)</option>
+                <option value="pNInz6obpgDQGcFmaJgB">Adam (Nam - Multilingual)</option>
+                <option value="custom">Voice ID Tùy chọn</option>
+              </select>
+
+              {speaker === "custom" && (
+                <div className="space-y-1.5 animate-in fade-in duration-200">
+                  <label className="text-[9px] font-semibold text-muted-foreground flex items-center gap-1">
+                    <Key className="w-3.5 h-3.5 text-primary" /> Nhập ElevenLabs Voice ID tùy chọn
+                  </label>
+                  <input
+                    type="text"
+                    required
+                    value={customVoiceId}
+                    onChange={(e) => setCustomVoiceId(e.target.value)}
+                    placeholder="Ví dụ: pNInz6obpgq5mWzIA5Bj"
+                    className="w-full bg-white/5 border border-white/10 rounded-xl px-3 py-1.5 text-[10px] text-white focus:outline-none focus:ring-1 focus:ring-primary font-mono text-[9px]"
+                  />
+                </div>
+              )}
+            </div>
           )}
         </div>
 

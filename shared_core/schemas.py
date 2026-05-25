@@ -429,3 +429,22 @@ class ChatSessionResponse(BaseModel):
 class ChatSessionUpdate(BaseModel):
     title: Optional[str] = None
     selected_model_id: Optional[str] = None
+
+
+# ── TTS Models CRUD ───────────────────────────────────────────────────────────
+
+class TTSModelConfig(BaseModel):
+    id: str
+    name: str
+    provider: str  # "melotts", "edge-tts", "elevenlabs"
+    base_url: Optional[str] = ""
+    api_key: Optional[str] = ""
+    model_name: Optional[str] = ""
+
+class TTSModelCreate(BaseModel):
+    name: str
+    provider: str
+    base_url: Optional[str] = ""
+    api_key: Optional[str] = ""
+    model_name: Optional[str] = ""
+
