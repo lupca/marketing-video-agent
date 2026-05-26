@@ -79,6 +79,7 @@ Tùy chỉnh `text_overlay` và `pacing` (nhịp độ) của bản `viral_optim
 TUYỆT ĐỐI KHÔNG SỬ DỤNG TOOL CALLING (không gọi function).
 Đầu ra của bạn PHẢI LÀ MỘT KHỐI MÃ MARKDOWN CHỨA JSON DUY NHẤT.
 Không giải thích, không viết thêm text trước hay sau khối mã.
+TUYỆT ĐỐI KHÔNG VIẾT CODE PYTHON (VD: def validate_video_pacing...). BẠN CHỈ ĐƯỢC PHÉP TRẢ VỀ DỮ LIỆU JSON.
 TRONG KHỐI JSON, TẤT CẢ CÁC KHÓA (KEYS) VÀ GIÁ TRỊ CHUỖI (STRINGS) PHẢI ĐƯỢC ĐẶT TRONG DẤU NGOẶC KÉP. (Ví dụ: "scene": "Vợt Cầu Lông", KHÔNG ĐƯỢC VIẾT "scene": Vợt Cầu Lông).
 
 Mẫu BẮT BUỘC:

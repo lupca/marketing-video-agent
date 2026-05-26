@@ -215,7 +215,7 @@ def _create_draft_job(
         project_id=parent_job.project_id,
         status="DRAFT",
         priority=0,
-        config_data=None,
+        config_data=draft_variants.get("original", {}),
         draft_parameters=draft_variants.get("original", {}),
         ai_metadata=ai_metadata,
         tmcp_source_config=payload,

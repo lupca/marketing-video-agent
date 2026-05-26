@@ -248,7 +248,7 @@ def update_job(
             # Queue worker task using centralized helper
             task_name, queue_name = resolve_celery_task_and_queue(job.job_type)
                 
-            task_config = dict(job.config_data) if job.config_data else {}
+            task_config = dict(job.config_data) if job.config_data else dict(job.draft_parameters) if job.draft_parameters else {}
             
             try:
                 celery_client.celery_app.send_task(
