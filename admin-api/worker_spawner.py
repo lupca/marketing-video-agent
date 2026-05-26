@@ -11,16 +11,22 @@ ROOT_DIR = os.path.dirname(os.path.dirname(os.path.abspath(__file__)))
 STATE_FILE = "/tmp/worker_spawner_state.json"
 
 # Worker definitions: worker_type -> (venv_path, work_dir, queue, concurrency)
+VENV_LIGHT = ".venv-light"
+VENV_HEAVY = ".venv-heavy"
+
 WORKER_DEFS: Dict[str, dict] = {
-    "review":    {"venv": "worker_review/venv",    "cwd": "worker_review",    "queue": "review_queue",    "concurrency": 2},
-    "unbox":     {"venv": "worker_unbox/venv",     "cwd": "worker_unbox",     "queue": "unbox_queue",     "concurrency": 2},
-    "download":  {"venv": "worker_download/venv",  "cwd": "worker_download",  "queue": "download_queue",  "concurrency": 3},
-    "slideshow": {"venv": "worker_slideshow/venv", "cwd": "worker_slideshow", "queue": "slideshow_queue", "concurrency": 2},
-    "promotion": {"venv": "worker_promotion/venv", "cwd": "worker_promotion", "queue": "promotion_queue", "concurrency": 2},
-    "research":  {"venv": "worker_research/venv",  "cwd": "worker_research",  "queue": "research_queue",  "concurrency": 2},
-    "agent":     {"venv": "worker_agent/venv",     "cwd": "worker_agent",     "queue": "agent_queue",     "concurrency": 1},
-    "text2img":  {"venv": "worker_text2img/venv",  "cwd": "worker_text2img",  "queue": "text2img_queue",  "concurrency": 2},
-    "translify": {"venv": "worker_translify/venv", "cwd": "worker_translify", "queue": "translify_queue", "concurrency": 1},
+    # GPU / Heavy AI workers (using MoviePy 1.0.3 + PyTorch + CUDA)
+    "review":    {"venv": VENV_HEAVY, "cwd": "worker_review",    "queue": "review_queue",    "concurrency": 2},
+    "unbox":     {"venv": VENV_HEAVY, "cwd": "worker_unbox",     "queue": "unbox_queue",     "concurrency": 2},
+    "translify": {"venv": VENV_HEAVY, "cwd": "worker_translify", "queue": "translify_queue", "concurrency": 1},
+    "agent":     {"venv": VENV_HEAVY, "cwd": "worker_agent",     "queue": "agent_queue",     "concurrency": 1},
+    
+    # CPU / Light workers (using MoviePy 2.x, APIs, scrapers)
+    "download":  {"venv": VENV_LIGHT, "cwd": "worker_download",  "queue": "download_queue",  "concurrency": 3},
+    "slideshow": {"venv": VENV_LIGHT, "cwd": "worker_slideshow", "queue": "slideshow_queue", "concurrency": 2},
+    "promotion": {"venv": VENV_LIGHT, "cwd": "worker_promotion", "queue": "promotion_queue", "concurrency": 2},
+    "research":  {"venv": VENV_LIGHT, "cwd": "worker_research",  "queue": "research_queue",  "concurrency": 2},
+    "text2img":  {"venv": VENV_LIGHT, "cwd": "worker_text2img",  "queue": "text2img_queue",  "concurrency": 2},
 }
 
 # Track running processes: worker_type -> PID (persisted)

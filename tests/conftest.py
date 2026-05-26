@@ -59,6 +59,11 @@ def setup_test_db():
     # Create all tables
     Base.metadata.create_all(bind=test_engine)
     yield
+    # Disable foreign keys temporarily during teardown so SQLite can drop tables in any order
+    from sqlalchemy import text
+    with test_engine.connect() as conn:
+        conn.execute(text("PRAGMA foreign_keys=OFF"))
+        conn.commit()
     Base.metadata.drop_all(bind=test_engine)
 
 

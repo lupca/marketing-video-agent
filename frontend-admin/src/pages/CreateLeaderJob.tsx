@@ -32,6 +32,7 @@ export default function CreateLeaderJob() {
   const [scriptContent, setScriptContent] = useState("");
   const [mediaHints, setMediaHints] = useState("");
   const [suggestedDuration, setSuggestedDuration] = useState(30);
+  const [masterContentsBrief, setMasterContentsBrief] = useState("");
 
   // UI State
   const [loading, setLoading] = useState(false);
@@ -73,16 +74,22 @@ export default function CreateLeaderJob() {
           setObjective(cfg.campaign_context.objective || "");
         }
 
-        if (cfg.variant_data) {
-          setTitle(cfg.variant_data.title || "");
-          setScriptContent(cfg.variant_data.script_content || "");
-          if (Array.isArray(cfg.variant_data.media_hints)) {
-            setMediaHints(cfg.variant_data.media_hints.join("\n"));
-          }
-          if (cfg.variant_data.suggested_duration !== undefined) {
-            setSuggestedDuration(Number(cfg.variant_data.suggested_duration));
-          }
+        // Pre-fill variant content and brief adaptively (supporting both nested variant_data and flat root fields)
+        const variant = cfg.variant_data || {};
+        setTitle(cfg.title || variant.title || "");
+        setScriptContent(cfg.script_content || variant.script_content || "");
+        
+        const hints = cfg.media_hints || variant.media_hints || [];
+        if (Array.isArray(hints)) {
+          setMediaHints(hints.join("\n"));
         }
+        
+        const duration = cfg.suggested_duration !== undefined ? cfg.suggested_duration : variant.suggested_duration;
+        if (duration !== undefined) {
+          setSuggestedDuration(Number(duration));
+        }
+        
+        setMasterContentsBrief(cfg.master_contents_brief || variant.master_contents_brief || "");
       } catch (err) {
         console.error("Failed to load cloned leader job:", err);
       } finally {
@@ -151,6 +158,7 @@ export default function CreateLeaderJob() {
             media_hints: hints,
             suggested_duration: Number(suggestedDuration),
           },
+          master_contents_brief: masterContentsBrief.trim(),
         },
       };
 
@@ -384,6 +392,17 @@ export default function CreateLeaderJob() {
                   onChange={(e) => setTitle(e.target.value)}
                   placeholder="Ví dụ: Đánh giá chi tiết Antigravity AI 2.0..."
                   className="flex h-11 w-full rounded-xl border border-white/10 bg-white/5 px-4 text-sm text-white focus:outline-none focus:ring-2 focus:ring-primary/50 transition-all"
+                />
+              </div>
+
+              <div className="space-y-2">
+                <label className="text-xs font-semibold text-muted-foreground">Tóm tắt nội dung chính (Master Contents Brief)</label>
+                <textarea
+                  value={masterContentsBrief}
+                  onChange={(e) => setMasterContentsBrief(e.target.value)}
+                  placeholder="Phân tích đặc tính nổi bật của sản phẩm, định vị chiến dịch..."
+                  rows={3}
+                  className="flex w-full rounded-xl border border-white/10 bg-white/5 px-4 py-2.5 text-sm text-white focus:outline-none focus:ring-2 focus:ring-primary/50 transition-all resize-none placeholder:text-muted-foreground/30 leading-relaxed text-sm"
                 />
               </div>
 

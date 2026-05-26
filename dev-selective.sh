@@ -77,11 +77,24 @@ for WORKER in $ENABLED_WORKERS; do
         continue
     fi
     
-    VENV="$WORKER_DIR/venv"
-    if [ ! -d "$VENV" ]; then
-        echo -e "${YELLOW}  Creating venv for $WORKER...${NC}"
-        python3 -m venv "$VENV"
-        "$VENV/bin/pip" install --upgrade pip -q
+    # Map to respective Shared Venv (.venv-light or .venv-heavy)
+    if [ "$WORKER" = "review" ] || [ "$WORKER" = "unbox" ] || [ "$WORKER" = "translify" ] || [ "$WORKER" = "agent" ]; then
+        VENV="$ROOT_DIR/.venv-heavy"
+        if [ ! -d "$VENV" ]; then
+            echo -e "${YELLOW}  Creating Shared Heavy (AI/GPU) venv...${NC}"
+            python3 -m venv "$VENV"
+            "$VENV/bin/pip" install --upgrade pip -q
+        fi
+        "$VENV/bin/pip" install -r "$WORKER_DIR/requirements.txt" -q
+        # Re-ensure onnxruntime-gpu and moviepy==1.0.3 are prioritized
+        "$VENV/bin/pip" install onnxruntime-gpu moviepy==1.0.3 -q
+    else
+        VENV="$ROOT_DIR/.venv-light"
+        if [ ! -d "$VENV" ]; then
+            echo -e "${YELLOW}  Creating Shared Light venv...${NC}"
+            python3 -m venv "$VENV"
+            "$VENV/bin/pip" install --upgrade pip -q
+        fi
         "$VENV/bin/pip" install -r "$WORKER_DIR/requirements.txt" -q
     fi
     

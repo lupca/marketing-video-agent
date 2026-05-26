@@ -128,6 +128,19 @@ export function ProductionGuideDrawer({ isOpen, onClose, jobType, tmcpContext }:
                 </div>
               </div>
 
+              {/* Master Contents Brief from TMCP */}
+              {(tmcpContext.master_contents_brief || tmcpContext.variant_data?.master_contents_brief) && (
+                <div className="rounded-xl border border-violet-500/20 bg-violet-500/5 p-5 animate-in fade-in duration-300">
+                  <h4 className="text-sm font-bold text-white flex items-center gap-2 mb-3">
+                    <FileText className="w-4 h-4 text-violet-400" />
+                    Tóm Tắt Nội Dung Chính (Master Brief)
+                  </h4>
+                  <div className="bg-black/30 rounded-lg p-4 font-mono text-xs text-gray-300 leading-relaxed max-h-48 overflow-y-auto whitespace-pre-line border border-white/5 shadow-inner">
+                    {tmcpContext.master_contents_brief || tmcpContext.variant_data?.master_contents_brief}
+                  </div>
+                </div>
+              )}
+
               {/* Detailed Script from TMCP */}
               <div className="rounded-xl border border-cyan-500/20 bg-cyan-500/5 p-5">
                 <div className="flex items-center justify-between mb-3">

@@ -301,7 +301,7 @@ def process_leader_job_impl(job_id: int):
         # 2. Xây dựng thông tin gửi cho LLM
         brand = payload.get("brand_context", {})
         campaign = payload.get("campaign_context", {})
-        variant = payload.get("variant_data", {})
+        variant = payload.get("variant_data", {}) or {}
         
         brand_name = brand.get("brand_name", "")
         tone = brand.get("tone_of_voice", "")
@@ -311,10 +311,11 @@ def process_leader_job_impl(job_id: int):
         audience = campaign.get("target_audience", "")
         objective = campaign.get("objective", "")
         
-        title = variant.get("title", "")
-        script_content = variant.get("script_content", "")
-        hints = variant.get("media_hints", [])
-        duration = variant.get("suggested_duration", 15)
+        title = payload.get("title") or variant.get("title", "")
+        script_content = payload.get("script_content") or variant.get("script_content", "")
+        hints = payload.get("media_hints") or variant.get("media_hints", [])
+        duration = payload.get("suggested_duration") or variant.get("suggested_duration", 15)
+        master_contents_brief = payload.get("master_contents_brief") or ""
 
         # 3. Gọi LLM Ollama
         settings = get_settings()
@@ -334,9 +335,12 @@ def process_leader_job_impl(job_id: int):
             f"- Tiêu đề Kịch bản: {title}\n"
             f"- Nội dung Kịch bản: {script_content}\n"
             f"- Gợi ý phân cảnh: {hints}\n"
-            f"- Thời lượng gợi ý: {duration} giây\n\n"
-            f"Hãy suy nghĩ kỹ, chọn worker thích hợp nhất và xuất JSON."
+            f"- Thời lượng gợi ý: {duration} giây\n"
         )
+        if master_contents_brief:
+            user_content += f"- Tóm tắt nội dung chính (Master Brief): {master_contents_brief}\n"
+            
+        user_content += f"\nHãy suy nghĩ kỹ, chọn worker thích hợp nhất và xuất JSON."
 
         logger.info(f"Calling Ollama at {base_url} with model {model_name}")
         api_url = f"{base_url.rstrip('/')}/v1/chat/completions"

@@ -375,7 +375,12 @@ class TMCPPayload(BaseModel):
     source_id: str
     brand_context: BrandContext
     campaign_context: CampaignContext
-    variant_data: VariantData
+    variant_data: Optional[VariantData] = None
+    title: Optional[str] = None
+    script_content: Optional[str] = None
+    media_hints: Optional[List[str]] = []
+    suggested_duration: Optional[int] = 15
+    master_contents_brief: Optional[str] = ""
 
 
 # ── LLM Models CRUD ───────────────────────────────────────────────────────────

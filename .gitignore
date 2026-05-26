@@ -1,5 +1,7 @@
 .venv
 .venv-api
+.venv-light
+.venv-heavy
 venv
 raw
 output

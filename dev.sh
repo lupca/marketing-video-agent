@@ -37,104 +37,67 @@ done
 echo -e "${GREEN}  ✔ Postgres is ready${NC}"
 
 # ----------------------------------------------------------
-# 2. Setup shared venv for API (reuse if exists)
+# 2. Setup shared venvs
 # ----------------------------------------------------------
-echo -e "\n${GREEN}[2/5]${NC} Setting up Python environments..."
+echo -e "\n${GREEN}[2/5]${NC} Setting up Shared Python environments..."
 
-API_VENV="$ROOT_DIR/.venv-api"
-if [ ! -d "$API_VENV" ]; then
-  echo -e "${YELLOW}  Creating API venv...${NC}"
-  python3 -m venv "$API_VENV"
+LIGHT_VENV="$ROOT_DIR/.venv-light"
+if [ ! -d "$LIGHT_VENV" ]; then
+  echo -e "${YELLOW}  Creating Shared Light venv...${NC}"
+  if command -v python3.11 >/dev/null 2>&1; then
+    python3.11 -m venv "$LIGHT_VENV"
+  elif command -v python3.10 >/dev/null 2>&1; then
+    python3.10 -m venv "$LIGHT_VENV"
+  else
+    python3 -m venv "$LIGHT_VENV"
+  fi
 fi
-"$API_VENV/bin/pip" install --upgrade pip -q
-"$API_VENV/bin/pip" install -r "$ROOT_DIR/admin-api/requirements.txt" -q
-echo -e "${GREEN}  ✔ API venv ready${NC}"
+"$LIGHT_VENV/bin/pip" install --upgrade pip -q
+echo -e "${YELLOW}  Installing dependencies for Light environment (API & light workers)...${NC}"
+"$LIGHT_VENV/bin/pip" install -r "$ROOT_DIR/admin-api/requirements.txt" -q
+"$LIGHT_VENV/bin/pip" install -r "$ROOT_DIR/worker_download/requirements.txt" -q
+"$LIGHT_VENV/bin/pip" install -r "$ROOT_DIR/worker_slideshow/requirements.txt" -q
+"$LIGHT_VENV/bin/pip" install -r "$ROOT_DIR/worker_tts/requirements.txt" -q
+"$LIGHT_VENV/bin/pip" install -r "$ROOT_DIR/worker_chat/requirements.txt" -q
+"$LIGHT_VENV/bin/pip" install -r "$ROOT_DIR/worker_leader/requirements.txt" -q
+"$LIGHT_VENV/bin/pip" install -r "$ROOT_DIR/worker_text2img/requirements.txt" -q
+"$LIGHT_VENV/bin/pip" install -r "$ROOT_DIR/worker_promotion/requirements.txt" -q
+"$LIGHT_VENV/bin/pip" install -r "$ROOT_DIR/worker_research/requirements.txt" -q
+echo -e "${GREEN}  ✔ Shared Light venv ready${NC}"
 
-# Worker Review venv
-REVIEW_VENV="$ROOT_DIR/worker_review/venv"
-if [ ! -d "$REVIEW_VENV" ]; then
-  echo -e "${YELLOW}  Creating Worker Review venv...${NC}"
-  python3 -m venv "$REVIEW_VENV"
+HEAVY_VENV="$ROOT_DIR/.venv-heavy"
+if [ ! -d "$HEAVY_VENV" ]; then
+  echo -e "${YELLOW}  Creating Shared Heavy (AI/GPU) venv...${NC}"
+  if command -v python3.11 >/dev/null 2>&1; then
+    python3.11 -m venv "$HEAVY_VENV"
+  elif command -v python3.10 >/dev/null 2>&1; then
+    python3.10 -m venv "$HEAVY_VENV"
+  else
+    python3 -m venv "$HEAVY_VENV"
+  fi
 fi
-"$REVIEW_VENV/bin/pip" install --upgrade pip -q
-"$REVIEW_VENV/bin/pip" install -r "$ROOT_DIR/worker_review/requirements.txt" -q
-echo -e "${GREEN}  ✔ Worker Review venv ready${NC}"
+"$HEAVY_VENV/bin/pip" install --upgrade pip -q
+echo -e "${YELLOW}  Installing dependencies for Heavy environment (AI/GPU)...${NC}"
+"$HEAVY_VENV/bin/pip" install -r "$ROOT_DIR/worker_review/requirements.txt" -q
+"$HEAVY_VENV/bin/pip" install -r "$ROOT_DIR/worker_unbox/requirements.txt" -q
+"$HEAVY_VENV/bin/pip" install -r "$ROOT_DIR/worker_agent/requirements.txt" -q
+"$HEAVY_VENV/bin/pip" install -r "$ROOT_DIR/worker_translify/requirements.txt" -q
 
-# Worker Unbox venv
-UNBOX_VENV="$ROOT_DIR/worker_unbox/venv"
-if [ ! -d "$UNBOX_VENV" ]; then
-  echo -e "${YELLOW}  Creating Worker Unbox venv...${NC}"
-  python3 -m venv "$UNBOX_VENV"
-fi
-"$UNBOX_VENV/bin/pip" install --upgrade pip -q
-"$UNBOX_VENV/bin/pip" install -r "$ROOT_DIR/worker_unbox/requirements.txt" -q
-echo -e "${GREEN}  ✔ Worker Unbox venv ready${NC}"
-
-# Worker Download venv
-DOWNLOAD_VENV="$ROOT_DIR/worker_download/venv"
-if [ ! -d "$DOWNLOAD_VENV" ]; then
-  echo -e "${YELLOW}  Creating Worker Download venv...${NC}"
-  python3 -m venv "$DOWNLOAD_VENV"
-fi
-"$DOWNLOAD_VENV/bin/pip" install --upgrade pip -q
-"$DOWNLOAD_VENV/bin/pip" install -r "$ROOT_DIR/worker_download/requirements.txt" -q
-echo -e "${GREEN}  ✔ Worker Download venv ready${NC}"
-
-# Worker Slideshow venv
-SLIDESHOW_VENV="$ROOT_DIR/worker_slideshow/venv"
-if [ ! -d "$SLIDESHOW_VENV" ]; then
-  echo -e "${YELLOW}  Creating Worker Slideshow venv...${NC}"
-  python3 -m venv "$SLIDESHOW_VENV"
-fi
-"$SLIDESHOW_VENV/bin/pip" install --upgrade pip -q
-"$SLIDESHOW_VENV/bin/pip" install -r "$ROOT_DIR/worker_slideshow/requirements.txt" -q
-echo -e "${GREEN}  ✔ Worker Slideshow venv ready${NC}"
-
-# Worker Promotion venv
-PROMOTION_VENV="$ROOT_DIR/worker_promotion/venv"
-if [ ! -d "$PROMOTION_VENV" ]; then
-  echo -e "${YELLOW}  Creating Worker Promotion venv...${NC}"
-  python3 -m venv "$PROMOTION_VENV"
-fi
-"$PROMOTION_VENV/bin/pip" install --upgrade pip -q
-"$PROMOTION_VENV/bin/pip" install -r "$ROOT_DIR/worker_promotion/requirements.txt" -q
-echo -e "${GREEN}  ✔ Worker Promotion venv ready${NC}"
-
-# Worker Research venv
-RESEARCH_VENV="$ROOT_DIR/worker_research/venv"
-if [ ! -d "$RESEARCH_VENV" ]; then
-  echo -e "${YELLOW}  Creating Worker Research venv...${NC}"
-  python3 -m venv "$RESEARCH_VENV"
-fi
-"$RESEARCH_VENV/bin/pip" install --upgrade pip -q
-"$RESEARCH_VENV/bin/pip" install -r "$ROOT_DIR/worker_research/requirements.txt" -q
-echo -e "${GREEN}  ✔ Worker Research venv ready${NC}"
-
-# Worker Translify venv
-TRANSLIFY_VENV="$ROOT_DIR/worker_translify/venv"
-if [ ! -f "$TRANSLIFY_VENV/bin/pip" ]; then
-  echo -e "${YELLOW}  Creating/Recreating Worker Translify venv (clean build)...${NC}"
-  rm -rf "$TRANSLIFY_VENV"
-  python3 -m venv "$TRANSLIFY_VENV"
-fi
-"$TRANSLIFY_VENV/bin/pip" install --upgrade pip -q
-"$TRANSLIFY_VENV/bin/pip" install -r "$ROOT_DIR/worker_translify/requirements.txt"
-
-# Force use of GPU-accelerated ONNX runtime and prevent CPU packages from overriding it
-echo -e "${YELLOW}  Forcing onnxruntime-gpu installation and resolving conflicts...${NC}"
-"$TRANSLIFY_VENV/bin/pip" uninstall -y onnxruntime onnxruntime-gpu -q
-"$TRANSLIFY_VENV/bin/pip" install onnxruntime-gpu -q
+# Force use of GPU-accelerated ONNX runtime and prevent CPU packages from overriding it, and force moviepy==1.0.3
+echo -e "${YELLOW}  Forcing onnxruntime-gpu and moviepy==1.0.3 installation...${NC}"
+"$HEAVY_VENV/bin/pip" uninstall -y onnxruntime onnxruntime-gpu moviepy -q
+"$HEAVY_VENV/bin/pip" install onnxruntime-gpu moviepy==1.0.3 -q
 
 # Fix cuDNN symlinks for PaddlePaddle
-TRANSLIFY_SITE_PACKAGES=$("$TRANSLIFY_VENV/bin/python" -c "import site; print(site.getsitepackages()[0])" 2>/dev/null || echo "$TRANSLIFY_VENV/lib/python3.10/site-packages")
-CUDNN_LIB_PATH="$TRANSLIFY_SITE_PACKAGES/nvidia/cudnn/lib"
-CUBLAS_LIB_PATH="$TRANSLIFY_SITE_PACKAGES/nvidia/cublas/lib"
-CUFFT_LIB_PATH="$TRANSLIFY_SITE_PACKAGES/nvidia/cufft/lib"
-CURAND_LIB_PATH="$TRANSLIFY_SITE_PACKAGES/nvidia/curand/lib"
-CUSOLVER_LIB_PATH="$TRANSLIFY_SITE_PACKAGES/nvidia/cusolver/lib"
-CUSPARSE_LIB_PATH="$TRANSLIFY_SITE_PACKAGES/nvidia/cusparse/lib"
-CUDA_RT_LIB_PATH="$TRANSLIFY_SITE_PACKAGES/nvidia/cuda_runtime/lib"
-NVJITLINK_LIB_PATH="$TRANSLIFY_SITE_PACKAGES/nvidia/nvjitlink/lib"
+HEAVY_SITE_PACKAGES=$("$HEAVY_VENV/bin/python" -c "import site; print(site.getsitepackages()[0])" 2>/dev/null || echo "$HEAVY_VENV/lib/python3.10/site-packages")
+CUDNN_LIB_PATH="$HEAVY_SITE_PACKAGES/nvidia/cudnn/lib"
+CUBLAS_LIB_PATH="$HEAVY_SITE_PACKAGES/nvidia/cublas/lib"
+CUFFT_LIB_PATH="$HEAVY_SITE_PACKAGES/nvidia/cufft/lib"
+CURAND_LIB_PATH="$HEAVY_SITE_PACKAGES/nvidia/curand/lib"
+CUSOLVER_LIB_PATH="$HEAVY_SITE_PACKAGES/nvidia/cusolver/lib"
+CUSPARSE_LIB_PATH="$HEAVY_SITE_PACKAGES/nvidia/cusparse/lib"
+CUDA_RT_LIB_PATH="$HEAVY_SITE_PACKAGES/nvidia/cuda_runtime/lib"
+NVJITLINK_LIB_PATH="$HEAVY_SITE_PACKAGES/nvidia/nvjitlink/lib"
 
 if [ -d "$CUDNN_LIB_PATH" ]; then
   if [ ! -f "$CUDNN_LIB_PATH/libcudnn.so" ]; then
@@ -151,65 +114,23 @@ if [ -d "$CUBLAS_LIB_PATH" ]; then
   fi
 fi
 
-echo -e "${GREEN}  ✔ Worker Translify venv ready${NC}"
+echo -e "${GREEN}  ✔ Shared Heavy venv ready${NC}"
 
-# Worker Agent venv
-AGENT_VENV="$ROOT_DIR/worker_agent/venv"
-if [ ! -d "$AGENT_VENV" ]; then
-  echo -e "${YELLOW}  Creating Worker Agent venv...${NC}"
-  # smolagents requires Python 3.10+
-  if command -v python3.11 >/dev/null 2>&1; then
-    python3.11 -m venv "$AGENT_VENV"
-  elif command -v python3.10 >/dev/null 2>&1; then
-    python3.10 -m venv "$AGENT_VENV"
-  else
-    echo -e "${RED}  ERROR: Worker Agent requires Python 3.10+. Please install it (e.g., brew install python@3.11)${NC}"
-    exit 1
-  fi
-fi
-"$AGENT_VENV/bin/pip" install --upgrade pip -q
-"$AGENT_VENV/bin/pip" install -r "$ROOT_DIR/worker_agent/requirements.txt" -q
-echo -e "${GREEN}  ✔ Worker Agent venv ready${NC}"
+# Map individual worker variables to the shared ones for execution compatibility
+API_VENV="$LIGHT_VENV"
+DOWNLOAD_VENV="$LIGHT_VENV"
+SLIDESHOW_VENV="$LIGHT_VENV"
+PROMOTION_VENV="$LIGHT_VENV"
+RESEARCH_VENV="$LIGHT_VENV"
+LEADER_VENV="$LIGHT_VENV"
+TEXT2IMG_VENV="$LIGHT_VENV"
+TTS_VENV="$LIGHT_VENV"
+CHAT_VENV="$LIGHT_VENV"
 
-# Worker Leader venv
-LEADER_VENV="$ROOT_DIR/worker_leader/venv"
-if [ ! -d "$LEADER_VENV" ]; then
-  echo -e "${YELLOW}  Creating Worker Leader venv...${NC}"
-  python3 -m venv "$LEADER_VENV"
-fi
-"$LEADER_VENV/bin/pip" install --upgrade pip -q
-"$LEADER_VENV/bin/pip" install -r "$ROOT_DIR/worker_leader/requirements.txt" -q
-echo -e "${GREEN}  ✔ Worker Leader venv ready${NC}"
-
-# Worker Text2Img venv
-TEXT2IMG_VENV="$ROOT_DIR/worker_text2img/venv"
-if [ ! -d "$TEXT2IMG_VENV" ]; then
-  echo -e "${YELLOW}  Creating Worker Text2Img venv...${NC}"
-  python3 -m venv "$TEXT2IMG_VENV"
-fi
-"$TEXT2IMG_VENV/bin/pip" install --upgrade pip -q
-"$TEXT2IMG_VENV/bin/pip" install -r "$ROOT_DIR/worker_text2img/requirements.txt" -q
-echo -e "${GREEN}  ✔ Worker Text2Img venv ready${NC}"
-
-# Worker TTS venv
-TTS_VENV="$ROOT_DIR/worker_tts/venv"
-if [ ! -d "$TTS_VENV" ]; then
-  echo -e "${YELLOW}  Creating Worker TTS venv...${NC}"
-  python3 -m venv "$TTS_VENV"
-fi
-"$TTS_VENV/bin/pip" install --upgrade pip -q
-"$TTS_VENV/bin/pip" install -r "$ROOT_DIR/worker_tts/requirements.txt" -q
-echo -e "${GREEN}  ✔ Worker TTS venv ready${NC}"
-
-# Worker Chat venv
-CHAT_VENV="$ROOT_DIR/worker_chat/venv"
-if [ ! -d "$CHAT_VENV" ]; then
-  echo -e "${YELLOW}  Creating Worker Chat venv...${NC}"
-  python3 -m venv "$CHAT_VENV"
-fi
-"$CHAT_VENV/bin/pip" install --upgrade pip -q
-"$CHAT_VENV/bin/pip" install -r "$ROOT_DIR/worker_chat/requirements.txt" -q
-echo -e "${GREEN}  ✔ Worker Chat venv ready${NC}"
+REVIEW_VENV="$HEAVY_VENV"
+UNBOX_VENV="$HEAVY_VENV"
+TRANSLIFY_VENV="$HEAVY_VENV"
+AGENT_VENV="$HEAVY_VENV"
 
 # ----------------------------------------------------------
 # 3. Common env vars
