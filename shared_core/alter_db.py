@@ -8,6 +8,9 @@ logger = logging.getLogger('alter_db')
 def alter_database():
     sql1 = 'ALTER TABLE video_jobs ADD COLUMN IF NOT EXISTS draft_parameters JSONB;'
     sql2 = 'ALTER TABLE video_jobs ADD COLUMN IF NOT EXISTS final_parameters JSONB;'
+    sql3 = 'ALTER TABLE video_jobs ADD COLUMN IF NOT EXISTS ai_metadata JSONB;'
+    sql4 = 'ALTER TABLE video_jobs ADD COLUMN IF NOT EXISTS tmcp_source_config JSONB;'
+    sql5 = 'ALTER TABLE video_jobs ADD COLUMN IF NOT EXISTS draft_variants JSONB;'
     
     sql_create_folders = """
     CREATE TABLE IF NOT EXISTS media_folders (
@@ -33,6 +36,9 @@ def alter_database():
         # PostgreSQL supports ADD COLUMN IF NOT EXISTS natively in version 9.6+
         conn.execute(text(sql1))
         conn.execute(text(sql2))
+        conn.execute(text(sql3))
+        conn.execute(text(sql4))
+        conn.execute(text(sql5))
         
         logger.info('Creating media_folders table if not exists...')
         conn.execute(text(sql_create_folders))

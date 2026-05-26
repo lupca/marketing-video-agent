@@ -34,11 +34,23 @@ export default function CreateLeaderJob() {
   const [suggestedDuration, setSuggestedDuration] = useState(30);
   const [masterContentsBrief, setMasterContentsBrief] = useState("");
 
+  // Form State - Content Brief Context
+  const [angleName, setAngleName] = useState("");
+  const [funnelStage, setFunnelStage] = useState("");
+  const [psychologicalAngle, setPsychologicalAngle] = useState("");
+  const [painPointFocus, setPainPointFocus] = useState("");
+  const [keyMessageVariation, setKeyMessageVariation] = useState("");
+  const [callToActionDirection, setCallToActionDirection] = useState("");
+  const [brief, setBrief] = useState("");
+
   // UI State
   const [loading, setLoading] = useState(false);
   const [error, setError] = useState<string | null>(null);
   const [statusMessage, setStatusMessage] = useState("");
   const [cloneLoading, setCloneLoading] = useState(!!cloneJobId);
+
+  // UI accordion state for Content Brief section
+  const [showBriefFields, setShowBriefFields] = useState(true);
 
   useEffect(() => {
     if (projects.length > 0 && !selectedProjectId) setSelectedProjectId(projects[0].id);
@@ -89,7 +101,17 @@ export default function CreateLeaderJob() {
           setSuggestedDuration(Number(duration));
         }
         
-        setMasterContentsBrief(cfg.master_contents_brief || variant.master_contents_brief || "");
+        const cbContext = cfg.content_brief_context || {};
+        setAngleName(cbContext.angle_name || "");
+        setFunnelStage(cbContext.funnel_stage || "");
+        setPsychologicalAngle(cbContext.psychological_angle || "");
+        setPainPointFocus(cbContext.pain_point_focus || "");
+        setKeyMessageVariation(cbContext.key_message_variation || "");
+        setCallToActionDirection(cbContext.call_to_action_direction || "");
+        
+        const briefVal = cbContext.brief || cfg.master_contents_brief || variant.master_contents_brief || "";
+        setBrief(briefVal);
+        setMasterContentsBrief(briefVal);
       } catch (err) {
         console.error("Failed to load cloned leader job:", err);
       } finally {
@@ -158,7 +180,16 @@ export default function CreateLeaderJob() {
             media_hints: hints,
             suggested_duration: Number(suggestedDuration),
           },
-          master_contents_brief: masterContentsBrief.trim(),
+          master_contents_brief: brief.trim() || masterContentsBrief.trim(),
+          content_brief_context: {
+            angle_name: angleName.trim(),
+            funnel_stage: funnelStage.trim(),
+            psychological_angle: psychologicalAngle.trim(),
+            pain_point_focus: painPointFocus.trim(),
+            key_message_variation: keyMessageVariation.trim(),
+            call_to_action_direction: callToActionDirection.trim(),
+            brief: brief.trim() || masterContentsBrief.trim(),
+          }
         },
       };
 
@@ -395,15 +426,104 @@ export default function CreateLeaderJob() {
                 />
               </div>
 
-              <div className="space-y-2">
-                <label className="text-xs font-semibold text-muted-foreground">Tóm tắt nội dung chính (Master Contents Brief)</label>
-                <textarea
-                  value={masterContentsBrief}
-                  onChange={(e) => setMasterContentsBrief(e.target.value)}
-                  placeholder="Phân tích đặc tính nổi bật của sản phẩm, định vị chiến dịch..."
-                  rows={3}
-                  className="flex w-full rounded-xl border border-white/10 bg-white/5 px-4 py-2.5 text-sm text-white focus:outline-none focus:ring-2 focus:ring-primary/50 transition-all resize-none placeholder:text-muted-foreground/30 leading-relaxed text-sm"
-                />
+              {/* Content Brief Context Collapsible Premium Card */}
+              <div className="rounded-xl border border-white/10 bg-white/[0.01] overflow-hidden">
+                <button
+                  type="button"
+                  onClick={() => setShowBriefFields(!showBriefFields)}
+                  className="w-full flex items-center justify-between px-4 py-3 bg-white/[0.02] border-b border-white/5 text-xs font-bold text-violet-400 hover:bg-white/5 transition-all animate-in fade-in"
+                >
+                  <span className="flex items-center gap-2 text-white">
+                    <FileText className="w-4 h-4 text-violet-400" />
+                    Tài Liệu Nội Dung & Chiến Lược Chiến Dịch (Content Brief)
+                  </span>
+                  <span className="text-violet-400">{showBriefFields ? "Thu gọn ▲" : "Mở rộng ▼"}</span>
+                </button>
+                {showBriefFields && (
+                  <div className="p-4 space-y-4 animate-in slide-in-from-top-2 duration-200">
+                    <div className="grid grid-cols-1 md:grid-cols-2 gap-4">
+                      <div className="space-y-1.5">
+                        <label className="text-[10px] font-bold text-muted-foreground uppercase tracking-wider">Góc Tiếp Cận (Angle Name)</label>
+                        <input
+                          type="text"
+                          value={angleName}
+                          onChange={(e) => setAngleName(e.target.value)}
+                          placeholder="Ví dụ: Mở hộp Vợt cầu lông Pro 2026"
+                          className="flex h-9 w-full rounded-lg border border-white/10 bg-white/5 px-3 text-xs text-white focus:outline-none focus:ring-1 focus:ring-primary/50 transition-all"
+                        />
+                      </div>
+                      <div className="space-y-1.5">
+                        <label className="text-[10px] font-bold text-muted-foreground uppercase tracking-wider">Giai Đoạn Phễu (Funnel Stage)</label>
+                        <input
+                          type="text"
+                          value={funnelStage}
+                          onChange={(e) => setFunnelStage(e.target.value)}
+                          placeholder="Ví dụ: Awareness, Consideration..."
+                          className="flex h-9 w-full rounded-lg border border-white/10 bg-white/5 px-3 text-xs text-white focus:outline-none focus:ring-1 focus:ring-primary/50 transition-all"
+                        />
+                      </div>
+                    </div>
+
+                    <div className="grid grid-cols-1 md:grid-cols-2 gap-4">
+                      <div className="space-y-1.5">
+                        <label className="text-[10px] font-bold text-muted-foreground uppercase tracking-wider">Tâm Lý Tác Động (Psychological Angle)</label>
+                        <input
+                          type="text"
+                          value={psychologicalAngle}
+                          onChange={(e) => setPsychologicalAngle(e.target.value)}
+                          placeholder="Ví dụ: Curiosity, Fear of Missing Out..."
+                          className="flex h-9 w-full rounded-lg border border-white/10 bg-white/5 px-3 text-xs text-white focus:outline-none focus:ring-1 focus:ring-primary/50 transition-all"
+                        />
+                      </div>
+                      <div className="space-y-1.5">
+                        <label className="text-[10px] font-bold text-muted-foreground uppercase tracking-wider">Nỗi Đau Tập Trung (Pain Point Focus)</label>
+                        <input
+                          type="text"
+                          value={painPointFocus}
+                          onChange={(e) => setPainPointFocus(e.target.value)}
+                          placeholder="Ví dụ: Lo lắng mua phải hàng giả..."
+                          className="flex h-9 w-full rounded-lg border border-white/10 bg-white/5 px-3 text-xs text-white focus:outline-none focus:ring-1 focus:ring-primary/50 transition-all"
+                        />
+                      </div>
+                    </div>
+
+                    <div className="space-y-1.5">
+                      <label className="text-[10px] font-bold text-muted-foreground uppercase tracking-wider">Thông Điệp Cốt Lõi Biến Thể (Key Message Variation)</label>
+                      <input
+                        type="text"
+                        value={keyMessageVariation}
+                        onChange={(e) => setKeyMessageVariation(e.target.value)}
+                        placeholder="Ví dụ: Đảm bảo chất lượng chính hãng 100%..."
+                        className="flex h-9 w-full rounded-lg border border-white/10 bg-white/5 px-3 text-xs text-white focus:outline-none focus:ring-1 focus:ring-primary/50 transition-all"
+                      />
+                    </div>
+
+                    <div className="space-y-1.5">
+                      <label className="text-[10px] font-bold text-muted-foreground uppercase tracking-wider">Hướng Đi Kêu Gọi Hành Động (CTA Direction)</label>
+                      <input
+                        type="text"
+                        value={callToActionDirection}
+                        onChange={(e) => setCallToActionDirection(e.target.value)}
+                        placeholder="Ví dụ: Nhấn vào liên kết để nhận ưu đãi..."
+                        className="flex h-9 w-full rounded-lg border border-white/10 bg-white/5 px-3 text-xs text-white focus:outline-none focus:ring-1 focus:ring-primary/50 transition-all"
+                      />
+                    </div>
+
+                    <div className="space-y-1.5">
+                      <label className="text-[10px] font-bold text-muted-foreground uppercase tracking-wider">Tóm Tắt Nội Dung Chính / Brief *</label>
+                      <textarea
+                        value={brief}
+                        onChange={(e) => {
+                          setBrief(e.target.value);
+                          setMasterContentsBrief(e.target.value);
+                        }}
+                        placeholder="Phân tích đặc tính nổi bật của vợt cầu lông Pro 2026..."
+                        rows={4}
+                        className="flex w-full rounded-lg border border-white/10 bg-white/5 px-3 py-2 text-xs text-white focus:outline-none focus:ring-1 focus:ring-primary/50 resize-none leading-relaxed placeholder:text-muted-foreground/30 transition-all"
+                      />
+                    </div>
+                  </div>
+                )}
               </div>
 
               <div className="space-y-2">

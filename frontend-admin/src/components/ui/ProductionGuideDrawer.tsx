@@ -128,18 +128,73 @@ export function ProductionGuideDrawer({ isOpen, onClose, jobType, tmcpContext }:
                 </div>
               </div>
 
-              {/* Master Contents Brief from TMCP */}
-              {(tmcpContext.master_contents_brief || tmcpContext.variant_data?.master_contents_brief) && (
-                <div className="rounded-xl border border-violet-500/20 bg-violet-500/5 p-5 animate-in fade-in duration-300">
-                  <h4 className="text-sm font-bold text-white flex items-center gap-2 mb-3">
-                    <FileText className="w-4 h-4 text-violet-400" />
-                    Tóm Tắt Nội Dung Chính (Master Brief)
-                  </h4>
-                  <div className="bg-black/30 rounded-lg p-4 font-mono text-xs text-gray-300 leading-relaxed max-h-48 overflow-y-auto whitespace-pre-line border border-white/5 shadow-inner">
-                    {tmcpContext.master_contents_brief || tmcpContext.variant_data?.master_contents_brief}
+              {/* Content Brief Context from TMCP */}
+              {(tmcpContext.content_brief_context || tmcpContext.master_contents_brief || tmcpContext.variant_data?.master_contents_brief) && (() => {
+                const cb = tmcpContext.content_brief_context || {};
+                const briefText = cb.brief || tmcpContext.master_contents_brief || tmcpContext.variant_data?.master_contents_brief || "";
+                
+                return (
+                  <div className="rounded-xl border border-violet-500/20 bg-violet-500/5 p-5 animate-in fade-in duration-300 space-y-4">
+                    <h4 className="text-sm font-bold text-white flex items-center gap-2 border-b border-white/5 pb-2">
+                      <FileText className="w-4 h-4 text-violet-400" />
+                      Tài Liệu Nội Dung & Chiến Lược (Content Brief)
+                    </h4>
+                    
+                    {/* Rich campaign metadata grid */}
+                    {(cb.angle_name || cb.funnel_stage || cb.psychological_angle || cb.pain_point_focus || cb.key_message_variation || cb.call_to_action_direction) && (
+                      <div className="grid grid-cols-1 md:grid-cols-2 gap-3 text-[11px] bg-black/20 p-3 rounded-lg border border-white/5">
+                        {cb.angle_name && (
+                          <div>
+                            <span className="text-muted-foreground block font-bold uppercase tracking-wider text-[9px]">Góc Tiếp Cận:</span>
+                            <span className="text-violet-300">{cb.angle_name}</span>
+                          </div>
+                        )}
+                        {cb.funnel_stage && (
+                          <div>
+                            <span className="text-muted-foreground block font-bold uppercase tracking-wider text-[9px]">Giai Đoạn Phễu:</span>
+                            <span className="text-violet-300">{cb.funnel_stage}</span>
+                          </div>
+                        )}
+                        {cb.psychological_angle && (
+                          <div>
+                            <span className="text-muted-foreground block font-bold uppercase tracking-wider text-[9px]">Tác Động Tâm Lý:</span>
+                            <span className="text-violet-300">{cb.psychological_angle}</span>
+                          </div>
+                        )}
+                        {cb.pain_point_focus && (
+                          <div>
+                            <span className="text-muted-foreground block font-bold uppercase tracking-wider text-[9px]">Nỗi Đau Tập Trung:</span>
+                            <span className="text-violet-300">{cb.pain_point_focus}</span>
+                          </div>
+                        )}
+                        {cb.key_message_variation && (
+                          <div className="md:col-span-2">
+                            <span className="text-muted-foreground block font-bold uppercase tracking-wider text-[9px]">Thông Điệp Cốt Lõi:</span>
+                            <span className="text-violet-300">{cb.key_message_variation}</span>
+                          </div>
+                        )}
+                        {cb.call_to_action_direction && (
+                          <div className="md:col-span-2">
+                            <span className="text-muted-foreground block font-bold uppercase tracking-wider text-[9px]">Kêu Gọi Hành Động (CTA):</span>
+                            <span className="text-violet-300">{cb.call_to_action_direction}</span>
+                          </div>
+                        )}
+                      </div>
+                    )}
+                    
+                    {/* Rich text/brief description */}
+                    {briefText && (
+                      <div className="space-y-1.5">
+                        <span className="text-[10px] font-bold text-muted-foreground uppercase tracking-wider">Tóm tắt nội dung chi tiết:</span>
+                        <div 
+                          className="bg-black/30 rounded-lg p-4 font-mono text-xs text-gray-300 leading-relaxed max-h-48 overflow-y-auto border border-white/5 shadow-inner"
+                          dangerouslySetInnerHTML={{ __html: briefText.includes("<p>") ? briefText : briefText.replace(/\n/g, "<br/>") }}
+                        />
+                      </div>
+                    )}
                   </div>
-                </div>
-              )}
+                );
+              })()}
 
               {/* Detailed Script from TMCP */}
               <div className="rounded-xl border border-cyan-500/20 bg-cyan-500/5 p-5">

@@ -76,6 +76,9 @@ class JobCreate(BaseModel):
     config_data: Dict[str, Any]
     draft_parameters: Optional[Dict[str, Any]] = None
     final_parameters: Optional[Dict[str, Any]] = None
+    ai_metadata: Optional[Dict[str, Any]] = None
+    tmcp_source_config: Optional[Dict[str, Any]] = None
+    draft_variants: Optional[Dict[str, Any]] = None
     project_id: str
     template_id: Optional[str] = None
     priority: Optional[int] = 0
@@ -99,9 +102,12 @@ class JobResponse(BaseModel):
     worker_id: Optional[str] = None
     status: str
     priority: int
-    config_data: Dict[str, Any]
+    config_data: Optional[Dict[str, Any]] = None
     draft_parameters: Optional[Dict[str, Any]] = None
     final_parameters: Optional[Dict[str, Any]] = None
+    ai_metadata: Optional[Dict[str, Any]] = None
+    tmcp_source_config: Optional[Dict[str, Any]] = None
+    draft_variants: Optional[Dict[str, Any]] = None
     progress_percent: int
     result_url: Optional[str] = None
     error_message: Optional[str] = None
@@ -117,6 +123,9 @@ class JobUpdate(BaseModel):
     config_data: Optional[Dict[str, Any]] = None
     draft_parameters: Optional[Dict[str, Any]] = None
     final_parameters: Optional[Dict[str, Any]] = None
+    ai_metadata: Optional[Dict[str, Any]] = None
+    tmcp_source_config: Optional[Dict[str, Any]] = None
+    draft_variants: Optional[Dict[str, Any]] = None
     priority: Optional[int] = None
 
 
@@ -371,6 +380,15 @@ class VariantData(BaseModel):
     media_hints: Optional[List[str]] = []
     suggested_duration: Optional[int] = 15
 
+class ContentBriefContext(BaseModel):
+    angle_name: Optional[str] = ""
+    funnel_stage: Optional[str] = ""
+    psychological_angle: Optional[str] = ""
+    pain_point_focus: Optional[str] = ""
+    key_message_variation: Optional[str] = ""
+    call_to_action_direction: Optional[str] = ""
+    brief: Optional[str] = ""
+
 class TMCPPayload(BaseModel):
     source_id: str
     brand_context: BrandContext
@@ -381,6 +399,7 @@ class TMCPPayload(BaseModel):
     media_hints: Optional[List[str]] = []
     suggested_duration: Optional[int] = 15
     master_contents_brief: Optional[str] = ""
+    content_brief_context: Optional[ContentBriefContext] = None
 
 
 # ── LLM Models CRUD ───────────────────────────────────────────────────────────

@@ -7,14 +7,109 @@ import json
 import logging
 import time
 import requests
+import re
 from typing import Dict, Any
 from datetime import datetime, timezone
+
+from smolagents import CodeAgent, OpenAIServerModel, tool, ToolCallingAgent
 
 from shared_core.database import SessionLocal
 from shared_core.models import VideoJob, JobLog
 from shared_core.config import get_settings
 
 logger = logging.getLogger(__name__)
+
+
+@tool
+def validate_video_pacing(timeline_script_str: str) -> str:
+    """
+    Quét kịch bản timeline dạng JSON, đếm số từ trên giây (words per second) ở mỗi phân cảnh.
+    Nếu có phân cảnh vượt quá 4.5 từ/giây, cảnh báo cho LLM và yêu cầu LLM chia đôi phân cảnh đó hoặc rút gọn văn bản.
+    
+    Args:
+        timeline_script_str: Kịch bản timeline dưới dạng chuỗi JSON string cần kiểm tra.
+    """
+    try:
+        data = json.loads(timeline_script_str)
+        warnings = []
+        segments = []
+        
+        # Hỗ trợ cấu trúc timeline_script hoặc input_json.products hoặc text_events
+        if isinstance(data, list):
+            segments = data
+        elif isinstance(data, dict):
+            if "timeline_script" in data:
+                segments = data["timeline_script"]
+            elif "input_json" in data and "products" in data["input_json"]:
+                for idx, p in enumerate(data["input_json"]["products"]):
+                    segments.append({
+                        "segment": p.get("hook", f"slide_{idx+1}"),
+                        "text_overlay": p.get("text", ""),
+                        "time_range": [0, 5]
+                    })
+            elif "text_events" in data:
+                events = data["text_events"]
+                for i, ev in enumerate(events):
+                    nxt_time = events[i+1]["time"] if i < len(events) - 1 else ev["time"] + 4.0
+                    duration = max(nxt_time - ev["time"], 1.0)
+                    segments.append({
+                        "segment": f"event_{i+1}",
+                        "text_overlay": ev.get("text", ""),
+                        "time_range": [ev["time"], ev["time"] + duration]
+                    })
+            else:
+                return "Cấu trúc JSON không chứa timeline_script hoặc products/text_events để kiểm tra."
+        else:
+            return "timeline_script_str không phải là một JSON valid."
+            
+        for seg in segments:
+            if not isinstance(seg, dict):
+                continue
+            name = seg.get("segment") or seg.get("video_source") or "unnamed"
+            text = seg.get("text_overlay") or seg.get("text") or ""
+            time_range = seg.get("time_range")
+            if not text or not time_range or len(time_range) < 2:
+                continue
+            
+            duration = max(float(time_range[1]) - float(time_range[0]), 0.5)
+            word_count = len(text.split())
+            wps = word_count / duration
+            
+            if wps > 4.5:
+                warnings.append(
+                    f"Phân cảnh '{name}' quá nhanh: {wps:.2f} từ/giây (vượt quá giới hạn 4.5 từ/giây). "
+                    f"Số từ: {word_count}, Thời lượng: {duration}s. Hãy chia đôi cảnh này hoặc giảm bớt chữ trong text_overlay."
+                )
+                
+        if warnings:
+            return "\n".join(warnings)
+        return "Tất cả các phân cảnh đều có nhịp độ (pacing) hợp lý, dưới 4.5 từ/giây."
+    except Exception as e:
+        return f"Lỗi khi kiểm tra pacing: {str(e)}"
+
+
+def _extract_json_from_text(text: str) -> dict:
+    """Tìm và parse JSON từ văn bản kết quả của LLM/Agent."""
+    try:
+        return json.loads(text.strip())
+    except Exception:
+        pass
+        
+    match = re.search(r'```(?:json)?\s*(\{.*?\})\s*```', text, re.DOTALL)
+    if match:
+        try:
+            return json.loads(match.group(1).strip())
+        except Exception:
+            pass
+            
+    match = re.search(r'(\{.*\})', text, re.DOTALL)
+    if match:
+        try:
+            return json.loads(match.group(1).strip())
+        except Exception:
+            pass
+            
+    raise ValueError(f"Không thể trích xuất JSON hợp lệ từ kết quả của Agent: {text}")
 
 
 # ── Load Prompts Dynamically ──────────────────────────────────────────────────
@@ -285,6 +380,12 @@ def process_leader_job_impl(job_id: int):
         return
 
     try:
+        import sys
+        if not hasattr(sys.stdout, "fileno"):
+            sys.stdout.fileno = lambda: 1
+        if not hasattr(sys.stderr, "fileno"):
+            sys.stderr.fileno = lambda: 2
+
         logger.info(f"Leader Agent starting analysis for job: {job_id}")
         job.status = "PROCESSING"
         job.started_at = datetime.now(timezone.utc)
@@ -315,9 +416,22 @@ def process_leader_job_impl(job_id: int):
         script_content = payload.get("script_content") or variant.get("script_content", "")
         hints = payload.get("media_hints") or variant.get("media_hints", [])
         duration = payload.get("suggested_duration") or variant.get("suggested_duration", 15)
-        master_contents_brief = payload.get("master_contents_brief") or ""
+        
+        # New TMCP Funnel & Content Brief Context Fields
+        content_brief_context = payload.get("content_brief_context", {}) or {}
+        angle_name = content_brief_context.get("angle_name") or ""
+        funnel_stage_cb = content_brief_context.get("funnel_stage") or ""
+        psychological_angle = content_brief_context.get("psychological_angle") or ""
+        pain_point_focus = content_brief_context.get("pain_point_focus") or ""
+        key_message_variation = content_brief_context.get("key_message_variation") or ""
+        call_to_action_direction = content_brief_context.get("call_to_action_direction") or ""
+        brief = content_brief_context.get("brief") or ""
 
-        # 3. Gọi LLM Ollama
+        funnel_stage = funnel_stage_cb or payload.get("funnel_stage") or campaign.get("funnel_stage") or "Unknown"
+        psych_angle = psychological_angle or payload.get("psych_angle") or campaign.get("psych_angle") or ""
+        master_contents_brief = brief or payload.get("master_contents_brief") or variant.get("master_contents_brief") or ""
+
+        # 3. Gọi SmolAgents CodeAgent
         settings = get_settings()
         base_url = _get_global_model_setting("base_url") or settings.ollama.base_url
         model_name = _get_global_model_setting("model_name") or settings.ollama.model_name
@@ -325,65 +439,112 @@ def process_leader_job_impl(job_id: int):
         system_prompt = load_prompt("leader_system_prompt.txt")
 
         user_content = (
-            f"Thông tin kịch bản đầu vào:\n"
+            f"--- CONTENT BRIEFS TỪ TMCP ---\n"
+            f"- Phễu Marketing: {funnel_stage} | Tâm lý học hành vi: {psych_angle}\n"
+        )
+        if angle_name:
+            user_content += f"- Góc tiếp cận chiến dịch: {angle_name}\n"
+        if pain_point_focus:
+            user_content += f"- Nỗi đau khách hàng tập trung: {pain_point_focus}\n"
+        if key_message_variation:
+            user_content += f"- Thông điệp cốt lõi: {key_message_variation}\n"
+        if call_to_action_direction:
+            user_content += f"- Hướng đi kêu gọi hành động (CTA): {call_to_action_direction}\n"
+
+        user_content += (
+            f"- Tóm tắt nội dung chính (Master Brief): {master_contents_brief}\n"
             f"- Thương hiệu: {brand_name}\n"
             f"- Tone giọng: {tone}\n"
             f"- Màu sắc: {colors}\n"
             f"- Chiến dịch: {campaign_name}\n"
             f"- Đối tượng: {audience}\n"
             f"- Mục tiêu: {objective}\n"
-            f"- Tiêu đề Kịch bản: {title}\n"
-            f"- Nội dung Kịch bản: {script_content}\n"
+            f"- Tiêu đề kịch bản: {title}\n"
+            f"- Kịch bản gốc: {script_content}\n"
             f"- Gợi ý phân cảnh: {hints}\n"
-            f"- Thời lượng gợi ý: {duration} giây\n"
+            f"- Thời lượng gợi ý: {duration} giây\n\n"
+            f"Bạn PHẢI sử dụng công cụ `validate_video_pacing` để tự động kiểm tra nhịp độ chữ của timeline script do bạn sinh ra. "
+            f"Nếu công cụ báo lỗi (vượt quá 4.5 từ/giây), hãy tự động điều chỉnh kịch bản hoặc tăng thời lượng phân cảnh và chạy lại công cụ cho đến khi đạt yêu cầu.\n"
+            f"Hãy hoàn thành nhiệm vụ và xuất ra kết quả JSON duy nhất theo đúng cấu trúc yêu cầu."
         )
-        if master_contents_brief:
-            user_content += f"- Tóm tắt nội dung chính (Master Brief): {master_contents_brief}\n"
-            
-        user_content += f"\nHãy suy nghĩ kỹ, chọn worker thích hợp nhất và xuất JSON."
 
-        logger.info(f"Calling Ollama at {base_url} with model {model_name}")
-        api_url = f"{base_url.rstrip('/')}/v1/chat/completions"
-        headers = {"Content-Type": "application/json"}
-        req_payload = {
-            "model": model_name,
-            "messages": [
-                {"role": "system", "content": system_prompt},
-                {"role": "user", "content": user_content}
-            ],
-            "response_format": {"type": "json_object"}
-        }
-
-        res_data = call_ollama_with_retry(api_url, req_payload, headers)
+        logger.info(f"Setting up SmolAgents CodeAgent with model {model_name} at {base_url}")
         
-        ai_message = res_data["choices"][0]["message"]["content"]
-        logger.info(f"Ollama response: {ai_message}")
+        model = OpenAIServerModel(
+            model_id=model_name,
+            api_base=f"{base_url.rstrip('/')}/v1",
+            api_key="ollama",
+        )
+        
+        agent = ToolCallingAgent(
+            tools=[validate_video_pacing],
+            model=model,
+            instructions=system_prompt,
+            max_steps=3,
+        )
 
-        parsed_res = json.loads(ai_message)
-        reasoning = parsed_res.get("reasoning", "No reasoning provided")
+        logger.info(f"Running agent...")
+        agent_result = agent.run(user_content)
+        logger.info(f"Agent finished. Result: {agent_result}")
+
+        # Parse AI response
+        parsed_res = _extract_json_from_text(agent_result)
         worker_type = parsed_res.get("worker_type", "slideshow")
-        draft_params = parsed_res.get("draft_parameters", {})
+        ai_metadata = parsed_res.get("ai_metadata", {})
+        draft_variants = parsed_res.get("draft_variants", {})
+
+        # Tự động đồng bộ các trường phân tích vào ai_metadata nếu thiếu
+        if not isinstance(ai_metadata, dict):
+            ai_metadata = {}
+        ai_metadata["funnel_stage"] = funnel_stage
+        ai_metadata["psych_angle"] = psych_angle
+        ai_metadata["content_brief_context"] = content_brief_context
+        if "hook_score" not in ai_metadata:
+            ai_metadata["hook_score"] = 7
+        if "seo_titles" not in ai_metadata:
+            ai_metadata["seo_titles"] = [title]
+        if "qa_warnings" not in ai_metadata:
+            ai_metadata["qa_warnings"] = []
 
         valid_workers = ["slideshow", "review", "unbox_viral", "translify"]
         if worker_type not in valid_workers:
             logger.warning(f"Invalid worker_type '{worker_type}' returned, defaulting to 'slideshow'")
             worker_type = "slideshow"
 
-        logger.info(f"Applying defensive healing to draft parameters for worker: {worker_type}")
-        draft_params = heal_draft_parameters(worker_type, draft_params, script_content, title)
+        # Apply healers to both draft variants to guarantee integrity
+        logger.info(f"Applying defensive healing to both draft variants for worker: {worker_type}")
+        if not isinstance(draft_variants, dict):
+            draft_variants = {}
+        
+        original_draft = draft_variants.get("original", {})
+        viral_draft = draft_variants.get("viral_optimized", {})
+        
+        original_draft = heal_draft_parameters(worker_type, original_draft, script_content, title)
+        viral_draft = heal_draft_parameters(worker_type, viral_draft, script_content, title)
+        
+        if "metadata" not in original_draft or not isinstance(original_draft["metadata"], dict):
+            original_draft["metadata"] = {}
+        original_draft["metadata"]["tmcp_context"] = payload
 
-        if "metadata" not in draft_params or not isinstance(draft_params["metadata"], dict):
-            draft_params["metadata"] = {}
-        draft_params["metadata"]["tmcp_context"] = payload
+        if "metadata" not in viral_draft or not isinstance(viral_draft["metadata"], dict):
+            viral_draft["metadata"] = {}
+        viral_draft["metadata"]["tmcp_context"] = payload
 
-        # 4. Tạo Job mới ở trạng thái DRAFT
+        draft_variants["original"] = original_draft
+        draft_variants["viral_optimized"] = viral_draft
+
+        # 4. Tạo Job mới ở trạng thái DRAFT với các trường nâng cấp mới
         new_job = VideoJob(
             job_type=worker_type,
             project_id=job.project_id,
             status="DRAFT",
             priority=0,
-            config_data=draft_params,
-            draft_parameters=draft_params,
+            # config_data tạm thời để trống (None) như mô tả trong Phase 1 Spec
+            config_data=None,
+            draft_parameters=original_draft, # giữ tương thích ngược
+            ai_metadata=ai_metadata,
+            tmcp_source_config=payload,
+            draft_variants=draft_variants,
             progress_percent=0,
             note=f"Draft generated by Leader Agent for Variant: {payload.get('source_id') or 'manual'}",
         )
@@ -396,7 +557,7 @@ def process_leader_job_impl(job_id: int):
         db_log = JobLog(
             job_id=job.id,
             log_level="INFO",
-            message=f"Leader Agent reasoning:\n{reasoning}\nSelected worker: {worker_type}. Created Draft Job ID: {new_job.id}"
+            message=f"Leader Agent selected worker: {worker_type}. Created Draft Job ID: {new_job.id}"
         )
         db.add(db_log)
 

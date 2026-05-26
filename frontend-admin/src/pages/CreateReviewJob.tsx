@@ -12,6 +12,8 @@ import { RenderSettingsStep } from "../components/features/review/RenderSettings
 import { ReviewSubmitStep } from "../components/features/review/ReviewSubmitStep";
 import { JobCreationLayout } from "../components/ui/JobCreationLayout";
 import { JobActionButtons } from "../components/ui/JobActionButtons";
+import { useAIDraft } from "../hooks/useAIDraft";
+import { AIDraftPanel } from "../components/ui/AIDraftPanel";
 
 const STEPS = [
   { id: 1, name: "Âm thanh & Dự án", icon: Music },
@@ -27,6 +29,10 @@ export default function CreateReviewJob() {
   const [step, setStep] = useState(1);
   const [cloneLoading, setCloneLoading] = useState(!!cloneJobId);
   const [tmcpContext, setTmcpContext] = useState<any>(null);
+
+  // Raw job data for toggle
+  const [rawJob, setRawJob] = useState<any>(null);
+  const { hasDrafts, activeMode, setActiveMode, aiMetadata } = useAIDraft(rawJob);
 
   // Custom Hooks
   const { projects, createProject } = useProjects();
@@ -66,6 +72,70 @@ export default function CreateReviewJob() {
   const [error, setError] = useState<string | null>(null);
   const [uploadStatus, setUploadStatus] = useState("");
 
+  const applyConfig = (cfg: any) => {
+    if (!cfg) return;
+
+    // Extract and set tmcp_context
+    if (cfg.metadata?.tmcp_context) {
+      setTmcpContext(cfg.metadata.tmcp_context);
+    }
+
+    // Pre-fill audio assets
+    if (cfg.assets?.audio) {
+      const audio = cfg.assets.audio;
+      if (audio.voiceover_path) {
+        setVoiceover({
+          id: null, s3_url: audio.voiceover_path, uploading: false, progress: 0,
+          asset: { id: "", s3_url: audio.voiceover_path, file_name: audio.voiceover_path.split("/").pop() || "voiceover", file_size_bytes: 0, asset_type: "voiceover", mime_type: "audio/mpeg", created_at: "" },
+        });
+      } else {
+        setVoiceover(null);
+      }
+      if (audio.voiceover_script) {
+        setScript({
+          id: null, s3_url: audio.voiceover_script, uploading: false, progress: 0,
+          asset: { id: "", s3_url: audio.voiceover_script, file_name: audio.voiceover_script.split("/").pop() || "script", file_size_bytes: 0, asset_type: "script", mime_type: "text/plain", created_at: "" },
+        });
+      } else {
+        setScript(null);
+      }
+      if (audio.voiceover_lang) setLanguage(audio.voiceover_lang);
+      if (audio.bgm_path) {
+        setBgm({
+          id: null, s3_url: audio.bgm_path, uploading: false, progress: 0,
+          asset: { id: "", s3_url: audio.bgm_path, file_name: audio.bgm_path.split("/").pop() || "bgm", file_size_bytes: 0, asset_type: "bgm", mime_type: "audio/mpeg", created_at: "" },
+        });
+      } else {
+        setBgm(null);
+      }
+    }
+
+    // Pre-fill segments from timeline_script
+    if (cfg.timeline_script && Array.isArray(cfg.timeline_script)) {
+      const clonedSegments: Segment[] = cfg.timeline_script.map((ts: any) => ({
+        name: ts.segment || ts.video_source || "segment",
+        label: ts.segment || "Segment",
+        timeStart: ts.time_range?.[0] || 0,
+        timeEnd: ts.time_range?.[1] || 5,
+        clips: [], // Clips need to be re-selected
+        textOverlay: ts.text_overlay || "",
+        highlightWords: (ts.highlight_words || []).join(", "),
+        effects: ts.visual_effects || [],
+        pacingMin: ts.pacing?.min_clip_duration || 0.5,
+        pacingMax: ts.pacing?.max_clip_duration || 1.2,
+      }));
+      setSegments(clonedSegments);
+    }
+
+    // Pre-fill render settings
+    if (cfg.render_settings) {
+      const rs = cfg.render_settings;
+      if (rs.auto_subtitle !== undefined) setAutoSubtitle(rs.auto_subtitle);
+      if (rs.text_style?.font_size) setFontSize(rs.text_style.font_size);
+      if (rs.text_style?.color) setTextColor(rs.text_style.color);
+    }
+  };
+
   // Clone pre-fill: fetch original job data and populate form
   useEffect(() => {
     if (!cloneJobId) return;
@@ -77,6 +147,8 @@ export default function CreateReviewJob() {
         const job = res.data;
         if (cancelled) return;
 
+        setRawJob(job);
+
         // Pre-fill project
         if (job.project_id) {
           setSelectedProjectId(job.project_id);
@@ -84,60 +156,10 @@ export default function CreateReviewJob() {
         }
         if (job.priority !== undefined) setPriority(job.priority);
 
-        const cfg = job.config_data || {};
-
-        // Extract and set tmcp_context
-        if (cfg.metadata?.tmcp_context) {
-          setTmcpContext(cfg.metadata.tmcp_context);
-        }
-
-        // Pre-fill audio assets
-        if (cfg.assets?.audio) {
-          const audio = cfg.assets.audio;
-          if (audio.voiceover_path) {
-            setVoiceover({
-              id: null, s3_url: audio.voiceover_path, uploading: false, progress: 0,
-              asset: { id: "", s3_url: audio.voiceover_path, file_name: audio.voiceover_path.split("/").pop() || "voiceover", file_size_bytes: 0, asset_type: "voiceover", mime_type: "audio/mpeg", created_at: "" },
-            });
-          }
-          if (audio.voiceover_script) {
-            setScript({
-              id: null, s3_url: audio.voiceover_script, uploading: false, progress: 0,
-              asset: { id: "", s3_url: audio.voiceover_script, file_name: audio.voiceover_script.split("/").pop() || "script", file_size_bytes: 0, asset_type: "script", mime_type: "text/plain", created_at: "" },
-            });
-          }
-          if (audio.voiceover_lang) setLanguage(audio.voiceover_lang);
-          if (audio.bgm_path) {
-            setBgm({
-              id: null, s3_url: audio.bgm_path, uploading: false, progress: 0,
-              asset: { id: "", s3_url: audio.bgm_path, file_name: audio.bgm_path.split("/").pop() || "bgm", file_size_bytes: 0, asset_type: "bgm", mime_type: "audio/mpeg", created_at: "" },
-            });
-          }
-        }
-
-        // Pre-fill segments from timeline_script
-        if (cfg.timeline_script && Array.isArray(cfg.timeline_script)) {
-          const clonedSegments: Segment[] = cfg.timeline_script.map((ts: any) => ({
-            name: ts.segment || ts.video_source || "segment",
-            label: ts.segment || "Segment",
-            timeStart: ts.time_range?.[0] || 0,
-            timeEnd: ts.time_range?.[1] || 5,
-            clips: [], // Clips need to be re-selected
-            textOverlay: ts.text_overlay || "",
-            highlightWords: (ts.highlight_words || []).join(", "),
-            effects: ts.visual_effects || [],
-            pacingMin: ts.pacing?.min_clip_duration || 0.5,
-            pacingMax: ts.pacing?.max_clip_duration || 1.2,
-          }));
-          setSegments(clonedSegments);
-        }
-
-        // Pre-fill render settings
-        if (cfg.render_settings) {
-          const rs = cfg.render_settings;
-          if (rs.auto_subtitle !== undefined) setAutoSubtitle(rs.auto_subtitle);
-          if (rs.text_style?.font_size) setFontSize(rs.text_style.font_size);
-          if (rs.text_style?.color) setTextColor(rs.text_style.color);
+        if (job.draft_variants) {
+          applyConfig(job.draft_variants.original);
+        } else {
+          applyConfig(job.config_data || {});
         }
       } catch (err) {
         console.error("Failed to load cloned job:", err);
@@ -148,6 +170,13 @@ export default function CreateReviewJob() {
     loadClone();
     return () => { cancelled = true; };
   }, [cloneJobId]);
+
+  const handleModeToggle = (mode: "original" | "viral_optimized") => {
+    setActiveMode(mode);
+    if (rawJob && rawJob.draft_variants) {
+      applyConfig(rawJob.draft_variants[mode]);
+    }
+  };
 
   const handleSubmit = async () => {
     if (!isCreatingProject && !selectedProjectId) return setError("Vui lòng chọn dự án");
@@ -521,6 +550,14 @@ export default function CreateReviewJob() {
             Upload nguyên liệu, lên kịch bản phân cảnh, và dựng video tự động theo phong cách viral.
           </p>
         </div>
+
+        {/* AI Draft Selection Panel */}
+        <AIDraftPanel
+          hasDrafts={hasDrafts}
+          activeMode={activeMode}
+          onToggle={handleModeToggle}
+          metadata={aiMetadata}
+        />
 
         {cloneJobId && (
           <div className="glass-panel p-4 flex items-center gap-3 bg-amber-500/10 border border-amber-500/20 rounded-xl animate-in fade-in">

@@ -46,16 +46,27 @@ Tùy chỉnh `text_overlay` và `pacing` (nhịp độ) của bản `viral_optim
 Sử dụng **SmolAgents** để tạo vòng lặp tự sửa lỗi (Plan-Act Loop):
 
 ```python
-# 1. Trích xuất Phễu và Master Brief từ Webhook TMCP
-funnel_stage = payload.get("funnel_stage", "Unknown") 
-psych_angle = payload.get("psych_angle", "") 
-master_contents_brief = payload.get("master_contents_brief", "")
+# 1. Trích xuất Context Phễu từ Webhook TMCP
+brief_ctx = payload.get("content_brief_context", {})
+
+angle_name = brief_ctx.get("angle_name", "")
+funnel_stage = brief_ctx.get("funnel_stage", "Unknown") 
+psych_angle = brief_ctx.get("psychological_angle", "") 
+pain_point = brief_ctx.get("pain_point_focus", "")
+key_message = brief_ctx.get("key_message_variation", "")
+cta = brief_ctx.get("call_to_action_direction", "")
+master_brief = brief_ctx.get("brief", "")
 
 user_content = (
     f"--- CONTENT BRIEFS TỪ TMCP ---\n"
-    f"- Phễu: {funnel_stage} | Tâm lý: {psych_angle}\n"
-    f"- Tóm tắt nội dung chính (Master Brief): {master_contents_brief}\n"
-    f"- Kịch bản: {script_content}\n"
+    f"- Tiêu đề / Góc độ (Angle): {angle_name}\n"
+    f"- Phễu Khách Hàng (Stage): {funnel_stage}\n"
+    f"- Góc độ Tâm lý (Psych Angle): {psych_angle}\n"
+    f"- Nỗi đau cần giải quyết (Pain Point): {pain_point}\n"
+    f"- Thông điệp chính (Key Message): {key_message}\n"
+    f"- Lời kêu gọi (CTA): {cta}\n"
+    f"- Tóm tắt nội dung chính (Master Brief): {master_brief}\n"
+    f"- Kịch bản đầy đủ: {script_content}\n"
 )
 
 # 2. Tool kiểm tra độ dài chữ / thời gian
@@ -131,8 +142,8 @@ export function AIDraftPanel({ hasDrafts, activeMode, onToggle, metadata }) {
         <div className="glass-panel p-4 mb-6 flex flex-col gap-4">
             {/* Phễu Marketing Badges */}
             <div className="flex gap-2">
-                <Badge variant="outline">Stage: {metadata.funnel_stage}</Badge>
-                <Badge variant="destructive">Angle: {metadata.psych_angle}</Badge>
+                <Badge variant="outline">Stage: {metadata?.content_brief_context?.funnel_stage}</Badge>
+                <Badge variant="destructive">Angle: {metadata?.content_brief_context?.psychological_angle}</Badge>
             </div>
 
             {/* Hook Score */}

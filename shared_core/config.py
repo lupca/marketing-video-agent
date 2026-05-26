@@ -66,7 +66,7 @@ class OllamaConfig:
         if not self.base_url:
             object.__setattr__(self, "base_url", os.getenv("OLLAMA_BASE_URL", "http://localhost:11434"))
         if not self.model_name:
-            object.__setattr__(self, "model_name", os.getenv("OLLAMA_MODEL", "qwen3:4b-instruct-2507-q4_K_M"))
+            object.__setattr__(self, "model_name", os.getenv("OLLAMA_MODEL", "qwen2.5"))
 
 
 @dataclass(frozen=True)
