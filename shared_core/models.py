@@ -131,6 +131,7 @@ class VideoJob(Base):
     folder = relationship("MediaFolder", foreign_keys=[folder_id])
     job_assets = relationship("JobAsset", back_populates="video_job", cascade="all, delete-orphan")
     logs = relationship("JobLog", back_populates="video_job", cascade="all, delete-orphan")
+    agent_logs = relationship("AgentLog", back_populates="job", cascade="all, delete-orphan")
     worker_node = relationship("WorkerNode", back_populates="video_jobs")
 
 
@@ -223,8 +224,10 @@ class AgentLog(Base):
     __tablename__ = "agent_logs"
     
     id = Column(BigInteger, primary_key=True, autoincrement=True)
-    session_id = Column(String, ForeignKey("agent_sessions.id", ondelete="CASCADE"), index=True)
-    step = Column(String, nullable=False)         # "search", "download", "analyze", "decide", "generate"
+    session_id = Column(String, ForeignKey("agent_sessions.id", ondelete="CASCADE"), index=True, nullable=True)
+    job_id = Column(Integer, ForeignKey("video_jobs.id", ondelete="CASCADE"), index=True, nullable=True)
+    step = Column(String, nullable=True)         # nullable for backward compatibility
+    node_name = Column(String, nullable=True)     # LangGraph node name
     tool_name = Column(String, nullable=True)
     input_data = Column(FlexibleJSON, nullable=True)
     output_data = Column(FlexibleJSON, nullable=True)
@@ -233,6 +236,7 @@ class AgentLog(Base):
     created_at = Column(DateTime(timezone=True), server_default=func.now())
     
     session = relationship("AgentSession", back_populates="logs")
+    job = relationship("VideoJob", back_populates="agent_logs")
 
 
 

@@ -131,11 +131,20 @@ def get_chat_models(
         db.refresh(db_setting)
         models_list = db_setting.value
     
-    # Mask keys for UI
+    # Mask keys for UI and heal legacy data missing 'provider'
     from routers.user_preferences import mask_api_key
     masked_models = []
     for m in models_list:
         m_copy = dict(m)
+        
+        # Heal: Ensure 'provider' exists for legacy data
+        if "provider" not in m_copy:
+            # Heuristic: if base_url has 'ollama' or '11434', it's likely ollama
+            if "ollama" in m_copy.get("base_url", "").lower() or "11434" in m_copy.get("base_url", ""):
+                m_copy["provider"] = "ollama"
+            else:
+                m_copy["provider"] = "openai"
+        
         if m_copy.get("api_key"):
             m_copy["api_key"] = mask_api_key(m_copy["api_key"])
         masked_models.append(m_copy)

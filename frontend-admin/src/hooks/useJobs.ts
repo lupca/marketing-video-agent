@@ -24,6 +24,20 @@ export interface JobLog {
   created_at: string;
 }
 
+export interface AgentLog {
+  id: number;
+  session_id: string | null;
+  job_id: number | null;
+  step: string | null;
+  node_name: string | null;
+  tool_name: string | null;
+  input_data: any;
+  output_data: any;
+  llm_reasoning: string | null;
+  log_level: string;
+  created_at: string;
+}
+
 export function useJobs(autoRefresh: boolean = false, refreshIntervalMs: number = 5000, projectId?: string) {
   const [jobs, setJobs] = useState<VideoJob[]>([]);
   const [loading, setLoading] = useState(true);
@@ -71,6 +85,11 @@ export function useJobs(autoRefresh: boolean = false, refreshIntervalMs: number 
     return res.data;
   };
 
+  const getJobTrace = async (id: number): Promise<AgentLog[]> => {
+    const res = await api.get(`/api/jobs/${id}/trace`);
+    return res.data;
+  };
+
   const getJob = async (id: number): Promise<VideoJob> => {
     const res = await api.get(`/api/jobs/${id}`);
     return res.data;
@@ -83,5 +102,5 @@ export function useJobs(autoRefresh: boolean = false, refreshIntervalMs: number 
 
   const hasProcessing = jobs.some(j => j.status === "PROCESSING");
 
-  return { jobs, loading, refreshing, error, fetchJobs, deleteJob, getDownloadUrl, getJobLogs, getJob, updateJob, hasProcessing };
+  return { jobs, loading, refreshing, error, fetchJobs, deleteJob, getDownloadUrl, getJobLogs, getJobTrace, getJob, updateJob, hasProcessing };
 }

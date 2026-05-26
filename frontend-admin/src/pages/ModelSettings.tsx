@@ -574,11 +574,12 @@ export default function ModelSettings() {
                       })}
                       className="w-full bg-zinc-900 border border-white/10 rounded-xl px-4 py-2.5 text-xs text-white focus:outline-none focus:ring-1 focus:ring-primary/30 cursor-pointer"
                     >
-                      <option value="">-- Dùng Model Mặc Định --</option>
+                      <option value="" className="bg-zinc-900">-- Dùng Model Mặc Định --</option>
                       {llmModels.map(m => (
-                        <option key={m.id} value={m.id}>{m.name}</option>
+                        <option key={m.id} value={m.id} className="bg-zinc-900">{m.name}</option>
                       ))}
                     </select>
+
                   </div>
 
                   {/* Video Orchestrator Routing */}
@@ -592,11 +593,12 @@ export default function ModelSettings() {
                       })}
                       className="w-full bg-zinc-900 border border-white/10 rounded-xl px-4 py-2.5 text-xs text-white focus:outline-none focus:ring-1 focus:ring-primary/30 cursor-pointer"
                     >
-                      <option value="">-- Dùng Model Mặc Định --</option>
+                      <option value="" className="bg-zinc-900">-- Dùng Model Mặc Định --</option>
                       {llmModels.map(m => (
-                        <option key={m.id} value={m.id}>{m.name}</option>
+                        <option key={m.id} value={m.id} className="bg-zinc-900">{m.name}</option>
                       ))}
                     </select>
+
                   </div>
 
                   {/* Chat Assistant Routing */}
@@ -610,11 +612,12 @@ export default function ModelSettings() {
                       })}
                       className="w-full bg-zinc-900 border border-white/10 rounded-xl px-4 py-2.5 text-xs text-white focus:outline-none focus:ring-1 focus:ring-primary/30 cursor-pointer"
                     >
-                      <option value="">-- Dùng Model Mặc Định --</option>
+                      <option value="" className="bg-zinc-900">-- Dùng Model Mặc Định --</option>
                       {llmModels.map(m => (
-                        <option key={m.id} value={m.id}>{m.name}</option>
+                        <option key={m.id} value={m.id} className="bg-zinc-900">{m.name}</option>
                       ))}
                     </select>
+
                   </div>
                 </div>
               </div>

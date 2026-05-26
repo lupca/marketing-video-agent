@@ -284,6 +284,22 @@ def get_job_logs(
     )
 
 
+@router.get("/{job_id}/trace", response_model=List[schemas.AgentLogResponse])
+def get_job_trace(
+    job_id: int,
+    db: Session = Depends(database.get_db),
+    current_user: models.User = Depends(auth_module.get_current_user),
+):
+    """Retrieve LangGraph trace execution logs for Leader Agent."""
+    _get_user_job(job_id, db, current_user.id)  # auth check
+    return (
+        db.query(models.AgentLog)
+        .filter(models.AgentLog.job_id == job_id)
+        .order_by(models.AgentLog.created_at.asc())
+        .all()
+    )
+
+
 @router.post("/from-tmcp", response_model=schemas.JobResponse)
 def create_job_from_tmcp(
     payload: schemas.TMCPPayload,

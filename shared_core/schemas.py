@@ -305,8 +305,10 @@ class AgentLogResponse(BaseModel):
     model_config = ConfigDict(from_attributes=True)
     
     id: int
-    session_id: str
-    step: str
+    session_id: Optional[str] = None
+    job_id: Optional[int] = None
+    step: Optional[str] = None
+    node_name: Optional[str] = None
     tool_name: Optional[str] = None
     input_data: Optional[Dict[str, Any]] = None
     output_data: Optional[Dict[str, Any]] = None

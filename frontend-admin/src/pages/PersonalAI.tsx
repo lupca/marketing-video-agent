@@ -196,25 +196,25 @@ export default function PersonalAI() {
                     value={routing[feature.key] || ""}
                     onChange={(e) => setRouting({...routing, [feature.key]: e.target.value})}
                     className={cn(
-                      "w-full bg-white/5 border rounded-2xl px-5 py-4 text-sm text-white focus:outline-none transition-all cursor-pointer",
-                      routing[feature.key] ? "border-primary/50 bg-primary/5 ring-1 ring-primary/20" : "border-white/10"
+                      "w-full bg-zinc-900 border rounded-2xl px-5 py-4 text-sm text-white focus:outline-none transition-all cursor-pointer",
+                      routing[feature.key] ? "border-primary/50 ring-1 ring-primary/20" : "border-white/10"
                     )}
                   >
-                    <option value="">Mặc định: Theo cấu hình của Hệ thống</option>
+                    <option value="" className="bg-zinc-900">Mặc định: Theo cấu hình của Hệ thống</option>
                     
                     {/* User Custom Models Group */}
                     {customModels.length > 0 && (
-                      <optgroup label="API Key Cá Nhân Của Bạn">
+                      <optgroup label="API Key Cá Nhân Của Bạn" className="bg-zinc-900">
                         {customModels.map(m => (
-                          <option key={m.id} value={m.id}>⭐ {m.name} ({m.model_name})</option>
+                          <option key={m.id} value={m.id} className="bg-zinc-900">⭐ {m.name} ({m.model_name})</option>
                         ))}
                       </optgroup>
                     )}
 
                     {/* System Models Group */}
-                    <optgroup label="Sử dụng Model Hệ Thống">
+                    <optgroup label="Sử dụng Model Hệ Thống" className="bg-zinc-900">
                       {systemModels.map(m => (
-                        <option key={m.id} value={m.id}>{m.name}</option>
+                        <option key={m.id} value={m.id} className="bg-zinc-900">{m.name}</option>
                       ))}
                     </optgroup>
                   </select>

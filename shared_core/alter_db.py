@@ -32,6 +32,12 @@ def alter_database():
     sql_job_folder = "ALTER TABLE video_jobs ADD COLUMN IF NOT EXISTS folder_id VARCHAR REFERENCES media_folders(id) ON DELETE SET NULL;"
     sql_user_llm = "ALTER TABLE users ADD COLUMN IF NOT EXISTS llm_preferences JSONB;"
     
+    # agent_logs upgrade
+    sql_agent_log_job = "ALTER TABLE agent_logs ADD COLUMN IF NOT EXISTS job_id INTEGER REFERENCES video_jobs(id) ON DELETE CASCADE;"
+    sql_agent_log_node = "ALTER TABLE agent_logs ADD COLUMN IF NOT EXISTS node_name VARCHAR;"
+    sql_agent_log_drop_session_not_null = "ALTER TABLE agent_logs ALTER COLUMN session_id DROP NOT NULL;"
+    sql_agent_log_drop_step_not_null = "ALTER TABLE agent_logs ALTER COLUMN step DROP NOT NULL;"
+    
     logger.info('Connecting to database and executing ALTER statements...')
     with engine.connect() as conn:
         # PostgreSQL supports ADD COLUMN IF NOT EXISTS natively in version 9.6+
@@ -54,6 +60,15 @@ def alter_database():
 
         logger.info('Altering users table...')
         conn.execute(text(sql_user_llm))
+
+        logger.info('Upgrading agent_logs table...')
+        try:
+            conn.execute(text(sql_agent_log_job))
+            conn.execute(text(sql_agent_log_node))
+            conn.execute(text(sql_agent_log_drop_session_not_null))
+            conn.execute(text(sql_agent_log_drop_step_not_null))
+        except Exception as e:
+            logger.warning(f"Error upgrading agent_logs table (possibly SQLite or already upgraded): {e}")
         
         # Commit transaction explicitly if autocommit is not on
         conn.execute(text('COMMIT;'))

@@ -76,16 +76,28 @@ Tùy chỉnh `text_overlay` và `pacing` (nhịp độ) của bản `viral_optim
 }
 
 [CẤU TRÚC JSON ĐẦU RA YÊU CẦU]
-Đầu ra của bạn PHẢI là một JSON duy nhất có dạng sau (không chứa bất kỳ giải thích nào khác ngoài JSON):
+TUYỆT ĐỐI KHÔNG SỬ DỤNG TOOL CALLING (không gọi function).
+Đầu ra của bạn PHẢI LÀ MỘT KHỐI MÃ MARKDOWN CHỨA JSON DUY NHẤT.
+Không giải thích, không viết thêm text trước hay sau khối mã.
+TRONG KHỐI JSON, TẤT CẢ CÁC KHÓA (KEYS) VÀ GIÁ TRỊ CHUỖI (STRINGS) PHẢI ĐƯỢC ĐẶT TRONG DẤU NGOẶC KÉP. (Ví dụ: "scene": "Vợt Cầu Lông", KHÔNG ĐƯỢC VIẾT "scene": Vợt Cầu Lông).
+
+Mẫu BẮT BUỘC:
+```json
 {
-  "worker_type": "slideshow | review | unbox_viral | translify",
+  "worker_type": "slideshow",
   "ai_metadata": {
-      "hook_score": 8, // Thang điểm 1-10 đánh giá độ thu hút của Hook
+      "hook_score": 8,
       "seo_titles": ["Tiêu đề SEO 1", "Tiêu đề SEO 2"],
-      "qa_warnings": ["Cảnh báo chất lượng nếu có, ví dụ: Text overlay quá dài ở phân cảnh 2"]
+      "qa_warnings": ["Cảnh báo chất lượng nếu có"]
   },
   "draft_variants": {
-      "original": { ... }, // Giữ nguyên kịch bản gốc, map vào định dạng của worker đã chọn
-      "viral_optimized": { ... } // Tối ưu kịch bản theo phễu marketing (Awareness/Consideration/Conversion), map vào định dạng của worker đã chọn
+      "original": { 
+          // Điền cấu hình chuẩn dựa trên worker_type
+      },
+      "viral_optimized": { 
+          // Điền cấu hình được tối ưu theo phễu marketing
+      }
   }
 }
+```
+MỌI ĐẦU RA KHÔNG PHẢI LÀ KHỐI JSON MARKDOWN HỢP LỆ SẼ LÀM HỎNG HỆ THỐNG.

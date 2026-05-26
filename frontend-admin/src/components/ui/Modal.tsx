@@ -8,7 +8,7 @@ interface ModalProps {
   title?: ReactNode;
   children: ReactNode;
   className?: string;
-  maxWidth?: "sm" | "md" | "lg" | "xl" | "2xl" | "3xl" | "4xl" | "full";
+  maxWidth?: "sm" | "md" | "lg" | "xl" | "2xl" | "3xl" | "4xl" | "5xl" | "6xl" | "full";
 }
 
 export function Modal({ isOpen, onClose, title, children, className, maxWidth = "md" }: ModalProps) {
@@ -36,6 +36,8 @@ export function Modal({ isOpen, onClose, title, children, className, maxWidth = 
     "2xl": "max-w-2xl",
     "3xl": "max-w-3xl",
     "4xl": "max-w-4xl",
+    "5xl": "max-w-5xl",
+    "6xl": "max-w-6xl",
     "full": "max-w-[90vw] h-[90vh]",
   }[maxWidth];
 
