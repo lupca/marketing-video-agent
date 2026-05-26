@@ -88,6 +88,182 @@ celery_app = create_celery_app("worker_capcut", worker_type="capcut")
 VECTCUT_API_URL = resolve_api_url(os.getenv("VECTCUT_API_URL", "http://localhost:9002").rstrip('/'))
 CAPCUT_DRAFT_FOLDER = os.getenv("CAPCUT_DRAFT_FOLDER", "E:\\capcut\\CapCut Drafts")
 
+def to_wsl_path(path: str) -> str:
+    """Convert a Windows file path (e.g. E:\\path) to a WSL mount path (/mnt/e/path)."""
+    path = path.replace("\\", "/")
+    if len(path) > 1 and path[1] == ":":
+        drive = path[0].lower()
+        return f"/mnt/{drive}{path[2:]}"
+    return path
+
+@celery_app.task(name="worker_capcut.tasks.learn_capcut_template", bind=True)
+def learn_capcut_template(self, draft_id: str, dataset_id: str = None, dify_base_url: str = None, dify_api_key: str = None):
+    """
+    Celery task to learn from a CapCut draft template.
+    Parses the timeline structure and uploads the resulting Markdown Blueprint to Dify.
+    """
+    logger.info(f"CapCut Template Learning picked up Draft ID: {draft_id}")
+    
+    # Update status to "learning" in database
+    from shared_core.database import SessionLocal as InternalSessionLocal
+    from shared_core.models import SystemSetting
+    
+    try:
+        with InternalSessionLocal() as db:
+            setting = db.query(SystemSetting).filter(SystemSetting.key == "capcut_learned_templates").first()
+            if not setting:
+                setting = SystemSetting(key="capcut_learned_templates", value={})
+                db.add(setting)
+            val = dict(setting.value or {})
+            val[draft_id] = {
+                "status": "learning",
+                "template_name": draft_id,
+                "updated_at": datetime.now().isoformat(),
+                "document_id": None,
+                "error": None
+            }
+            setting.value = val
+            db.commit()
+    except Exception as db_err:
+        logger.error(f"Failed to save learning status to DB: {db_err}")
+
+    # 1. Resolve paths
+    win_draft_path = os.path.join(CAPCUT_DRAFT_FOLDER, draft_id)
+    wsl_draft_path = to_wsl_path(win_draft_path)
+    
+    logger.info(f"Windows Draft Path: {win_draft_path} -> WSL Path: {wsl_draft_path}")
+    
+    if not os.path.exists(wsl_draft_path):
+        err_msg = f"Không tìm thấy thư mục nháp CapCut tại đường dẫn: {wsl_draft_path}"
+        logger.error(err_msg)
+        
+        # Update to failed status in DB
+        try:
+            with InternalSessionLocal() as db:
+                setting = db.query(SystemSetting).filter(SystemSetting.key == "capcut_learned_templates").first()
+                if setting:
+                    val = dict(setting.value or {})
+                    val[draft_id] = {
+                        "status": "failed",
+                        "template_name": draft_id,
+                        "updated_at": datetime.now().isoformat(),
+                        "document_id": None,
+                        "error": err_msg
+                    }
+                    setting.value = val
+                    db.commit()
+        except Exception as db_err:
+            logger.error(f"Failed to save failed path status to DB: {db_err}")
+            
+        return {"success": False, "error": err_msg}
+        
+    try:
+        # 2. Parse CapCut timeline draft
+        try:
+            from worker_capcut.parsers.capcut_draft_parser import CapCutDraftParser
+        except ImportError:
+            try:
+                from parsers.capcut_draft_parser import CapCutDraftParser
+            except ImportError:
+                import sys
+                sys.path.append(os.path.dirname(os.path.abspath(__file__)))
+                from parsers.capcut_draft_parser import CapCutDraftParser
+            
+        parser = CapCutDraftParser(wsl_draft_path)
+        summary = parser.parse()
+        md_content = parser.generate_markdown_summary(summary)
+        
+        # 3. Resolve Dify config
+        from shared_core.database import SessionLocal as InternalSessionLocal
+        from shared_core.models import SystemSetting
+        
+        db_dataset_id = None
+        db_api_key = None
+        db_base_url = None
+        
+        with InternalSessionLocal() as db:
+            dify_setting = db.query(SystemSetting).filter(SystemSetting.key == "dify_settings").first()
+            if dify_setting and dify_setting.value:
+                db_dataset_id = dify_setting.value.get("dataset_id")
+                db_api_key = dify_setting.value.get("api_key")
+                db_base_url = dify_setting.value.get("base_url")
+                
+        # Resolve overrides
+        final_dataset_id = dataset_id or db_dataset_id
+        final_api_key = dify_api_key or db_api_key
+        final_base_url = dify_base_url or db_base_url or "https://api.dify.ai/v1"
+        
+        if not final_dataset_id:
+            raise ValueError("Chưa cấu hình Dataset ID (Knowledge Base ID) của Dify!")
+        if not final_api_key:
+            raise ValueError("Chưa cấu hình API Key của Dify!")
+            
+        # 4. Upload to Dify
+        try:
+            from worker_capcut.dify_client import DifyDatasetClient
+        except ImportError:
+            try:
+                from dify_client import DifyDatasetClient
+            except ImportError:
+                import sys
+                sys.path.append(os.path.dirname(os.path.abspath(__file__)))
+                from dify_client import DifyDatasetClient
+            
+        client = DifyDatasetClient(base_url=final_base_url, api_key=final_api_key)
+        
+        doc_name = f"template_{summary['template_name']}.md"
+        resp = client.upload_document_by_text(
+            dataset_id=final_dataset_id,
+            name=doc_name,
+            text=md_content
+        )
+        
+        # Update success status in database
+        try:
+            with InternalSessionLocal() as db:
+                setting = db.query(SystemSetting).filter(SystemSetting.key == "capcut_learned_templates").first()
+                if setting:
+                    val = dict(setting.value or {})
+                    val[draft_id] = {
+                        "status": "success",
+                        "template_name": summary.get('template_name', draft_id),
+                        "updated_at": datetime.now().isoformat(),
+                        "document_id": resp.get("document", {}).get("id"),
+                        "error": None
+                    }
+                    setting.value = val
+                    db.commit()
+        except Exception as db_err:
+            logger.error(f"Failed to save success status to DB: {db_err}")
+
+        return {
+            "success": True,
+            "template_name": summary['template_name'],
+            "document_id": resp.get("document", {}).get("id"),
+            "summary": summary
+        }
+    except Exception as e:
+        logger.error(f"Lỗi khi học template CapCut: {e}", exc_info=True)
+        # Update fail status in database
+        try:
+            with InternalSessionLocal() as db:
+                setting = db.query(SystemSetting).filter(SystemSetting.key == "capcut_learned_templates").first()
+                if setting:
+                    val = dict(setting.value or {})
+                    val[draft_id] = {
+                        "status": "failed",
+                        "template_name": draft_id,
+                        "updated_at": datetime.now().isoformat(),
+                        "document_id": None,
+                        "error": str(e)
+                    }
+                    setting.value = val
+                    db.commit()
+        except Exception as db_err:
+            logger.error(f"Failed to save fail status to DB: {db_err}")
+            
+        return {"success": False, "error": str(e)}
+
 @celery_app.task(name="worker_capcut.tasks.process_capcut_job", bind=True)
 def process_capcut_job(self, job_id: int, config_data: dict = None):
     """

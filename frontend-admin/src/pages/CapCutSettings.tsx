@@ -8,7 +8,10 @@ import {
   ArrowRight,
   Sparkles,
   BookOpen,
-  Info
+  Info,
+  GraduationCap,
+  Database,
+  AlertCircle
 } from "lucide-react";
 import api from "../lib/api";
 import { cn } from "../lib/utils";
@@ -29,8 +32,25 @@ interface CapCutSettings {
   source: string;
 }
 
+interface DifySettings {
+  base_url: string;
+  api_key: string;
+  dataset_id: string;
+  source: string;
+}
+
+interface CapCutDraft {
+  id: string;
+  name: string;
+  updated_at: number;
+  status?: "idle" | "learning" | "success" | "failed";
+  error?: string;
+  learned_at?: string;
+  template_name?: string;
+}
+
 export default function CapCutSettings() {
-  const [activeTab, setActiveTab] = useState<"llm" | "skills">("llm");
+  const [activeTab, setActiveTab] = useState<"llm" | "skills" | "learning">("llm");
   
   // Settings & Models state
   const [settings, setSettings] = useState<CapCutSettings>({
@@ -41,22 +61,38 @@ export default function CapCutSettings() {
     source: "environment"
   });
   const [models, setModels] = useState<LLMModelConfig[]>([]);
+  const [difySettings, setDifySettings] = useState<DifySettings>({
+    base_url: "https://api.dify.ai/v1",
+    api_key: "",
+    dataset_id: "",
+    source: "environment"
+  });
+  const [drafts, setDrafts] = useState<CapCutDraft[]>([]);
   const [loading, setLoading] = useState(true);
   const [saving, setSaving] = useState(false);
   const [saveSuccess, setSaveSuccess] = useState(false);
+  
+  const [savingDify, setSavingDify] = useState(false);
+  const [difySaveSuccess, setDifySaveSuccess] = useState(false);
+  const [learningDraftId, setLearningDraftId] = useState<string | null>(null);
+  const [learnSuccessMsg, setLearnSuccessMsg] = useState<string | null>(null);
 
-  // Fetch CapCut Settings and LLM Models list
+  // Fetch CapCut Settings, LLM Models, Dify settings, and local CapCut Drafts list
   const fetchData = async () => {
     setLoading(true);
     try {
-      const [settingsRes, modelsRes] = await Promise.all([
+      const [settingsRes, modelsRes, difyRes, draftsRes] = await Promise.all([
         api.get("/api/system/capcut-settings"),
-        api.get("/api/system/chat-models")
+        api.get("/api/system/chat-models"),
+        api.get("/api/system/dify-settings"),
+        api.get("/api/system/capcut-drafts")
       ]);
       setSettings(settingsRes.data);
       setModels(modelsRes.data);
+      setDifySettings(difyRes.data);
+      setDrafts(draftsRes.data);
     } catch (err) {
-      console.error("Failed to fetch CapCut settings:", err);
+      console.error("Failed to fetch CapCut / Dify settings:", err);
     } finally {
       setLoading(false);
     }
@@ -80,6 +116,62 @@ export default function CapCutSettings() {
       alert("Lỗi khi lưu cấu hình!");
     } finally {
       setSaving(false);
+    }
+  };
+
+  const handleSaveDify = async (e: React.FormEvent) => {
+    e.preventDefault();
+    setSavingDify(true);
+    setDifySaveSuccess(false);
+    try {
+      const res = await api.put("/api/system/dify-settings", difySettings);
+      setDifySettings(res.data);
+      setDifySaveSuccess(true);
+      setTimeout(() => setDifySaveSuccess(false), 2000);
+    } catch (err) {
+      console.error("Failed to save Dify settings:", err);
+      alert("Lỗi khi lưu cấu hình Dify!");
+    } finally {
+      setSavingDify(false);
+    }
+  };
+
+  const handleLearnTemplate = async (draftId: string) => {
+    setLearningDraftId(draftId);
+    setLearnSuccessMsg(null);
+    try {
+      const res = await api.post("/api/system/templates/learn", {
+        draft_id: draftId,
+        dataset_id: difySettings.dataset_id
+      });
+      if (res.data.status === "dispatched") {
+        setLearnSuccessMsg(`Đã kích hoạt tiến trình học cho Template: ${draftId}. Đang xử lý dưới nền...`);
+        
+        // Polling function to get progress updates
+        let pollCount = 0;
+        const intervalId = setInterval(async () => {
+          try {
+            const draftsRes = await api.get("/api/system/capcut-drafts");
+            setDrafts(draftsRes.data);
+            
+            const updatedDraft = draftsRes.data.find((x: any) => x.id === draftId);
+            pollCount++;
+            
+            // Stop polling if the status is no longer "learning" (either success or failed) or after 20 attempts (40s)
+            if ((updatedDraft && updatedDraft.status !== "learning") || pollCount >= 20) {
+              clearInterval(intervalId);
+            }
+          } catch (e) {
+            clearInterval(intervalId);
+          }
+        }, 2000);
+      }
+    } catch (err: any) {
+      console.error("Failed to trigger template learning:", err);
+      const errMsg = err.response?.data?.detail || "Lỗi kết nối server!";
+      alert(`Không thể kích hoạt tiến trình học: ${errMsg}`);
+    } finally {
+      setLearningDraftId(null);
     }
   };
 
@@ -140,6 +232,17 @@ export default function CapCutSettings() {
             )}
           >
             <BookOpen className="w-4 h-4" /> Kỹ năng CapCut
+          </button>
+          <button
+            onClick={() => setActiveTab("learning")}
+            className={cn(
+              "flex items-center gap-2 px-5 py-2.5 rounded-xl text-xs font-bold transition-all cursor-pointer",
+              activeTab === "learning" 
+                ? "bg-gradient-to-r from-violet-600 to-indigo-600 text-white shadow-lg shadow-violet-600/20" 
+                : "text-muted-foreground hover:text-white"
+            )}
+          >
+            <GraduationCap className="w-4 h-4" /> Học Template
           </button>
         </div>
       </div>
@@ -342,6 +445,221 @@ export default function CapCutSettings() {
                     ))}
                   </div>
                 </div>
+              </div>
+            </div>
+          )}
+
+          {activeTab === "learning" && (
+            <div className="space-y-6 animate-in fade-in duration-200">
+              {/* Dify Settings Form */}
+              <div className="grid grid-cols-1 lg:grid-cols-3 gap-6">
+                <div className="lg:col-span-2">
+                  <form onSubmit={handleSaveDify} className="bg-black/40 border border-white/10 rounded-3xl p-6 backdrop-blur-xl space-y-6">
+                    <div className="flex items-center gap-2 pb-4 border-b border-white/5">
+                      <Database className="w-5 h-5 text-violet-400" />
+                      <h3 className="text-sm font-extrabold text-white">Kết Nối Dify RAG Knowledge Base</h3>
+                    </div>
+
+                    <div className="space-y-4">
+                      <div className="grid grid-cols-1 md:grid-cols-2 gap-4">
+                        <div className="space-y-1.5">
+                          <label className="text-xs font-semibold text-muted-foreground">Dify API Endpoint *</label>
+                          <input
+                            type="text"
+                            required
+                            value={difySettings.base_url}
+                            onChange={(e) => setDifySettings({ ...difySettings, base_url: e.target.value })}
+                            placeholder="Ví dụ: https://api.dify.ai/v1"
+                            className="w-full bg-white/5 border border-white/10 rounded-xl px-4 py-2 text-xs text-white placeholder:text-muted-foreground/45 focus:outline-none focus:ring-1 focus:ring-primary font-mono text-[11px]"
+                          />
+                        </div>
+
+                        <div className="space-y-1.5">
+                          <label className="text-xs font-semibold text-muted-foreground">Dataset ID (Knowledge Base ID) *</label>
+                          <input
+                            type="text"
+                            required
+                            value={difySettings.dataset_id}
+                            onChange={(e) => setDifySettings({ ...difySettings, dataset_id: e.target.value })}
+                            placeholder="Nhập Dataset ID (UUID) của Dify"
+                            className="w-full bg-white/5 border border-white/10 rounded-xl px-4 py-2 text-xs text-white placeholder:text-muted-foreground/45 focus:outline-none focus:ring-1 focus:ring-primary font-mono text-[11px]"
+                          />
+                          <p className="text-[9px] text-muted-foreground/75 leading-relaxed mt-1">
+                            Lưu ý: Dataset ID bắt buộc phải là chuỗi <strong>UUID (36 ký tự, ví dụ: 8fbe5f8e-d99c-4977-bc6d-0bb291a5ef8c)</strong> lấy từ thanh địa chỉ trình duyệt khi xem Dataset trong Dify, KHÔNG PHẢI tên Dataset.
+                          </p>
+                        </div>
+                      </div>
+
+                      <div className="space-y-1.5">
+                        <label className="text-xs font-semibold text-muted-foreground">Dify Dataset API Key (Bearer Token) *</label>
+                        <input
+                          type="password"
+                          required
+                          value={difySettings.api_key}
+                          onChange={(e) => setDifySettings({ ...difySettings, api_key: e.target.value })}
+                          placeholder="Nhập API Key của Dify Dataset (không phải API key của chat)"
+                          className="w-full bg-white/5 border border-white/10 rounded-xl px-4 py-2 text-xs text-white placeholder:text-muted-foreground/45 focus:outline-none focus:ring-1 focus:ring-primary text-[11px]"
+                        />
+                      </div>
+                    </div>
+
+                    <div className="pt-4 border-t border-white/5 flex justify-end">
+                      <button
+                        type="submit"
+                        disabled={savingDify}
+                        className={cn(
+                          "flex items-center gap-2 px-6 py-3 rounded-xl text-xs font-bold text-white transition-all cursor-pointer",
+                          difySaveSuccess 
+                            ? "bg-emerald-600 shadow-lg shadow-emerald-600/20" 
+                            : "bg-gradient-to-r from-violet-600 to-indigo-600 hover:scale-[1.02] active:scale-[0.98] shadow-lg shadow-violet-600/20"
+                        )}
+                      >
+                        {savingDify ? (
+                          <Loader2 className="w-4 h-4 animate-spin" />
+                        ) : difySaveSuccess ? (
+                          <Check className="w-4 h-4" />
+                        ) : (
+                          <Activity className="w-4 h-4" />
+                        )}
+                        {difySaveSuccess ? "Đã kết nối thành công!" : "Lưu cấu hình Dify"}
+                      </button>
+                    </div>
+                  </form>
+                </div>
+
+                <div className="bg-black/40 border border-white/10 rounded-3xl p-6 backdrop-blur-xl">
+                  <div className="flex items-center gap-2 pb-4 border-b border-white/5 text-violet-400">
+                    <Info className="w-5 h-5" />
+                    <h3 className="text-sm font-extrabold text-white">Cơ Chế Học Dify RAG</h3>
+                  </div>
+                  <div className="space-y-4 text-xs leading-relaxed text-muted-foreground pt-4">
+                    <p>
+                      Hệ thống tự động đồng bộ hóa bản dịch ngược (Blueprint) của các dự án CapCut bạn chọn sang Dify Knowledge Base.
+                    </p>
+                    <p>
+                      Dify sẽ sử dụng model nhúng <strong>bge-m3</strong> để lưu trữ các Blueprint này dưới dạng Vector.
+                    </p>
+                    <p>
+                      Mỗi khi tạo kịch bản mới, Dify RAG sẽ tự động chọn Template phù hợp nhất để dựng hình ảnh và kỹ xảo tương đương!
+                    </p>
+                  </div>
+                </div>
+              </div>
+
+              {/* Ingestion Draft List */}
+              <div className="bg-black/40 border border-white/10 rounded-3xl p-6 backdrop-blur-xl space-y-6">
+                <div className="flex items-center justify-between pb-4 border-b border-white/5">
+                  <div className="flex items-center gap-2">
+                    <GraduationCap className="w-5 h-5 text-violet-400" />
+                    <h3 className="text-sm font-extrabold text-white">Quét Thư Mục Nháp CapCut Sẵn Có</h3>
+                  </div>
+                  <button 
+                    onClick={fetchData}
+                    className="px-4 py-1.5 bg-white/5 border border-white/10 hover:bg-white/10 rounded-xl text-[10px] font-bold text-white transition-all cursor-pointer"
+                  >
+                    Làm mới danh sách
+                  </button>
+                </div>
+
+                {learnSuccessMsg && (
+                  <div className="p-4 bg-emerald-500/10 border border-emerald-500/20 text-emerald-400 text-xs font-semibold rounded-2xl animate-in fade-in duration-200">
+                    {learnSuccessMsg}
+                  </div>
+                )}
+
+                {drafts.length === 0 ? (
+                  <div className="flex flex-col items-center justify-center py-10 gap-3 border border-dashed border-white/10 rounded-2xl">
+                    <Info className="w-8 h-8 text-muted-foreground/40" />
+                    <p className="text-xs text-muted-foreground">Không phát hiện dự án nháp CapCut nào trong thư mục cấu hình của bạn.</p>
+                  </div>
+                ) : (
+                  <div className="grid grid-cols-1 md:grid-cols-2 gap-4">
+                    {drafts.map((d) => {
+                      const isLearning = d.status === "learning" || learningDraftId === d.id;
+                      return (
+                        <div key={d.id} className={cn(
+                          "p-5 bg-zinc-900/40 border rounded-3xl flex flex-col justify-between gap-4 transition-all relative overflow-hidden",
+                          d.status === "success" ? "border-emerald-500/20 hover:border-emerald-500/30 bg-emerald-950/5" :
+                          d.status === "failed" ? "border-rose-500/20 hover:border-rose-500/30 bg-rose-950/5" :
+                          isLearning ? "border-violet-500/20 hover:border-violet-500/30 bg-violet-950/5" :
+                          "border-white/5 hover:border-white/10"
+                        )}>
+                          <div className="flex justify-between items-start gap-3">
+                            <div className="space-y-1.5 flex-1 min-w-0">
+                              <div className="flex items-center gap-2 flex-wrap">
+                                <h4 className="text-xs font-bold text-white font-mono break-all">{d.name}</h4>
+                                {d.template_name && d.template_name !== d.name && (
+                                  <span className="px-2 py-0.5 bg-white/5 text-[9px] rounded-lg text-muted-foreground font-semibold">
+                                    {d.template_name}
+                                  </span>
+                                )}
+                              </div>
+                              <p className="text-[10px] text-muted-foreground">
+                                Cập nhật: {new Date(d.updated_at * 1000).toLocaleString("vi-VN")}
+                              </p>
+                              {d.learned_at && (
+                                <p className="text-[9px] text-muted-foreground/75">
+                                  Học lúc: {new Date(d.learned_at).toLocaleString("vi-VN")}
+                                </p>
+                              )}
+                            </div>
+
+                            {/* Status Badge */}
+                            <div className="shrink-0">
+                              {d.status === "success" && (
+                                <span className="flex items-center gap-1 px-2.5 py-1 bg-emerald-500/10 border border-emerald-500/20 text-emerald-400 text-[10px] font-bold rounded-xl">
+                                  <Check className="w-3 h-3" /> Đã học
+                                </span>
+                              )}
+                              {d.status === "failed" && (
+                                <span className="flex items-center gap-1 px-2.5 py-1 bg-rose-500/10 border border-rose-500/20 text-rose-400 text-[10px] font-bold rounded-xl">
+                                  <AlertCircle className="w-3 h-3" /> Lỗi học
+                                </span>
+                              )}
+                              {isLearning && (
+                                <span className="flex items-center gap-1 px-2.5 py-1 bg-violet-500/10 border border-violet-500/20 text-violet-400 text-[10px] font-bold rounded-xl animate-pulse">
+                                  <Loader2 className="w-3.5 h-3.5 animate-spin" /> Đang học...
+                                </span>
+                              )}
+                              {(d.status === "idle" || !d.status) && !isLearning && (
+                                <span className="flex items-center gap-1 px-2.5 py-1 bg-zinc-800 border border-white/5 text-muted-foreground text-[10px] font-semibold rounded-xl">
+                                  Chưa học
+                                </span>
+                              )}
+                            </div>
+                          </div>
+
+                          {/* Error traceback if failed */}
+                          {d.status === "failed" && d.error && (
+                            <div className="p-3.5 bg-rose-500/5 border border-rose-500/10 rounded-2xl text-[10px] text-rose-400 leading-relaxed break-words font-medium">
+                              <strong>Lỗi:</strong> {d.error}
+                            </div>
+                          )}
+
+                          <div className="flex justify-end pt-2 border-t border-white/5">
+                            <button
+                              onClick={() => handleLearnTemplate(d.id)}
+                              disabled={isLearning}
+                              className={cn(
+                                "flex items-center gap-1.5 px-4 py-2 text-[10px] font-bold text-white rounded-xl cursor-pointer transition-all shrink-0 active:scale-[0.98]",
+                                d.status === "success" 
+                                  ? "bg-white/5 border border-white/10 hover:bg-white/10"
+                                  : "bg-gradient-to-r from-violet-600 to-indigo-600 hover:scale-[1.02] disabled:opacity-50"
+                              )}
+                            >
+                              {isLearning ? (
+                                <Loader2 className="w-3.5 h-3.5 animate-spin" />
+                              ) : (
+                                <GraduationCap className="w-3.5 h-3.5" />
+                              )}
+                              {d.status === "success" ? "Học lại" : "Học Template"}
+                            </button>
+                          </div>
+                        </div>
+                      );
+                    })}
+                  </div>
+                )}
               </div>
             </div>
           )}
