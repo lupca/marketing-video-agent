@@ -49,6 +49,7 @@ export default function Sidebar() {
       links: [
         { name: "Command Center", path: "/", icon: LayoutDashboard, description: "Bảng điều khiển & Giám sát hệ thống render" },
         { name: "Dự án Video", path: "/projects", icon: FolderHeart, description: "Danh sách và chi tiết các dự án video của bạn" },
+        { name: "AI Cá Nhân (BYOK)", path: "/personal-ai", icon: UserIcon, description: "Quản lý API Keys cá nhân và cấu hình AI riêng" },
         { name: "Kho Tư Liệu", path: "/assets", icon: Database, description: "Quản lý cơ sở dữ liệu và tệp tin tư liệu thô" }
       ]
     },

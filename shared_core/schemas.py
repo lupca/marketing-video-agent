@@ -407,15 +407,25 @@ class TMCPPayload(BaseModel):
 class LLMModelConfig(BaseModel):
     id: str
     name: str
+    provider: str # "openai", "ollama", "groq", "anthropic"
     base_url: str
     model_name: str
     api_key: Optional[str] = ""
 
 class LLMModelCreate(BaseModel):
     name: str
+    provider: str
     base_url: str
     model_name: str
     api_key: Optional[str] = ""
+
+class UserLLMPreferences(BaseModel):
+    custom_models: Optional[List[LLMModelConfig]] = []
+    routing: Optional[Dict[str, str]] = {} # feature_key -> model_id
+
+class GlobalLLMRouting(BaseModel):
+    default_model_id: str
+    feature_routing: Dict[str, str] # feature_key -> model_id
 
 
 # ── Chat Assistant Schemas ───────────────────────────────────────────────────

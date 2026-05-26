@@ -65,7 +65,7 @@ def get_chat_models(
     db: Session = Depends(database.get_db),
     current_user: models.User = Depends(auth_module.get_current_user),
 ):
-    """Lấy danh sách các cấu hình model LLM từ Database."""
+    """Lấy danh sách các cấu hình model LLM từ Database (Masked API Keys)."""
     import uuid
     import requests
     from shared_core.config import get_settings
@@ -73,59 +73,74 @@ def get_chat_models(
     
     db_setting = db.query(models.SystemSetting).filter(models.SystemSetting.key == "llm_models").first()
     
+    models_list = []
     if db_setting and db_setting.value:
-        return db_setting.value
-        
-    model_settings = db.query(models.SystemSetting).filter(models.SystemSetting.key == "model_settings").first()
-    base_url = settings.ollama.base_url
-    if model_settings and model_settings.value:
-        base_url = model_settings.value.get("base_url", settings.ollama.base_url)
-        
-    discovered_models = []
-    try:
-        url = f"{base_url.rstrip('/')}/api/tags"
-        res = requests.get(url, timeout=3)
-        if res.status_code == 200:
-            data = res.json()
-            for m in data.get("models", []):
-                name = m["name"]
-                discovered_models.append({
-                    "id": f"ollama-{name.replace(':', '-')}",
-                    "name": f"Ollama {name}",
-                    "base_url": base_url,
-                    "model_name": name,
-                    "api_key": ""
-                })
-    except Exception:
-        pass
-        
-    if not discovered_models:
-        discovered_models = [
-            {
-                "id": "qwen3.5-latest",
-                "name": "Ollama Qwen 3.5 (Local)",
-                "base_url": "http://localhost:11434",
-                "model_name": "qwen3.5:latest",
-                "api_key": ""
-            },
-            {
-                "id": "gemma4-latest",
-                "name": "Ollama Gemma 4 (Local)",
-                "base_url": "http://localhost:11434",
-                "model_name": "gemma4:latest",
-                "api_key": ""
-            }
-        ]
-        
-    if not db_setting:
-        db_setting = models.SystemSetting(key="llm_models", value=discovered_models)
-        db.add(db_setting)
+        models_list = db_setting.value
     else:
-        db_setting.value = discovered_models
-    db.commit()
-    db.refresh(db_setting)
+        # Discovery logic (Ollama)
+        model_settings = db.query(models.SystemSetting).filter(models.SystemSetting.key == "model_settings").first()
+        base_url = settings.ollama.base_url
+        if model_settings and model_settings.value:
+            base_url = model_settings.value.get("base_url", settings.ollama.base_url)
+            
+        discovered_models = []
+        try:
+            url = f"{base_url.rstrip('/')}/api/tags"
+            res = requests.get(url, timeout=3)
+            if res.status_code == 200:
+                data = res.json()
+                for m in data.get("models", []):
+                    name = m["name"]
+                    discovered_models.append({
+                        "id": f"ollama-{name.replace(':', '-')}",
+                        "name": f"Ollama {name}",
+                        "provider": "ollama",
+                        "base_url": base_url,
+                        "model_name": name,
+                        "api_key": ""
+                    })
+        except Exception:
+            pass
+            
+        if not discovered_models:
+            discovered_models = [
+                {
+                    "id": "qwen3.5-latest",
+                    "name": "Ollama Qwen 3.5 (Local)",
+                    "provider": "ollama",
+                    "base_url": "http://localhost:11434",
+                    "model_name": "qwen3.5:latest",
+                    "api_key": ""
+                },
+                {
+                    "id": "gemma4-latest",
+                    "name": "Ollama Gemma 4 (Local)",
+                    "provider": "ollama",
+                    "base_url": "http://localhost:11434",
+                    "model_name": "gemma4:latest",
+                    "api_key": ""
+                }
+            ]
+        
+        if not db_setting:
+            db_setting = models.SystemSetting(key="llm_models", value=discovered_models)
+            db.add(db_setting)
+        else:
+            db_setting.value = discovered_models
+        db.commit()
+        db.refresh(db_setting)
+        models_list = db_setting.value
     
-    return db_setting.value
+    # Mask keys for UI
+    from routers.user_preferences import mask_api_key
+    masked_models = []
+    for m in models_list:
+        m_copy = dict(m)
+        if m_copy.get("api_key"):
+            m_copy["api_key"] = mask_api_key(m_copy["api_key"])
+        masked_models.append(m_copy)
+    
+    return masked_models
 
 
 @router.post("/system/chat-models", response_model=schemas.LLMModelConfig)
@@ -145,6 +160,7 @@ def add_chat_model(
     new_model = {
         "id": str(uuid.uuid4()),
         "name": model.name,
+        "provider": model.provider,
         "base_url": model.base_url,
         "model_name": model.model_name,
         "api_key": model.api_key or ""
@@ -189,6 +205,7 @@ def update_chat_model(
     updated_model = {
         "id": model_id,
         "name": model.name,
+        "provider": model.provider,
         "base_url": model.base_url,
         "model_name": model.model_name,
         "api_key": model.api_key or ""
@@ -260,3 +277,46 @@ def test_chat_model_connection(
             return {"status": "error", "message": f"Server trả về mã lỗi: {res.status_code}"}
     except Exception as e:
         return {"status": "error", "message": f"Không thể kết nối: {str(e)}"}
+
+
+@router.get("/system/llm-routing", response_model=schemas.GlobalLLMRouting)
+def get_global_llm_routing(
+    db: Session = Depends(database.get_db),
+    current_user: models.User = Depends(auth_module.get_current_user),
+):
+    """Lấy cấu hình routing LLM toàn hệ thống."""
+    db_setting = db.query(models.SystemSetting).filter(models.SystemSetting.key == "llm_routing").first()
+    
+    if db_setting and db_setting.value:
+        return db_setting.value
+        
+    # Default routing if not set
+    return {
+        "default_model_id": "qwen3.5-latest",
+        "feature_routing": {
+            "leader_script_analysis": "qwen3.5-latest",
+            "video_orchestrator": "qwen3.5-latest",
+            "chat_assistant": "qwen3.5-latest"
+        }
+    }
+
+
+@router.put("/system/llm-routing", response_model=schemas.GlobalLLMRouting)
+def update_global_llm_routing(
+    routing: schemas.GlobalLLMRouting,
+    db: Session = Depends(database.get_db),
+    current_user: models.User = Depends(auth_module.get_current_user),
+):
+    """Cập nhật cấu hình routing LLM toàn hệ thống."""
+    db_setting = db.query(models.SystemSetting).filter(models.SystemSetting.key == "llm_routing").first()
+    
+    if not db_setting:
+        db_setting = models.SystemSetting(key="llm_routing")
+        db.add(db_setting)
+    
+    db_setting.value = routing.model_dump()
+    db_setting.updated_by = current_user.id
+    
+    db.commit()
+    db.refresh(db_setting)
+    return db_setting.value

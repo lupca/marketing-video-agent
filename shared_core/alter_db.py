@@ -30,6 +30,7 @@ def alter_database():
     sql_asset_source = "ALTER TABLE assets ADD COLUMN IF NOT EXISTS source VARCHAR NOT NULL DEFAULT 'upload';"
     
     sql_job_folder = "ALTER TABLE video_jobs ADD COLUMN IF NOT EXISTS folder_id VARCHAR REFERENCES media_folders(id) ON DELETE SET NULL;"
+    sql_user_llm = "ALTER TABLE users ADD COLUMN IF NOT EXISTS llm_preferences JSONB;"
     
     logger.info('Connecting to database and executing ALTER statements...')
     with engine.connect() as conn:
@@ -50,6 +51,9 @@ def alter_database():
         
         logger.info('Altering video_jobs table...')
         conn.execute(text(sql_job_folder))
+
+        logger.info('Altering users table...')
+        conn.execute(text(sql_user_llm))
         
         # Commit transaction explicitly if autocommit is not on
         conn.execute(text('COMMIT;'))

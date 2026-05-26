@@ -27,6 +27,7 @@ class User(Base):
     password_hash = Column(String, nullable=False)
     role = Column(String, default="creator")
     is_active = Column(Boolean, default=True)
+    llm_preferences = Column(FlexibleJSON, nullable=True) # New: Stores personal API keys and routing overrides
     created_at = Column(DateTime(timezone=True), server_default=func.now())
     updated_at = Column(DateTime(timezone=True), onupdate=func.now())
 

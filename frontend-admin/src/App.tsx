@@ -22,6 +22,7 @@ import CreateCapCutJob from "./pages/CreateCapCutJob";
 import Login from "./pages/Login";
 import Register from "./pages/Register";
 import ModelSettings from "./pages/ModelSettings";
+import PersonalAI from "./pages/PersonalAI";
 import CapCutSettings from "./pages/CapCutSettings";
 
 import { AuthProvider, useAuth } from "./context/AuthContext";
@@ -72,6 +73,7 @@ function MainLayout() {
           <Route path="/create-translify" element={<CreateTranslifyJob />} />
           <Route path="/create-leader" element={<CreateLeaderJob />} />
           <Route path="/create-capcut" element={<CreateCapCutJob />} />
+          <Route path="/personal-ai" element={<PersonalAI />} />
           <Route path="/settings/models" element={<ModelSettings />} />
           <Route path="/settings/capcut" element={<CapCutSettings />} />
 

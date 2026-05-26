@@ -16,6 +16,8 @@ from smolagents import CodeAgent, OpenAIServerModel, tool, ToolCallingAgent
 from shared_core.database import SessionLocal
 from shared_core.models import VideoJob, JobLog
 from shared_core.config import get_settings
+from shared_core.llm_resolver import resolve_llm_config
+from shared_core.constants import LLMFeature
 
 logger = logging.getLogger(__name__)
 
@@ -432,9 +434,12 @@ def process_leader_job_impl(job_id: int):
         master_contents_brief = brief or payload.get("master_contents_brief") or variant.get("master_contents_brief") or ""
 
         # 3. Gọi SmolAgents CodeAgent
-        settings = get_settings()
-        base_url = _get_global_model_setting("base_url") or settings.ollama.base_url
-        model_name = _get_global_model_setting("model_name") or settings.ollama.model_name
+        user_id = job.project.user_id if job.project else None
+        config = resolve_llm_config(user_id, LLMFeature.LEADER_ANALYSIS)
+        
+        base_url = config["base_url"]
+        model_name = config["model_name"]
+        api_key = config["api_key"] or "ollama"
         
         system_prompt = load_prompt("leader_system_prompt.txt")
 
@@ -468,12 +473,12 @@ def process_leader_job_impl(job_id: int):
             f"Hãy hoàn thành nhiệm vụ và xuất ra kết quả JSON duy nhất theo đúng cấu trúc yêu cầu."
         )
 
-        logger.info(f"Setting up SmolAgents CodeAgent with model {model_name} at {base_url}")
+        logger.info(f"Setting up SmolAgents CodeAgent with model {model_name} from {config['source']} at {base_url}")
         
         model = OpenAIServerModel(
             model_id=model_name,
             api_base=f"{base_url.rstrip('/')}/v1",
-            api_key="ollama",
+            api_key=api_key,
         )
         
         agent = ToolCallingAgent(

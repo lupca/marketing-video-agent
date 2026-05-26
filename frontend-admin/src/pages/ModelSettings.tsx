@@ -22,6 +22,7 @@ import { cn } from "../lib/utils";
 interface LLMModelConfig {
   id: string;
   name: string;
+  provider: string; // "openai" | "ollama" | "groq" | "anthropic"
   base_url: string;
   model_name: string;
   api_key?: string;
@@ -44,6 +45,17 @@ export default function ModelSettings() {
   const [llmLoading, setLlmLoading] = useState(true);
   const [llmError, setLlmError] = useState<string | null>(null);
 
+  // Global Routing State
+  const [routing, setRouting] = useState({
+    default_model_id: "",
+    feature_routing: {
+      leader_script_analysis: "",
+      video_orchestrator: "",
+      chat_assistant: ""
+    }
+  });
+  const [isRoutingSaving, setIsRoutingSaving] = useState(false);
+
   // TTS States
   const [ttsModels, setTtsModels] = useState<TTSModelConfig[]>([]);
   const [ttsLoading, setTtsLoading] = useState(true);
@@ -54,6 +66,7 @@ export default function ModelSettings() {
   const [editingLlmModelId, setEditingLlmModelId] = useState<string | null>(null);
   const [llmFormData, setLlmFormData] = useState({
     name: "",
+    provider: "ollama",
     base_url: "http://localhost:11434",
     model_name: "",
     api_key: ""
@@ -81,6 +94,9 @@ export default function ModelSettings() {
     try {
       const res = await api.get("/api/system/chat-models");
       setLlmModels(res.data);
+      
+      const routingRes = await api.get("/api/system/llm-routing");
+      setRouting(routingRes.data);
     } catch (err: any) {
       console.error("Failed to fetch LLM models:", err);
       setLlmError("Không thể tải danh sách mô hình LLM từ máy chủ.");
@@ -109,11 +125,25 @@ export default function ModelSettings() {
     fetchTtsModels();
   }, []);
 
+  const saveRouting = async () => {
+    setIsRoutingSaving(true);
+    try {
+      await api.put("/api/system/llm-routing", routing);
+      alert("Cấu hình routing đã được cập nhật!");
+    } catch (err) {
+      console.error("Failed to save routing:", err);
+      alert("Lỗi khi lưu cấu hình routing.");
+    } finally {
+      setIsRoutingSaving(false);
+    }
+  };
+
   // LLM CRUD
   const openAddLlmModal = () => {
     setEditingLlmModelId(null);
     setLlmFormData({
       name: "",
+      provider: "ollama",
       base_url: "http://localhost:11434",
       model_name: "",
       api_key: ""
@@ -125,6 +155,7 @@ export default function ModelSettings() {
     setEditingLlmModelId(model.id);
     setLlmFormData({
       name: model.name,
+      provider: model.provider || "ollama",
       base_url: model.base_url,
       model_name: model.model_name,
       api_key: model.api_key || ""
@@ -150,16 +181,11 @@ export default function ModelSettings() {
 
   const handleLlmSubmit = async (e: React.FormEvent) => {
     e.preventDefault();
-    if (!llmFormData.name.trim() || !llmFormData.base_url.trim() || !llmFormData.model_name.trim()) {
-      alert("Vui lòng điền đầy đủ các thông tin bắt buộc!");
-      return;
-    }
-
     setIsSubmitting(true);
     try {
       if (editingLlmModelId) {
         const res = await api.put(`/api/system/chat-models/${editingLlmModelId}`, llmFormData);
-        setLlmModels((prev) => prev.map((m) => m.id === editingLlmModelId ? res.data : m));
+        setLlmModels((prev) => prev.map((m) => (m.id === editingLlmModelId ? res.data : m)));
       } else {
         const res = await api.post("/api/system/chat-models", llmFormData);
         setLlmModels((prev) => [...prev, res.data]);
@@ -167,7 +193,7 @@ export default function ModelSettings() {
       setIsLlmModalOpen(false);
     } catch (err: any) {
       console.error("Failed to save LLM model:", err);
-      alert("Lỗi khi lưu cấu hình LLM: " + (err.response?.data?.detail || err.message));
+      alert("Không thể lưu cấu hình mô hình LLM: " + (err.response?.data?.detail || err.message));
     } finally {
       setIsSubmitting(false);
     }
@@ -175,15 +201,14 @@ export default function ModelSettings() {
 
   const handleTestLlmConnection = async (model: LLMModelConfig) => {
     setTestStatuses((prev) => ({ ...prev, [model.id]: { status: "testing" } }));
-    
     try {
       const res = await api.post("/api/system/chat-models/test", {
         name: model.name,
         base_url: model.base_url,
         model_name: model.model_name,
-        api_key: model.api_key || ""
+        api_key: model.api_key
       });
-
+      
       if (res.data.status === "ok") {
         setTestStatuses((prev) => ({ 
           ...prev, 
@@ -198,7 +223,7 @@ export default function ModelSettings() {
     } catch (err: any) {
       setTestStatuses((prev) => ({ 
         ...prev, 
-        [model.id]: { status: "error", message: "Kết nối thất bại hoặc quá thời gian chờ." } 
+        [model.id]: { status: "error", message: "Kiểm tra kết nối thất bại." } 
       }));
     }
   };
@@ -234,9 +259,6 @@ export default function ModelSettings() {
     try {
       await api.delete(`/api/system/tts-models/${id}`);
       setTtsModels((prev) => prev.filter((m) => m.id !== id));
-      const updatedStatuses = { ...testStatuses };
-      delete updatedStatuses[id];
-      setTestStatuses(updatedStatuses);
     } catch (err: any) {
       console.error("Failed to delete TTS model:", err);
       alert("Không thể xóa mô hình TTS: " + (err.response?.data?.detail || err.message));
@@ -245,16 +267,11 @@ export default function ModelSettings() {
 
   const handleTtsSubmit = async (e: React.FormEvent) => {
     e.preventDefault();
-    if (!ttsFormData.name.trim() || !ttsFormData.provider.trim()) {
-      alert("Vui lòng điền đầy đủ tên hiển thị và loại provider!");
-      return;
-    }
-
     setIsSubmitting(true);
     try {
       if (editingTtsModelId) {
         const res = await api.put(`/api/system/tts-models/${editingTtsModelId}`, ttsFormData);
-        setTtsModels((prev) => prev.map((m) => m.id === editingTtsModelId ? res.data : m));
+        setTtsModels((prev) => prev.map((m) => (m.id === editingTtsModelId ? res.data : m)));
       } else {
         const res = await api.post("/api/system/tts-models", ttsFormData);
         setTtsModels((prev) => [...prev, res.data]);
@@ -262,7 +279,7 @@ export default function ModelSettings() {
       setIsTtsModalOpen(false);
     } catch (err: any) {
       console.error("Failed to save TTS model:", err);
-      alert("Lỗi khi lưu cấu hình TTS: " + (err.response?.data?.detail || err.message));
+      alert("Không thể lưu cấu hình mô hình TTS: " + (err.response?.data?.detail || err.message));
     } finally {
       setIsSubmitting(false);
     }
@@ -270,16 +287,15 @@ export default function ModelSettings() {
 
   const handleTestTtsConnection = async (model: TTSModelConfig) => {
     setTestStatuses((prev) => ({ ...prev, [model.id]: { status: "testing" } }));
-    
     try {
       const res = await api.post("/api/system/tts-models/test", {
         name: model.name,
         provider: model.provider,
-        base_url: model.base_url || "",
-        model_name: model.model_name || "",
-        api_key: model.api_key || ""
+        base_url: model.base_url,
+        model_name: model.model_name,
+        api_key: model.api_key
       });
-
+      
       if (res.data.status === "ok") {
         setTestStatuses((prev) => ({ 
           ...prev, 
@@ -406,7 +422,7 @@ export default function ModelSettings() {
             <div className="grid grid-cols-1 md:grid-cols-2 gap-6 animate-in fade-in duration-200">
               {llmModels.map((model) => {
                 const test = testStatuses[model.id];
-                const isOllama = model.base_url.includes("11434") || model.base_url.includes("ollama");
+                const isOllama = model.provider === "ollama" || model.base_url.includes("11434");
                 
                 return (
                   <div 
@@ -427,7 +443,7 @@ export default function ModelSettings() {
                           <div>
                             <h3 className="text-sm font-extrabold text-white tracking-tight">{model.name}</h3>
                             <span className="text-[9px] uppercase tracking-wider font-bold bg-white/5 border border-white/10 px-2 py-0.5 rounded text-muted-foreground">
-                              {isOllama ? "Ollama Local" : "OpenAI Compatible"}
+                              {model.provider || (isOllama ? "Ollama" : "Cloud")}
                             </span>
                           </div>
                         </div>
@@ -480,37 +496,139 @@ export default function ModelSettings() {
                       <button
                         onClick={() => handleTestLlmConnection(model)}
                         disabled={test?.status === "testing"}
-                        className="flex items-center gap-1.5 px-3 py-1.5 bg-white/5 hover:bg-white/10 text-[10px] font-bold uppercase tracking-wider text-white border border-white/10 rounded-lg transition-all cursor-pointer"
+                        className={cn(
+                          "flex items-center gap-2 px-4 py-2 rounded-xl text-[10px] font-bold transition-all cursor-pointer",
+                          test?.status === "ok" 
+                            ? "bg-emerald-500/10 text-emerald-400 border border-emerald-500/20" 
+                            : test?.status === "error"
+                              ? "bg-red-500/10 text-red-400 border border-red-500/20"
+                              : "bg-white/5 hover:bg-white/10 text-white border border-white/10"
+                        )}
                       >
                         {test?.status === "testing" ? (
-                          <Loader2 className="w-3 h-3 animate-spin" />
+                          <Loader2 className="w-3.5 h-3.5 animate-spin" />
+                        ) : test?.status === "ok" ? (
+                          <Check className="w-3.5 h-3.5" />
+                        ) : test?.status === "error" ? (
+                          <AlertCircle className="w-3.5 h-3.5" />
                         ) : (
-                          <Activity className="w-3 h-3 text-primary animate-pulse" />
+                          <Activity className="w-3.5 h-3.5" />
                         )}
-                        Ping Test
+                        {test?.status === "testing" ? "Đang thử..." : test?.status === "ok" ? "Kết nối tốt" : test?.status === "error" ? "Lỗi kết nối" : "Thử kết nối"}
                       </button>
 
-                      {test && (
-                        <div className="flex-1 text-right overflow-hidden">
-                          {test.status === "testing" && (
-                            <span className="text-[10px] text-primary animate-pulse">Đang kiểm tra...</span>
-                          )}
-                          {test.status === "ok" && (
-                            <span className="text-[10px] text-emerald-400 font-semibold tracking-wide flex items-center justify-end gap-1">
-                              <Check className="w-3.5 h-3.5" /> OK
-                            </span>
-                          )}
-                          {test.status === "error" && (
-                            <span className="text-[9px] text-red-400 font-medium line-clamp-1 block" title={test.message}>
-                              Lỗi: {test.message}
-                            </span>
-                          )}
-                        </div>
+                      {test?.message && (
+                        <p className={cn(
+                          "text-[9px] font-medium truncate max-w-[150px]",
+                          test.status === "ok" ? "text-emerald-400/70" : "text-red-400/70"
+                        )}>
+                          {test.message}
+                        </p>
                       )}
                     </div>
                   </div>
                 );
               })}
+            </div>
+          )}
+
+          {/* LLM Routing Section */}
+          {!llmLoading && llmModels.length > 0 && (
+            <div className="bg-black/40 border border-white/10 rounded-3xl p-8 backdrop-blur-xl space-y-6 animate-in fade-in slide-in-from-bottom-4 duration-500 mt-8">
+              <div className="flex items-center gap-3 border-b border-white/5 pb-4">
+                <div className="p-2 bg-indigo-500/10 border border-indigo-500/20 rounded-xl text-indigo-400">
+                  <Activity className="w-5 h-5" />
+                </div>
+                <div>
+                  <h2 className="text-lg font-bold text-white tracking-tight">Điều Phối Model Toàn Hệ Thống (Routing)</h2>
+                  <p className="text-[11px] text-muted-foreground font-medium uppercase tracking-wider">Xác định model mặc định cho từng tính năng AI</p>
+                </div>
+              </div>
+
+              <div className="grid grid-cols-1 md:grid-cols-2 gap-8">
+                {/* Default Model */}
+                <div className="space-y-3">
+                  <label className="text-sm font-bold text-white/80 block">Model Mặc Định Hệ Thống</label>
+                  <p className="text-[11px] text-muted-foreground leading-relaxed">Dùng cho tất cả các tính năng nếu không có cấu hình cụ thể.</p>
+                  <select
+                    value={routing.default_model_id}
+                    onChange={(e) => setRouting({...routing, default_model_id: e.target.value})}
+                    className="w-full bg-zinc-900 border border-white/10 rounded-xl px-4 py-3 text-sm text-white focus:outline-none focus:ring-2 focus:ring-primary/40 focus:border-primary/40 transition-all cursor-pointer"
+                  >
+                    <option value="">-- Chọn Model --</option>
+                    {llmModels.map(m => (
+                      <option key={m.id} value={m.id}>{m.name} ({m.model_name})</option>
+                    ))}
+                  </select>
+                </div>
+
+                <div className="space-y-6">
+                  {/* Leader Agent Routing */}
+                  <div className="space-y-2">
+                    <label className="text-xs font-bold text-white/70 block uppercase tracking-wider">Leader Agent (Script Analysis)</label>
+                    <select
+                      value={routing.feature_routing.leader_script_analysis}
+                      onChange={(e) => setRouting({
+                        ...routing, 
+                        feature_routing: {...routing.feature_routing, leader_script_analysis: e.target.value}
+                      })}
+                      className="w-full bg-zinc-900 border border-white/10 rounded-xl px-4 py-2.5 text-xs text-white focus:outline-none focus:ring-1 focus:ring-primary/30 cursor-pointer"
+                    >
+                      <option value="">-- Dùng Model Mặc Định --</option>
+                      {llmModels.map(m => (
+                        <option key={m.id} value={m.id}>{m.name}</option>
+                      ))}
+                    </select>
+                  </div>
+
+                  {/* Video Orchestrator Routing */}
+                  <div className="space-y-2">
+                    <label className="text-xs font-bold text-white/70 block uppercase tracking-wider">Video Orchestrator Agent</label>
+                    <select
+                      value={routing.feature_routing.video_orchestrator}
+                      onChange={(e) => setRouting({
+                        ...routing, 
+                        feature_routing: {...routing.feature_routing, video_orchestrator: e.target.value}
+                      })}
+                      className="w-full bg-zinc-900 border border-white/10 rounded-xl px-4 py-2.5 text-xs text-white focus:outline-none focus:ring-1 focus:ring-primary/30 cursor-pointer"
+                    >
+                      <option value="">-- Dùng Model Mặc Định --</option>
+                      {llmModels.map(m => (
+                        <option key={m.id} value={m.id}>{m.name}</option>
+                      ))}
+                    </select>
+                  </div>
+
+                  {/* Chat Assistant Routing */}
+                  <div className="space-y-2">
+                    <label className="text-xs font-bold text-white/70 block uppercase tracking-wider">AI Chat Assistant</label>
+                    <select
+                      value={routing.feature_routing.chat_assistant}
+                      onChange={(e) => setRouting({
+                        ...routing, 
+                        feature_routing: {...routing.feature_routing, chat_assistant: e.target.value}
+                      })}
+                      className="w-full bg-zinc-900 border border-white/10 rounded-xl px-4 py-2.5 text-xs text-white focus:outline-none focus:ring-1 focus:ring-primary/30 cursor-pointer"
+                    >
+                      <option value="">-- Dùng Model Mặc Định --</option>
+                      {llmModels.map(m => (
+                        <option key={m.id} value={m.id}>{m.name}</option>
+                      ))}
+                    </select>
+                  </div>
+                </div>
+              </div>
+
+              <div className="pt-4 flex justify-end">
+                <button
+                  onClick={saveRouting}
+                  disabled={isRoutingSaving}
+                  className="flex items-center gap-2 px-6 py-3 bg-white text-black hover:bg-white/90 disabled:opacity-50 transition-all rounded-xl text-xs font-bold shadow-xl cursor-pointer"
+                >
+                  {isRoutingSaving ? <Loader2 className="w-4 h-4 animate-spin" /> : <ShieldCheck className="w-4 h-4" />}
+                  Lưu Cấu Hình Routing
+                </button>
+              </div>
             </div>
           )}
         </>
@@ -540,10 +658,10 @@ export default function ModelSettings() {
             </div>
           ) : ttsModels.length === 0 ? (
             <div className="border border-dashed border-white/10 rounded-3xl p-12 text-center text-muted-foreground select-none max-w-lg mx-auto">
-              <Volume2 className="w-16 h-16 mx-auto opacity-20 mb-4 animate-pulse" />
+              <ListMusic className="w-16 h-16 mx-auto opacity-20 mb-4 animate-pulse" />
               <h3 className="text-lg font-bold text-white mb-2">Chưa có mô hình TTS</h3>
               <p className="text-sm leading-relaxed max-w-sm mx-auto mb-6">
-                Chưa có cấu hình mô hình TTS. Vui lòng thêm mô hình MeloTTS local hoặc ElevenLabs cloud để sử dụng dịch vụ thuyết minh.
+                Hệ thống chưa thiết lập các cấu hình TTS. Hãy thêm một cấu hình mới để bắt đầu tạo giọng nói thuyết minh.
               </p>
               <button
                 onClick={openAddTtsModal}
@@ -557,7 +675,6 @@ export default function ModelSettings() {
               {ttsModels.map((model) => {
                 const test = testStatuses[model.id];
                 const isElevenLabs = model.provider === "elevenlabs";
-                const isMeloTts = model.provider === "melotts";
                 
                 return (
                   <div 
@@ -569,11 +686,11 @@ export default function ModelSettings() {
                         <div className="flex items-center gap-3">
                           <div className={cn(
                             "p-2.5 rounded-xl border",
-                            isElevenLabs 
+                            model.provider === "melotts" 
                               ? "bg-violet-500/10 border-violet-500/20 text-violet-400" 
-                              : isMeloTts 
-                              ? "bg-amber-500/10 border-amber-500/20 text-amber-400" 
-                              : "bg-blue-500/10 border-blue-500/20 text-blue-400"
+                              : model.provider === "elevenlabs"
+                                ? "bg-pink-500/10 border-pink-500/20 text-pink-400"
+                                : "bg-sky-500/10 border-sky-500/20 text-sky-400"
                           )}>
                             <Volume2 className="w-5 h-5" />
                           </div>
@@ -709,6 +826,20 @@ export default function ModelSettings() {
                   placeholder="Ví dụ: Qwen 2.5 3B Local"
                   className="w-full bg-white/5 border border-white/10 rounded-xl px-4 py-2.5 text-xs text-white placeholder:text-muted-foreground/45 focus:outline-none focus:ring-1 focus:ring-primary"
                 />
+              </div>
+
+              <div className="space-y-1.5">
+                <label className="text-xs font-semibold text-muted-foreground">Nhà cung cấp (Provider) *</label>
+                <select
+                  value={llmFormData.provider}
+                  onChange={(e) => setLlmFormData({ ...llmFormData, provider: e.target.value })}
+                  className="w-full bg-zinc-900 border border-white/10 rounded-xl px-4 py-2.5 text-xs text-white focus:outline-none focus:ring-1 focus:ring-primary cursor-pointer"
+                >
+                  <option value="ollama">Ollama (Local)</option>
+                  <option value="openai">OpenAI (Hoặc OpenAI-Compatible Cloud)</option>
+                  <option value="groq">Groq (Siêu tốc)</option>
+                  <option value="anthropic">Anthropic (Claude)</option>
+                </select>
               </div>
 
               <div className="space-y-1.5">

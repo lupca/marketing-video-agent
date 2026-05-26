@@ -19,6 +19,7 @@ from routers.jobs import router as jobs_router
 from routers.downloads import router as downloads_router
 from routers.system import router as system_router
 from routers.agent import router as agent_router
+from routers.user_preferences import router as user_preferences_router
 from routers.worker_config import router as worker_config_router
 from routers.translify import router as translify_router
 from routers.chat import router as chat_router
@@ -79,6 +80,7 @@ app.include_router(jobs_router)
 app.include_router(downloads_router)
 app.include_router(system_router)
 app.include_router(agent_router)
+app.include_router(user_preferences_router)
 app.include_router(worker_config_router)
 app.include_router(translify_router)
 app.include_router(chat_router)

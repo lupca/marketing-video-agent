@@ -21,6 +21,8 @@ from smolagents.memory import ActionStep, PlanningStep
 from shared_core.database import SessionLocal
 from shared_core.models import AgentSession, AgentLog
 from shared_core.config import get_settings
+from shared_core.llm_resolver import resolve_llm_config
+from shared_core.constants import LLMFeature
 
 from worker_agent.tools import (
     YouTubeSearchTool, DownloadVideoTool, AnalyzeVideoTool,
@@ -132,26 +134,29 @@ def _get_global_model_setting(key: str) -> str | None:
 
 # ── Agent Factory ─────────────────────────────────────────────────────────────
 
-def create_agent(session_id: str = None, mode: str = "full",
+def create_agent(session_id: str = None, user_id: str = None, mode: str = "full",
                  base_url: str = None, model_name: str = None):
     """
     Create a CodeAgent configured for local Ollama LLM.
     
     Priority: 
     1. Per-session override (passed as arguments)
-    2. Global DB settings (system_settings table)
-    3. Environment variables (config.py)
+    2. Hierarchical Resolver (User Preferences -> Global Routing -> Defaults)
     """
-    settings = get_settings()
+    # 1. Resolve configuration (hierarchical fallback)
+    config = resolve_llm_config(user_id, LLMFeature.VIDEO_ORCHESTRATOR)
     
-    effective_base_url = base_url or _get_global_model_setting("base_url") or settings.ollama.base_url
-    effective_model = model_name or _get_global_model_setting("model_name") or settings.ollama.model_name
+    effective_base_url = base_url or config["base_url"]
+    effective_model = model_name or config["model_name"]
+    api_key = config["api_key"] or "ollama"
     
-    # Configure Ollama through OpenAI compatible endpoint
+    logger.info(f"Setting up Agent Orchestrator with model {effective_model} from {config['source']} at {effective_base_url}")
+
+    # Configure Ollama or OpenAI compatible endpoint
     model = OpenAIServerModel(
         model_id=effective_model,
         api_base=f"{effective_base_url.rstrip('/')}/v1",
-        api_key="ollama",  # dummy key for Ollama
+        api_key=api_key,
     )
     
     # Build step callbacks dict to register for multiple step types
@@ -219,6 +224,7 @@ def run_agent_session_impl(session_id: str):
 
         agent = create_agent(
             session_id=session_id, 
+            user_id=session.user_id,
             mode=mode,
             base_url=model_settings.get("base_url"),
             model_name=model_settings.get("model_name"),

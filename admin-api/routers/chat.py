@@ -8,34 +8,10 @@ from sqlalchemy.orm import Session
 from typing import List
 
 from shared_core import models, schemas, database
+from shared_core.llm_resolver import resolve_llm_config
 import auth as auth_module
 
 router = APIRouter(prefix="/api/chat", tags=["Chat Assistant"])
-
-
-def _resolve_llm_config(db: Session, model_id: str) -> tuple[str, str, str]:
-    """
-    Looks up and resolves the selected LLM model connection properties 
-    from the DB system_settings (key: 'llm_models').
-    Returns: (base_url, model_name, api_key)
-    """
-    from shared_core.config import get_settings
-    settings = get_settings()
-    
-    base_url = settings.ollama.base_url or "http://localhost:11434"
-    model_name = settings.ollama.model_name or "qwen3.5:latest"
-    api_key = ""
-    
-    if model_id:
-        db_setting = db.query(models.SystemSetting).filter(models.SystemSetting.key == "llm_models").first()
-        if db_setting and db_setting.value and isinstance(db_setting.value, list):
-            for m in db_setting.value:
-                if m.get("id") == model_id:
-                    base_url = m.get("base_url", base_url)
-                    model_name = m.get("model_name", model_name)
-                    api_key = m.get("api_key", "")
-                    break
-    return base_url, model_name, api_key
 
 
 @router.post("/sessions", response_model=schemas.ChatSessionResponse, status_code=status.HTTP_201_CREATED)
@@ -125,7 +101,10 @@ def submit_chat_message(
         .all()[-10:] # Limit to last 10 dialogues for LLM context
         
     # 3. Resolve base connection details for selected LLM model config
-    base_url, model_name, api_key = _resolve_llm_config(db, session.selected_model_id)
+    config = resolve_llm_config(current_user.id, "chat_assistant")
+    base_url = config["base_url"]
+    model_name = config["model_name"]
+    api_key = config["api_key"]
 
     # 4. Generator function for Streaming chunks
     def sse_generator():

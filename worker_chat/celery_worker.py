@@ -56,10 +56,11 @@ def process_chat(self, job_id: int, payload: dict):
             raise ValueError("Query text is required for chat job")
 
         # 4. Generate AI response
-        insert_log(db, job_id, f"Calling Ollama chat with model_id={model_id}...")
+        user_id = job.project.user_id if job.project else None
+        insert_log(db, job_id, f"Calling LLM chat (user_id={user_id})...")
         update_job(db, job, progress_percent=50)
         
-        ai_response = generate_chat_response(messages=messages, model_id=model_id)
+        ai_response = generate_chat_response(messages=messages, user_id=user_id, model_id=model_id)
 
         # 5. Mark SUCCESS & Save Response inside 'note'
         update_job(
