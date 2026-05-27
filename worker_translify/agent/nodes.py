@@ -106,6 +106,14 @@ def glossary_extractor_node(state: TranslifyAgentState) -> Dict[str, Any]:
     insert_job_log(job_id, "🔍 [Agent] Khởi động: Chiết xuất thuật ngữ (Glossary Extractor)...")
     
     project_data = state["project_data"]
+    config_data = state.get("config_data") or {}
+    
+    title = (
+        config_data.get("title") or 
+        config_data.get("name") or 
+        state.get("project_name") or
+        "Video Marketing"
+    )
     
     # Gather Chinese transcripts from all scenes
     chinese_lines = []
@@ -158,9 +166,15 @@ def glossary_extractor_node(state: TranslifyAgentState) -> Dict[str, Any]:
         "Chú ý: Chỉ trả về JSON, không thêm chữ giải thích bên ngoài."
     )
     
+    user_content = (
+        f"Dưới đây là kịch bản của một video có tiêu đề là '{title}'. "
+        f"Hãy phân tích tóm tắt chủ đề và thuật ngữ xuất hiện trong kịch bản này.\n\n"
+        f"<text>\n{source_content}\n</text>"
+    )
+    
     response = llm.invoke([
         SystemMessage(content=system_prompt),
-        HumanMessage(content=f"<text>\n{source_content}\n</text>")
+        HumanMessage(content=user_content)
     ])
     
     try:
@@ -333,7 +347,7 @@ def reflective_adaptation_node(state: TranslifyAgentState) -> Dict[str, Any]:
     config_data = state.get("config_data") or {}
     
     # Resolve campaign tone
-    campaign_tone = config_data.get("campaign_tone") or config_data.get("tone") or "trẻ trung, năng động, đúng trend giới trẻ Việt Nam"
+    campaign_tone = config_data.get("campaign_tone") or config_data.get("tone") or f"tự nhiên, phù hợp với chủ đề video ({theme_summary})"
     
     glossary_str = "\n".join([f"- {item['src']}: {item['tgt']} ({item.get('note', '')})" for item in glossary])
     if not glossary_str:

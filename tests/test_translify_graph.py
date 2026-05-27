@@ -60,6 +60,7 @@ class TestTranslifyGraph(unittest.TestCase):
         mock_job = MagicMock()
         mock_job.id = 42
         mock_job.project = MagicMock(user_id="user_123")
+        mock_job.project.name = None
         mock_job.config_data = {}
         mock_job.status = "PENDING"
         mock_job.progress_percent = 0
@@ -77,6 +78,8 @@ class TestTranslifyGraph(unittest.TestCase):
             
             # 1. Glossary Node
             if "glossary" in sys_msg.lower() and "theme_summary" in sys_msg.lower():
+                # Assert title is injected into UserMessage
+                assert "Review vợt cầu lông Lining" in user_msg
                 return MagicMock(content=json.dumps({
                     "theme_summary": "Tóm tắt chủ đề video marketing.",
                     "glossary": [
@@ -106,6 +109,8 @@ class TestTranslifyGraph(unittest.TestCase):
             
             # 4. Reflective Adaptation Node
             if "reflective adaptation" in sys_msg.lower() or "free_translation" in sys_msg.lower():
+                # Assert dynamic campaign tone resolution works
+                assert "Phong cách dịch đích hướng tới: tự nhiên, phù hợp với chủ đề video (Tóm tắt chủ đề video marketing.)" in sys_msg
                 if "Xin chào thế giới." in user_msg:
                     return MagicMock(content=json.dumps({
                         "reflection": "Bản dịch tốt",
@@ -178,7 +183,7 @@ class TestTranslifyGraph(unittest.TestCase):
              mock_engine_cls.return_value = mock_engine
              
              from worker_translify.celery_worker import analyze_video
-             analyze_video(42, {"campaign_tone": "trẻ trung"})
+             analyze_video(42, {"title": "Review vợt cầu lông Lining"})
             
         # Assertions
         # Verify that project_data was serialized into mock_job.config_data

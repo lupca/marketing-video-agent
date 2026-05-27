@@ -30,9 +30,9 @@ interface JobDetailsModalProps {
 }
 
 export function JobDetailsModal({ job, logs, loadingLogs, onClose }: JobDetailsModalProps) {
-  const isLeader = job.job_type === "leader";
+  const hasTrace = job.job_type === "leader" || job.job_type === "translify"; 
   const [activeTab, setActiveTab] = useState<"logs" | "trace" | "config">(
-    isLeader ? "trace" : "logs"
+    hasTrace ? "trace" : "logs"
   );
   
   const [traceLogs, setTraceLogs] = useState<AgentLog[]>([]);
@@ -42,7 +42,7 @@ export function JobDetailsModal({ job, logs, loadingLogs, onClose }: JobDetailsM
 
   // Fetch real-time LangGraph Traces
   useEffect(() => {
-    if (!isLeader) return;
+    if (!hasTrace) return;
 
     let isMounted = true;
     const fetchTrace = async () => {
@@ -75,7 +75,7 @@ export function JobDetailsModal({ job, logs, loadingLogs, onClose }: JobDetailsM
       isMounted = false;
       clearInterval(interval);
     };
-  }, [job.id, job.status, isLeader, selectedNodeId]);
+  }, [job.id, job.status, hasTrace, selectedNodeId]);
 
   // Node helper functions
   const getNodeLabel = (log: AgentLog, index: number, allLogs: AgentLog[]) => {
@@ -119,14 +119,14 @@ export function JobDetailsModal({ job, logs, loadingLogs, onClose }: JobDetailsM
     <Modal
       isOpen={true}
       onClose={onClose}
-      maxWidth={isLeader ? "6xl" : "4xl"}
+      maxWidth={hasTrace ? "6xl" : "4xl"}
       title={
         <div className="flex items-center gap-3">
           <div className="px-3 py-1 rounded bg-white/5 border border-white/10 font-mono text-sm font-semibold text-primary">
             JOB #{job.id}
           </div>
           <div className="flex gap-1">
-            {isLeader && (
+            {hasTrace && (
               <button
                 onClick={() => setActiveTab("trace")}
                 className={cn(

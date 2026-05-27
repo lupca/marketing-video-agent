@@ -11,3 +11,4 @@ class TranslifyAgentState(TypedDict):
     pacing_violations: List[str]
     trimming_attempts: Dict[str, int]
     config_data: Dict[str, Any]
+    project_name: Optional[str]
