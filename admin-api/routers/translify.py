@@ -147,7 +147,7 @@ def rewrite_script(req: RewriteRequest):
     
     # Connect to Ollama
     ollama_url = os.getenv("OLLAMA_BASE_URL", "http://localhost:11434")
-    model_name = os.getenv("OLLAMA_MODEL", "qwen2.5:7b")
+    model_name = os.getenv("OLLAMA_MODEL", "qwen2.5:14b")
     
     system_prompt = (
         "Bạn là một biên dịch viên video ngắn chuyên nghiệp.\n"

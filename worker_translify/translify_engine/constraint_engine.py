@@ -14,7 +14,7 @@ def rewrite_with_ollama(original_text: str, duration: float, max_words: int) -> 
     cfg = get_settings().ollama
     base_url = cfg.base_url or "http://localhost:11434"
     ollama_api = f"{base_url}/api/chat"
-    model_name = os.getenv("OLLAMA_MODEL", "qwen2.5:7b")
+    model_name = os.getenv("OLLAMA_MODEL", "qwen2.5:14b")
 
     system_prompt = (
         "Bạn là một biên dịch viên video ngắn chuyên nghiệp.\n"
