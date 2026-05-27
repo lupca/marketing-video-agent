@@ -18,7 +18,9 @@ Toàn bộ tài liệu hệ thống được đặt tại thư mục `docs/`.
    - ⚙️ **[Luồng Xử Lý Chi Tiết](./translify/3_PIPELINE_FLOW.md)**: Kỹ thuật 5 Phase đầu cuối, Lucas-Kanade tracking & Inpaint.
    - 🔬 **[Hồ Sơ Công Nghệ](./translify/4_TECHNOLOGY_STACK.md)**: Thông số và phân bổ GPU của các SOTA AI Models (MDX-Net, Whisper, ProPainter, Qwen).
    - 🛠️ **[Sổ Tay Vận Hành & DevOps](./translify/5_OPERATIONS_TROUBLESHOOTING.md)**: Hướng dẫn cài đặt local, VRAM safety, Monkeypatches và tra cứu lỗi nhanh.
+   - 🤖 **[Kế Hoạch Nâng Cấp Agentic](./translify/6_AGENTIC_WORKFLOW_PLAN.md)**: Thiết kế tích hợp quy trình Agentic 3-Step Translation & Dubbing thông minh lấy cảm hứng từ VideoLingo.
    - *(Tham khảo tài liệu hướng dẫn nhanh cũ: [WORKER_TRANSLIFY.md](./WORKER_TRANSLIFY.md))*
+
 8. **[Hướng Dẫn: Worker TTS](./WORKER_TTS.md)** - *[NEW]* Quy trình sinh giọng thuyết minh tự động qua MeloTTS và Edge-TTS HoaiMy/NamMinh.
 
 9. **[Hướng Dẫn: Worker Text2Img](./WORKER_TEXT2IMG.md)** - Thiết kế sinh ảnh nghệ thuật độc lập qua ComfyUI FLUX GPU API.
