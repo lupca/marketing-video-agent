@@ -53,7 +53,7 @@ class AnalysisEngine:
     def __init__(self, use_ollama: bool = True):
         self.use_ollama = use_ollama
 
-    def analyze(self, video_path: str, work_dir: str, project_id: str = "project_1") -> VideoProject:
+    def analyze(self, video_path: str, work_dir: str, project_id: str = "project_1", translate: bool = True) -> VideoProject:
         """
         Analyze the full video, segment it, extract metadata, translate, and populate the VideoProject database.
         """
@@ -106,19 +106,20 @@ class AnalysisEngine:
                             time_sec=t_sec
                         ))
             
-            # Translate Chinese texts to Vietnamese using Ollama
+            # Translate Chinese texts to Vietnamese using Ollama (only if translate=True)
             vi_text = None
-            if zh_text:
-                logger.info(f"[{scene_id}] Translating transcript: '{zh_text}'")
-                translated = translate_with_ollama([zh_text], prompt_type="subtitle")
-                if translated:
-                    vi_text = translated[0]
-                    
-            for item in matching_ocr:
-                logger.info(f"[{scene_id}] Translating OCR title: '{item.text_zh}'")
-                translated_ocr = translate_with_ollama([item.text_zh], prompt_type="ocr")
-                if translated_ocr:
-                    item.text_vi = translated_ocr[0]
+            if translate:
+                if zh_text:
+                    logger.info(f"[{scene_id}] Translating transcript: '{zh_text}'")
+                    translated = translate_with_ollama([zh_text], prompt_type="subtitle")
+                    if translated:
+                        vi_text = translated[0]
+                        
+                for item in matching_ocr:
+                    logger.info(f"[{scene_id}] Translating OCR title: '{item.text_zh}'")
+                    translated_ocr = translate_with_ollama([item.text_zh], prompt_type="ocr")
+                    if translated_ocr:
+                        item.text_vi = translated_ocr[0]
             
             # Create Scene object
             scene_obj = Scene(

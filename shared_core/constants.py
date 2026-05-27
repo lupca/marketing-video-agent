@@ -7,6 +7,7 @@ class LLMFeature:
     LEADER_ANALYSIS = "leader_script_analysis"
     VIDEO_ORCHESTRATOR = "video_orchestrator"
     CHAT_ASSISTANT = "chat_assistant"
+    TRANS_ANALYSIS = "trans_analysis"
     
     # Add future features here
     # SEO_TITLES = "seo_titles"
@@ -14,4 +15,4 @@ class LLMFeature:
 
     @classmethod
     def all(cls):
-        return [cls.LEADER_ANALYSIS, cls.VIDEO_ORCHESTRATOR, cls.CHAT_ASSISTANT]
+        return [cls.LEADER_ANALYSIS, cls.VIDEO_ORCHESTRATOR, cls.CHAT_ASSISTANT, cls.TRANS_ANALYSIS]

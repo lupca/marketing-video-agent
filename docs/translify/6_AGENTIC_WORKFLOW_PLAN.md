@@ -62,12 +62,12 @@ graph TD
 
 ### Node 1: `glossary_extractor_node` (LLM)
 - **Nhiệm vụ:** Quét toàn bộ transcript tiếng Trung thô của video gốc.
-- **Suy luận:** Gọi Ollama (`qwen2.5:7b`) phân tích chủ đề cốt lõi (Theme) và chiết xuất ra một **bảng thuật ngữ chuyên dụng (Glossary)** gồm các danh từ riêng, tên sản phẩm, thương hiệu hoặc từ khó kèm nghĩa dịch tiếng Việt đề xuất.
+- **Suy luận:** Sử dụng `shared_core.llm_resolver` để tự động lấy model phù hợp nhất theo User/Tính năng (không hardcode model). Gọi LLM phân tích chủ đề cốt lõi (Theme) và chiết xuất ra một **bảng thuật ngữ chuyên dụng (Glossary)** gồm các danh từ riêng, tên sản phẩm, thương hiệu hoặc từ khó kèm nghĩa dịch tiếng Việt đề xuất.
 - **Đầu ra:** Ghi `glossary` và `theme_summary` vào State để làm neo định hướng cho tất cả các bước dịch sau.
 
 ### Node 2: `sliding_translation_node` (LLM)
 - **Nhiệm vụ:** Dịch thuật chuyên sâu dòng thoại tiếng Trung của từng phân cảnh sang tiếng Việt.
-- **Suy luận:** Dịch tịnh tiến trượt (Sliding Window Chunks) với kích thước block 600 ký tự. Để đảm bảo tính trôi chảy, nạp kèm ngữ cảnh: 3 dòng thoại của phân cảnh trước và 2 dòng thoại của phân cảnh sau làm lề biên, kết hợp nạp bảng thuật ngữ Glossary để xưng hô đồng nhất.
+- **Suy luận:** Duyệt mảng `scenes` trực tiếp thay vì đếm ký tự thô. Khi dịch phân cảnh $i$, nạp kèm ngữ cảnh của phân cảnh trước ($i-1$) và phân cảnh sau ($i+1$) làm lề biên, kết hợp nạp bảng thuật ngữ Glossary để xưng hô đồng nhất. Việc này đảm bảo an toàn tuyệt đối ranh giới cắt cảnh và không bao giờ cắt nhầm câu.
 - **Đầu ra:** Bản dịch tiếng Việt trực tiếp (Faithful Direct Translation) cho từng scene.
 
 ### Node 3: `reflective_adaptation_node` (LLM)
