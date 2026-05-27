@@ -12,8 +12,15 @@ Toàn bộ tài liệu hệ thống được đặt tại thư mục `docs/`.
 4. **[Tài Liệu Cấu Trúc API (Admin API)](./API_REFERENCE.md)** - Đặc tả các router Auth, Projects, Folders, Assets, Jobs, Chat SSE, Translify, Downloads, và Worker-Config.
 5. **[Hướng Dẫn: Plugin Video Review](./WORKER_REVIEW.md)** - Phù hợp tạo video Kể Chuyện, Đạt Tỉ Lệ Giữ Chân Cao (Retention B-Roll).
 6. **[Hướng Dẫn: Plugin Video Unbox](./WORKER_UNBOX.md)** - Hỗ trợ cả 2 chế độ: Basic Unbox (Music sync beat-drop) và Viral Unbox (YOLO Smart Crop & Speed Ramping).
-7. **[Hướng Dẫn: Plugin Video Translify](./WORKER_TRANSLIFY.md)** - Dịch thuật, Việt hóa video Douyin/Kuaishou, và xóa chữ SOTA Inpainting (ProPainter).
-8. **[Hướng Hẫn: Worker TTS](./WORKER_TTS.md)** - *[NEW]* Quy trình sinh giọng thuyết minh tự động qua MeloTTS và Edge-TTS HoaiMy/NamMinh.
+7. **[Bộ Tài Liệu Doanh Nghiệp: Plugin Video Translify](./translify/1_EXECUTIVE_SUMMARY.md)** - *[TIÊN PHONG SOTA]* Quy trình bản địa hóa video Douyin/Kuaishou và inpainting xóa chữ, bao gồm:
+   - 🏢 **[Tóm Tắt Doanh Nghiệp](./translify/1_EXECUTIVE_SUMMARY.md)**: Bài toán kinh doanh, chống Reup và hiệu quả ROI.
+   - 🏗️ **[Kiến Trúc Hệ Thống](./translify/2_SYSTEM_ARCHITECTURE.md)**: Thiết kế 2-Stage bất đồng bộ và Video-as-Data Schema.
+   - ⚙️ **[Luồng Xử Lý Chi Tiết](./translify/3_PIPELINE_FLOW.md)**: Kỹ thuật 5 Phase đầu cuối, Lucas-Kanade tracking & Inpaint.
+   - 🔬 **[Hồ Sơ Công Nghệ](./translify/4_TECHNOLOGY_STACK.md)**: Thông số và phân bổ GPU của các SOTA AI Models (MDX-Net, Whisper, ProPainter, Qwen).
+   - 🛠️ **[Sổ Tay Vận Hành & DevOps](./translify/5_OPERATIONS_TROUBLESHOOTING.md)**: Hướng dẫn cài đặt local, VRAM safety, Monkeypatches và tra cứu lỗi nhanh.
+   - *(Tham khảo tài liệu hướng dẫn nhanh cũ: [WORKER_TRANSLIFY.md](./WORKER_TRANSLIFY.md))*
+8. **[Hướng Dẫn: Worker TTS](./WORKER_TTS.md)** - *[NEW]* Quy trình sinh giọng thuyết minh tự động qua MeloTTS và Edge-TTS HoaiMy/NamMinh.
+
 9. **[Hướng Dẫn: Worker Text2Img](./WORKER_TEXT2IMG.md)** - Thiết kế sinh ảnh nghệ thuật độc lập qua ComfyUI FLUX GPU API.
 10. **[Tài Liệu: Kiến Trúc Chat Assistant](./WORKER_CHAT_STORAGE.md)** - Cơ chế lưu trữ dữ liệu chat và truyền nhận dữ liệu thời gian thực qua Stream Server-Sent Events (SSE).
 11. **[Kiến Trúc: AI Leader Agent & Webhook TMCP](./tmcp_integration_leader_agent.md)** - Bộ định tuyến tổng đạo diễn AI, tự sửa lỗi tham số (Self-Healing) và tiếp nhận webhook.

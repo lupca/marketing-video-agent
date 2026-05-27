@@ -33,15 +33,20 @@ graph TD
 ### B. Message Broker & Job Queue
 Render video là tác vụ nặng (long-running task), sử dụng Job Queue kết hợp kiến trúc sự kiện Event-Driven.
 - **Dịch vụ môi giới (Broker)**: Redis.
-- **Thư viện Job Queue**: Celery. API đóng vai trò là nhà xuất bản (publisher), điều phối luồng xử lý tới các queue cụ thể (ví dụ `review_queue`, `unbox_queue`).
+- **Thư viện Job Queue**: Celery. API đóng vai trò là nhà xuất bản (publisher), điều phối luồng xử lý tới các queue cụ thể (ví dụ `review_queue`, `unbox_queue`, `translify_queue`).
 
 ### C. Worker Nodes (Consumers / "Phích cắm")
 Worker là các service chạy nền, liên tục lắng nghe hàng đợi (Queue) từ Broker.
-- **Kiến trúc Plugin ("Phích cắm")**: Worker chia tách độc lập theo mục đích cấu hình video (`worker_review`, `worker_unbox`). Each worker process runs its specific business logic based on a shared configuration contract (`worker_base.py`).
+- **Kiến trúc Plugin ("Phích cắm")**: Worker chia tách độc lập theo mục đích cấu hình video (`worker_review`, `worker_unbox`, `worker_translify`). Mỗi tiến trình worker thực thi logic nghiệp vụ đặc thù của mình dựa trên một hợp đồng cấu hình chia sẻ chung thông qua `shared_core` (`worker_base.py`).
+- **Môi hình Xử lý 2-Stage (Ví dụ Translify)**: Khác biệt với các worker sinh video từ kịch bản tĩnh khác, `worker_translify` áp dụng mô hình **Video-as-Data** chia làm hai giai đoạn:
+  1. **Stage 1 (Phân tích & Dịch thuật tự động - `analyze_video`)**: Trích xuất, phân tách vocal/BGM bằng mô hình MDX-Net ONNX, nhận diện giọng nói bằng Whisper, quét tọa độ chữ bằng PaddleOCR và tự động dịch. Lưu toàn bộ metadata thành kịch bản cấu trúc dữ liệu JSON (`VideoProject`) trong database, đưa Job về trạng thái `WAITING_FOR_REVIEW`.
+  2. **Stage 2 (Hợp nhất & Kết xuất - `render_video`)**: Sau khi người dùng duyệt hoặc chỉnh sửa kịch bản dịch trên Web UI, Celery kích hoạt Stage 2 để chạy song song sinh Edge-TTS, co giãn Rubberband khớp cảnh, tẩy chữ cứng bằng SOTA ProPainter và render thành phẩm bằng GPU tăng tốc phần cứng.
+  - *Xem chi tiết bộ tài liệu kiến trúc chuyên sâu tại [Kiến Trúc Hệ Thống Translify](./translify/2_SYSTEM_ARCHITECTURE.md).*
 - **Môi trường vận hành**:
   - *Môi trường Production*: Được đóng gói thành các Docker Image độc lập (`Dockerfile`) để điều phối và tự động scale thông qua Docker Swarm hoặc Kubernetes (KEDA).
   - *Môi trường Development (Local)*: Được chạy **trực tiếp làm tiến trình trên Host Machine (thông qua `dev.sh` hoặc `dev-selective.sh`)** để tối ưu hóa khả năng tận dụng card đồ họa GPU rời (CUDA) cho các thư viện Deep Learning (ONNX, PyTorch, PaddlePaddle) và xuất StdOut trực tiếp cho lập trình viên.
 - **Cô lập lỗi**: Sử dụng cơ chế `try/except` cùng tính năng `max_retries` của Celery. Nếu render 1 clip thất bại, bắt lỗi và cập nhật Database thành `FAILED`, đảm bảo không chết chuỗi tiến trình chung.
+
 
 ### D. File Storage Backend
 Sử dụng S3 protocol qua MinIO (Tương đương Amazon S3).
