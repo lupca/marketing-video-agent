@@ -75,9 +75,43 @@ class VideoBuilder:
         self.auto_subtitle: bool = rs.get("auto_subtitle", False)
         self.default_pacing: Dict[str, float] = rs.get("pacing", {})
 
-        self.assets: Dict = self.config.get("assets", {})
-        self.video_folders: Dict[str, str] = self.assets.get("video_folders", {})
-        self.timeline: List[Dict] = self.config.get("timeline_script", [])
+        scenes = self.config.get("scenes", [])
+        if scenes:
+            # Native scenes timeline ingestion
+            self.video_folders = {}
+            self.timeline = []
+            
+            # Extract bgm from bgm_path or audio
+            bgm = self.config.get("bgm_path") or self.config.get("audio", "")
+            self.assets = {
+                "audio": {"bgm_path": bgm}
+            }
+            
+            accumulated_time = 0.0
+            for idx, s in enumerate(scenes):
+                # Dynamically map clip_url to a video folder index
+                folder_key = f"{idx+1}"
+                self.video_folders[folder_key] = s.get("clip_url", "")
+                dur = float(s.get("duration", 5.0))
+                
+                effects = s.get("effects") or []
+                visual_effects = ["camera_shake"] if "hook" in str(effects).lower() or idx == 0 else []
+                
+                self.timeline.append({
+                    "segment": s.get("scene_id") or f"segment_{idx+1}",
+                    "video_source": folder_key,
+                    "time_range": [accumulated_time, accumulated_time + dur],
+                    "text_overlay": s.get("text_overlay", ""),
+                    "highlight_words": s.get("highlight_words", []),
+                    "visual_effects": visual_effects,
+                    "pacing": s.get("pacing", {})
+                })
+                accumulated_time += dur
+        else:
+            # Fallback to legacy schema
+            self.assets = self.config.get("assets", {})
+            self.video_folders = self.assets.get("video_folders", {})
+            self.timeline = self.config.get("timeline_script", [])
 
         self._open_clips: List = []
 

@@ -108,10 +108,76 @@ export default function CreateReviewJob() {
       } else {
         setBgm(null);
       }
+    } else {
+      // Top-level / Scenes fallback properties
+      const voUrl = cfg.voiceover_path;
+      if (voUrl) {
+        setVoiceover({
+          id: null, s3_url: voUrl, uploading: false, progress: 0,
+          asset: { id: "", s3_url: voUrl, file_name: voUrl.split("/").pop() || "voiceover", file_size_bytes: 0, asset_type: "voiceover", mime_type: "audio/mpeg", created_at: "" },
+        });
+      }
+      const scriptUrl = cfg.voiceover_script || cfg.script_path;
+      if (scriptUrl) {
+        setScript({
+          id: null, s3_url: scriptUrl, uploading: false, progress: 0,
+          asset: { id: "", s3_url: scriptUrl, file_name: scriptUrl.split("/").pop() || "script", file_size_bytes: 0, asset_type: "script", mime_type: "text/plain", created_at: "" },
+        });
+      }
+      if (cfg.voiceover_lang) setLanguage(cfg.voiceover_lang);
+      
+      const bgmUrl = cfg.bgm_path || cfg.audio;
+      if (bgmUrl) {
+        setBgm({
+          id: null, s3_url: bgmUrl, uploading: false, progress: 0,
+          asset: { id: "", s3_url: bgmUrl, file_name: bgmUrl.split("/").pop() || "bgm", file_size_bytes: 0, asset_type: "bgm", mime_type: "audio/mpeg", created_at: "" },
+        });
+      }
     }
 
-    // Pre-fill segments from timeline_script
-    if (cfg.timeline_script && Array.isArray(cfg.timeline_script)) {
+    // Pre-fill segments from scenes or timeline_script
+    if (cfg.scenes && Array.isArray(cfg.scenes)) {
+      let accumulatedTime = 0.0;
+      const clonedSegments: Segment[] = cfg.scenes.map((s: any) => {
+        const dur = parseFloat(s.duration || 5.0);
+        const tStart = accumulatedTime;
+        const tEnd = accumulatedTime + dur;
+        accumulatedTime = tEnd;
+        
+        let segmentClips: UploadedFile[] = [];
+        if (s.clip_url) {
+          segmentClips = [{
+            id: null,
+            s3_url: s.clip_url,
+            uploading: false,
+            progress: 100,
+            asset: {
+              id: "",
+              s3_url: s.clip_url,
+              file_name: s.clip_url.split("/").pop() || "clip",
+              file_size_bytes: 0,
+              asset_type: "segment_clip",
+              mime_type: "video/mp4",
+              created_at: ""
+            }
+          }];
+        }
+
+        return {
+          name: s.scene_id || "segment",
+          label: s.scene_id || "Segment",
+          timeStart: tStart,
+          timeEnd: tEnd,
+          clips: segmentClips,
+          textOverlay: s.text_overlay || s.narration || "",
+          highlightWords: (s.highlight_words || []).join(", "),
+          effects: s.effects || [],
+          pacingMin: s.pacing?.min_clip_duration || 0.5,
+          pacingMax: s.pacing?.max_clip_duration || 1.2,
+        };
+      });
+      setSegments(clonedSegments);
+    } else if (cfg.timeline_script && Array.isArray(cfg.timeline_script)) {
       const clonedSegments: Segment[] = cfg.timeline_script.map((ts: any) => ({
         name: ts.segment || ts.video_source || "segment",
         label: ts.segment || "Segment",
@@ -249,6 +315,20 @@ export default function CreateReviewJob() {
       }
 
       setUploadStatus("Đang tạo job...");
+      const scenes = segments.map((seg, idx) => {
+        const firstClipUrl = seg.clips[0]?.s3_url || "";
+        return {
+          scene_id: seg.name,
+          clip_url: firstClipUrl || videoFolders[seg.name] || "",
+          text_overlay: seg.textOverlay,
+          narration: seg.textOverlay,
+          duration: Number(seg.timeEnd) - Number(seg.timeStart),
+          pacing: { min_clip_duration: seg.pacingMin, max_clip_duration: seg.pacingMax },
+          effects: seg.effects,
+          highlight_words: seg.highlightWords ? seg.highlightWords.split(",").map(w => w.trim()).filter(Boolean) : []
+        };
+      });
+
       const configData = {
         metadata: {
           project_id: targetProjectId,
@@ -266,6 +346,10 @@ export default function CreateReviewJob() {
           video_folders: videoFolders,
         },
         timeline_script: timelineScript,
+        bgm_path: bgmUrl,
+        scenes: scenes,
+        voiceover_path: voRes.s3_url,
+        voiceover_script: scriptRes.s3_url,
         render_settings: {
           resolution: [1080, 1920],
           auto_subtitle: autoSubtitle,
@@ -493,6 +577,20 @@ export default function CreateReviewJob() {
       }
 
       setUploadStatus("Đang lưu bản nháp...");
+      const scenes = segments.map((seg, idx) => {
+        const firstClipUrl = seg.clips[0]?.s3_url || "";
+        return {
+          scene_id: seg.name,
+          clip_url: firstClipUrl || videoFolders[seg.name] || "",
+          text_overlay: seg.textOverlay,
+          narration: seg.textOverlay,
+          duration: Number(seg.timeEnd) - Number(seg.timeStart),
+          pacing: { min_clip_duration: seg.pacingMin, max_clip_duration: seg.pacingMax },
+          effects: seg.effects,
+          highlight_words: seg.highlightWords ? seg.highlightWords.split(",").map(w => w.trim()).filter(Boolean) : []
+        };
+      });
+
       const configData = {
         metadata: {
           project_id: targetProjectId || undefined,
@@ -510,6 +608,10 @@ export default function CreateReviewJob() {
           video_folders: videoFolders,
         },
         timeline_script: timelineScript,
+        bgm_path: bgmUrl,
+        scenes: scenes,
+        voiceover_path: voRes.s3_url || "",
+        voiceover_script: scriptRes.s3_url || "",
         render_settings: {
           resolution: [1080, 1920],
           auto_subtitle: autoSubtitle,

@@ -75,22 +75,45 @@ export default function CreateSlideshowJob() {
         }
         if (cfg.variant) setVariant(cfg.variant);
         
-        if (cfg.assets) {
-          if (cfg.assets.bg_music) {
-            setBgMusic({
-              file: undefined, id: null, s3_url: cfg.assets.bg_music, uploading: false, progress: 0,
-              asset: { id: "", s3_url: cfg.assets.bg_music, file_name: "bg_music.mp3", file_size_bytes: 0, asset_type: "audio", mime_type: "audio/mpeg", created_at: "" }
-            });
-          }
-          if (cfg.assets.logo) {
-            setLogo({
-              file: undefined, id: null, s3_url: cfg.assets.logo, uploading: false, progress: 0,
-              asset: { id: "", s3_url: cfg.assets.logo, file_name: "logo.png", file_size_bytes: 0, asset_type: "image", mime_type: "image/png", created_at: "" }
-            });
-          }
+        // Pre-fill bg music
+        const bgmUrl = cfg.bgm_path || cfg.assets?.bg_music;
+        if (bgmUrl) {
+          setBgMusic({
+            file: undefined, id: null, s3_url: bgmUrl, uploading: false, progress: 0,
+            asset: { id: "", s3_url: bgmUrl, file_name: "bg_music.mp3", file_size_bytes: 0, asset_type: "audio", mime_type: "audio/mpeg", created_at: "" }
+          });
+        }
+
+        // Pre-fill logo
+        const logoUrl = cfg.logo_path || cfg.assets?.logo;
+        if (logoUrl) {
+          setLogo({
+            file: undefined, id: null, s3_url: logoUrl, uploading: false, progress: 0,
+            asset: { id: "", s3_url: logoUrl, file_name: "logo.png", file_size_bytes: 0, asset_type: "image", mime_type: "image/png", created_at: "" }
+          });
         }
         
-        if (cfg.input_json) {
+        // Pre-fill products from scenes or input_json
+        if (cfg.scenes && Array.isArray(cfg.scenes)) {
+          const clonedProducts: ProductInput[] = cfg.scenes.map((s: any) => ({
+            image: s.clip_url ? {
+              file: undefined,
+              id: null,
+              s3_url: s.clip_url,
+              asset: { id: "", s3_url: s.clip_url, file_name: s.clip_url.split("/").pop() || "image", file_size_bytes: 0, asset_type: "image", mime_type: "image/jpeg", created_at: "" },
+              uploading: false,
+              progress: 100,
+            } : null,
+            text: s.text_overlay || s.narration || "",
+            hook: (s.highlight_words || []).join(", ") || "",
+          }));
+          setProducts(clonedProducts);
+
+          if (cfg.scenes.length > 0) {
+            setIntroText(cfg.input_json?.intro_text || cfg.scenes[0].text_overlay || "Top sản phẩm nổi bật");
+            setOutroText(cfg.input_json?.outro_text || cfg.scenes[cfg.scenes.length - 1].text_overlay || "Mua ngay hôm nay!");
+          }
+        } else if (cfg.input_json) {
           if (cfg.input_json.intro_text) setIntroText(cfg.input_json.intro_text);
           if (cfg.input_json.outro_text) setOutroText(cfg.input_json.outro_text);
           if (cfg.input_json.products && Array.isArray(cfg.input_json.products)) {
@@ -203,6 +226,15 @@ export default function CreateSlideshowJob() {
       }
 
       setUploadStatus("Đang tạo job...");
+      const scenes = finalProducts.map((p, idx) => ({
+        scene_id: `product_${idx + 1}`,
+        clip_url: p.image,
+        text_overlay: p.text,
+        narration: p.text,
+        duration: 5.0,
+        effects: []
+      }));
+
       const payload = {
         job_type: "slideshow",
         priority,
@@ -215,6 +247,9 @@ export default function CreateSlideshowJob() {
           },
           variant,
           assets: Object.keys(customAssets).length > 0 ? customAssets : undefined,
+          bgm_path: customAssets.bg_music || undefined,
+          logo_path: customAssets.logo || undefined,
+          scenes: scenes,
           input_json: {
             intro_text: introText,
             outro_text: outroText,
@@ -305,6 +340,15 @@ export default function CreateSlideshowJob() {
       }
 
       setUploadStatus("Đang lưu bản nháp...");
+      const scenes = finalProducts.map((p, idx) => ({
+        scene_id: `product_${idx + 1}`,
+        clip_url: p.image,
+        text_overlay: p.text,
+        narration: p.text,
+        duration: 5.0,
+        effects: []
+      }));
+
       const payload = {
         project_id: targetProjectId || null,
         priority,
@@ -317,6 +361,9 @@ export default function CreateSlideshowJob() {
           },
           variant,
           assets: Object.keys(customAssets).length > 0 ? customAssets : undefined,
+          bgm_path: customAssets.bg_music || undefined,
+          logo_path: customAssets.logo || undefined,
+          scenes: scenes,
           input_json: {
             intro_text: introText,
             outro_text: outroText,
@@ -481,6 +528,15 @@ export default function CreateSlideshowJob() {
       window.history.replaceState({}, '', url.toString());
 
       if (cloneJobId) {
+        const scenes = finalProducts.map((p, idx) => ({
+          scene_id: `product_${idx + 1}`,
+          clip_url: p.image,
+          text_overlay: p.text,
+          narration: p.text,
+          duration: 5.0,
+          effects: []
+        }));
+
         const slideshowDraftPayload = {
           project_id: targetProjectId,
           priority,
@@ -493,6 +549,9 @@ export default function CreateSlideshowJob() {
             },
             variant,
             assets: Object.keys(customAssets).length > 0 ? customAssets : undefined,
+            bgm_path: customAssets.bg_music || undefined,
+            logo_path: customAssets.logo || undefined,
+            scenes: scenes,
             input_json: {
               intro_text: introText,
               outro_text: outroText,

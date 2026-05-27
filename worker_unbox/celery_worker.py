@@ -11,6 +11,7 @@ from typing import Dict, Any
 from shared_core.worker_base import create_celery_app, execute_video_task
 from shared_core.minio_utils import (
     download_file_from_minio, is_minio_path, get_object_name,
+    is_downloadable_path, download_file_or_s3
 )
 from shared_core.gpu_utils import ensure_h264_mp4
 
@@ -29,35 +30,68 @@ def download_unbox_assets(config_data: Dict[str, Any], work_dir: str) -> Dict[st
     input_dir = os.path.join(work_dir, "input")
     os.makedirs(input_dir, exist_ok=True)
 
-    # Support both "clips" (legacy make_viral) and "video" (new unbox_viral)
-    for key in ("clips", "video"):
-        if key in config_data:
-            items = config_data[key]
-            if isinstance(items, str):
-                items = [items]
-            for i, clip_url in enumerate(items):
-                if is_minio_path(clip_url):
-                    obj_name = get_object_name(clip_url)
-                    local_path = os.path.join(input_dir, os.path.basename(obj_name))
-                    download_file_from_minio(obj_name, local_path)
-                    
-                    # Ensure standard H.264 MP4 format
-                    local_path = ensure_h264_mp4(local_path)
-                    
-                    if isinstance(config_data[key], list):
-                        config_data[key][i] = local_path
-                    else:
-                        config_data[key] = local_path
+    # Deep copy to avoid mutating original
+    import json
+    config = json.loads(json.dumps(config_data))
 
-    if "audio" in config_data:
-        audio_url = config_data["audio"]
-        if is_minio_path(audio_url):
-            obj_name = get_object_name(audio_url)
-            local_path = os.path.join(input_dir, os.path.basename(obj_name))
-            download_file_from_minio(obj_name, local_path)
-            config_data["audio"] = local_path
+    # Support unified Scene-Centric Schema
+    if "scenes" in config:
+        # Download bgm
+        bgm_url = config.get("bgm_path") or config.get("audio", "")
+        if bgm_url and is_downloadable_path(bgm_url):
+            filename = os.path.basename(bgm_url.split("?")[0]) or "bg_music.mp3"
+            if not filename.lower().endswith(".mp3"):
+                filename = "bg_music.mp3"
+            local_path = os.path.join(input_dir, filename)
+            download_file_or_s3(bgm_url, local_path)
+            config["bgm_path"] = local_path
+            if "audio" in config:
+                config["audio"] = local_path
 
-    return config_data
+        # Download scenes video clips
+        for idx, s in enumerate(config.get("scenes", [])):
+            clip_url = s.get("clip_url", "")
+            if clip_url and is_downloadable_path(clip_url):
+                filename = os.path.basename(clip_url.split("?")[0]) or f"clip_{idx+1}.mp4"
+                if not any(filename.lower().endswith(ext) for ext in [".mp4", ".mov", ".avi", ".webm", ".mkv"]):
+                    filename = f"clip_{idx+1}.mp4"
+                local_path = os.path.join(input_dir, filename)
+                download_file_or_s3(clip_url, local_path)
+                
+                # Ensure standard H.264 MP4 format
+                local_path = ensure_h264_mp4(local_path)
+                s["clip_url"] = local_path
+
+    # Support legacy schema
+    else:
+        for key in ("clips", "video"):
+            if key in config:
+                items = config[key]
+                if isinstance(items, str):
+                    items = [items]
+                for i, clip_url in enumerate(items):
+                    if is_minio_path(clip_url):
+                        obj_name = get_object_name(clip_url)
+                        local_path = os.path.join(input_dir, os.path.basename(obj_name))
+                        download_file_from_minio(obj_name, local_path)
+                        
+                        # Ensure standard H.264 MP4 format
+                        local_path = ensure_h264_mp4(local_path)
+                        
+                        if isinstance(config[key], list):
+                            config[key][i] = local_path
+                        else:
+                            config[key] = local_path
+
+        if "audio" in config:
+            audio_url = config["audio"]
+            if is_minio_path(audio_url):
+                obj_name = get_object_name(audio_url)
+                local_path = os.path.join(input_dir, os.path.basename(obj_name))
+                download_file_from_minio(obj_name, local_path)
+                config["audio"] = local_path
+
+    return config
 
 
 # ── Build Function Adapters ──────────────────────────────────────────────────

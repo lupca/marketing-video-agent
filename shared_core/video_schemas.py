@@ -1,6 +1,6 @@
 """
-Standard parent-child video configuration schemas and Unified Auto-Mapping Engine.
-Provides complete structural inheritance and 100% robust data mapping/recovery.
+Standard Pydantic models and defensive healers for the Pure Scene-Centric Video Timeline.
+Provides complete backward compatibility and robust text parsing.
 """
 
 import re
@@ -57,319 +57,165 @@ def extract_clean_sentences(script_content: str, title: str) -> List[str]:
     return sentences
 
 
-# ── 2. Standard Parent Schema (Base Configs) ──────────────────────────────────
+# ── 2. Unified Scene-Centric Schema ───────────────────────────────────────────
 
-class BaseTimelineSegment(BaseModel):
-    """
-    Cấu trúc cha chuẩn cho một phân đoạn video (scene/segment/product).
-    """
-    text: str = ""
-    time: float = 0.0
+class Scene(BaseModel):
+    scene_id: str = ""
+    clip_url: str = ""
+    text_overlay: str = ""
+    narration: str = ""
     duration: float = 5.0
-    effect: str = "feature"  # "hook" or "feature"
-    image_or_video: str = ""
-    hook_title: str = ""
+    pacing: Dict[str, float] = Field(default_factory=lambda: {"min_clip_duration": 0.8, "max_clip_duration": 1.5})
+    effects: List[str] = Field(default_factory=list)
+    highlight_words: List[str] = Field(default_factory=list)
 
 
-class BaseVideoConfig(BaseModel):
-    """
-    Cấu trúc cha chuẩn chứa toàn bộ cấu hình lõi của video.
-    """
+class VideoComposition(BaseModel):
+    suggested_duration: float = 15.0
+    aspect_ratio: str = "9:16"
     bgm_path: str = ""
     voice_name: str = ""
-    clips: List[str] = Field(default_factory=list)
-    segments: List[BaseTimelineSegment] = Field(default_factory=list)
+    scenes: List[Scene] = Field(default_factory=list)
 
 
-# ── 3. Unified Auto-Mapping Engine ───────────────────────────────────────────
+# ── 3. Defensive Healer for VideoComposition ─────────────────────────────────
 
-def find_sequence_list(draft_params: dict) -> list:
-    """
-    Quét đệ quy tìm kiếm bất kỳ danh sách chuỗi cảnh nào trong raw JSON từ LLM.
-    """
-    for key in ["timeline_script", "text_events", "products", "timeline", "segments", "scenes", "events", "items"]:
-        val = draft_params.get(key)
-        if isinstance(val, list) and len(val) > 0:
-            return val
-            
-    input_json = draft_params.get("input_json")
-    if isinstance(input_json, dict):
-        for key in ["products", "timeline_script", "text_events", "timeline", "segments", "items"]:
-            val = input_json.get(key)
-            if isinstance(val, list) and len(val) > 0:
-                return val
-                
-    # Quét đệ quy sâu hơn 1 cấp
-    for k, val in draft_params.items():
-        if isinstance(val, list) and len(val) > 0:
-            if isinstance(val[0], dict) and any(tk in val[0] for tk in ["text", "text_overlay", "desc", "segment"]):
-                return val
-            elif isinstance(val[0], str):
-                return val
-        if isinstance(val, dict):
-            for sub_k, sub_val in val.items():
-                if isinstance(sub_val, list) and len(sub_val) > 0:
-                    if isinstance(sub_val[0], dict) and any(tk in sub_val[0] for tk in ["text", "text_overlay", "desc", "segment"]):
-                        return sub_val
-                    elif isinstance(sub_val[0], str):
-                        return sub_val
-    return []
-
-
-def parse_to_base_config(raw_dict: dict, sentences: list) -> BaseVideoConfig:
-    """
-    Ánh xạ bất kỳ cấu hình thô nào của LLM về cấu trúc cha chuẩn (BaseVideoConfig).
-    """
-    base_config = BaseVideoConfig()
-
-    # 1. Trích xuất âm thanh (bgm)
-    bgm = ""
-    if "audio" in raw_dict:
-        aud = raw_dict["audio"]
-        if isinstance(aud, dict):
-            bgm = aud.get("bgm_path", aud.get("bgm", ""))
-        else:
-            bgm = str(aud)
-    elif "assets" in raw_dict and isinstance(raw_dict["assets"], dict):
-        aud = raw_dict["assets"].get("audio")
-        if isinstance(aud, dict):
-            bgm = aud.get("bgm_path", aud.get("bgm", ""))
-    base_config.bgm_path = bgm or "https://www.soundhelix.com/examples/mp3/SoundHelix-Song-2.mp3"
-
-    # 2. Trích xuất giọng đọc
-    base_config.voice_name = raw_dict.get("voice_name", "vi-VN-NamMinhNeural")
-
-    # 3. Trích xuất danh sách clips/video
-    clips_list = []
-    if "clips" in raw_dict and isinstance(raw_dict["clips"], list):
-        clips_list = raw_dict["clips"]
-    elif "assets" in raw_dict and isinstance(raw_dict["assets"], dict):
-        v_folders = raw_dict["assets"].get("video_folders")
-        if isinstance(v_folders, dict):
-            clips_list = list(v_folders.values())
-    elif "video" in raw_dict:
-        clips_list = [raw_dict["video"]]
-    
-    # Loại bỏ giá trị trống
-    clips_list = [c for c in clips_list if c]
-    base_config.clips = clips_list or ["https://assets.mixkit.co/videos/preview/mixkit-unpacking-a-gift-box-41584-large.mp4"]
-
-    # 4. Trích xuất và chuẩn hóa danh sách các phân đoạn
-    raw_list = find_sequence_list(raw_dict)
-    segments = []
-
-    if raw_list:
-        for idx, item in enumerate(raw_list):
-            seg = BaseTimelineSegment()
-            seg.time = float(idx * 3.5)
-            seg.duration = 5.0
-            seg.effect = "hook" if idx == 0 else "feature"
-
-            if isinstance(item, str):
-                seg.text = item
-            elif isinstance(item, dict):
-                # Lấy text hiển thị
-                seg.text = (
-                    item.get("text_overlay") or 
-                    item.get("text") or 
-                    item.get("desc") or 
-                    item.get("description") or 
-                    item.get("hook") or 
-                    ""
-                )
-                # Lấy time / duration
-                if "time_range" in item and isinstance(item["time_range"], list) and len(item["time_range"]) > 0:
-                    try:
-                        seg.time = float(item["time_range"][0])
-                        if len(item["time_range"]) > 1:
-                            seg.duration = max(1.0, float(item["time_range"][1]) - seg.time)
-                    except (ValueError, TypeError):
-                        pass
-                elif "time" in item:
-                    try:
-                        seg.time = float(item["time"])
-                    except (ValueError, TypeError):
-                        pass
-                # Lấy hiệu ứng
-                eff = item.get("effect") or item.get("visual_effects")
-                if isinstance(eff, list) and len(eff) > 0:
-                    eff = eff[0]
-                if eff:
-                    eff_str = str(eff).lower()
-                    if "hook" in eff_str or "camera_shake" in eff_str:
-                        seg.effect = "hook"
-                    else:
-                        seg.effect = "feature"
-                elif "segment" in item:
-                    seg_str = str(item["segment"]).lower()
-                    if "hook" in seg_str:
-                        seg.effect = "hook"
-                
-                # Lấy image/video source
-                seg.image_or_video = item.get("image") or item.get("video_source") or ""
-                seg.hook_title = item.get("hook") or item.get("hook_title") or ""
-
-            # Chỉ nạp nếu có text hữu ích hoặc fallback
-            if not seg.text and sentences:
-                seg.text = sentences[idx % len(sentences)]
-            segments.append(seg)
-    
-    # Fallback hoàn toàn nếu không tìm thấy chuỗi nào
-    if not segments:
-        for idx, sen in enumerate(sentences[:4]):
-            seg = BaseTimelineSegment(
-                text=sen,
-                time=float(idx * 3.5),
-                duration=5.0,
-                effect="hook" if idx == 0 else "feature"
-            )
-            segments.append(seg)
-
-    base_config.segments = segments
-    return base_config
-
-
-# ── 4. Child Serializers to Specific Worker Schemas ───────────────────────────
-
-def serialize_to_review(base_config: BaseVideoConfig, sentences: List[str]) -> dict:
-    """
-    Chuyển đổi cấu trúc cha chuẩn sang cấu hình chuẩn của Review Worker.
-    """
-    # 1. Map assets
-    bgm = base_config.bgm_path or "https://www.soundhelix.com/examples/mp3/SoundHelix-Song-1.mp3"
-    video_source_url = base_config.clips[0] if base_config.clips else "https://assets.mixkit.co/videos/preview/mixkit-holding-a-smartphone-with-a-green-screen-41775-large.mp4"
-    
-    assets = {
-        "audio": {
-            "bgm_path": bgm
-        },
-        "video_folders": {
-            "1": video_source_url
-        }
-    }
-
-    # 2. Map segments to timeline_script
-    timeline_script = []
-    for idx, seg in enumerate(base_config.segments):
-        segment_name = "01_hook" if idx == 0 else (f"0{idx+1}_body" if idx < len(base_config.segments) - 1 else f"0{idx+1}_outro")
-        words = seg.text.split()
-        highlight = words[:2] if len(words) >= 2 else [seg.text]
-
-        timeline_script.append({
-            "segment": segment_name,
-            "video_source": "1",
-            "time_range": [seg.time, seg.time + seg.duration],
-            "text_overlay": seg.text,
-            "highlight_words": highlight,
-            "visual_effects": ["camera_shake"] if seg.effect == "hook" else [],
-            "pacing": {
-                "min_clip_duration": 0.8,
-                "max_clip_duration": 1.5
-            }
-        })
-
-    return {
-        "assets": assets,
-        "timeline_script": timeline_script
-    }
-
-
-def serialize_to_unbox_viral(base_config: BaseVideoConfig) -> dict:
-    """
-    Chuyển đổi cấu trúc cha chuẩn sang cấu hình chuẩn của Unbox Viral Worker.
-    """
-    # 1. Map clips & audio
-    clips = base_config.clips or ["https://assets.mixkit.co/videos/preview/mixkit-unpacking-a-gift-box-41584-large.mp4"]
-    audio = base_config.bgm_path or "https://www.soundhelix.com/examples/mp3/SoundHelix-Song-2.mp3"
-
-    # 2. Map segments to text_events
-    text_events = []
-    for seg in base_config.segments:
-        text_events.append({
-            "time": seg.time,
-            "text": seg.text,
-            "effect": seg.effect
-        })
-
-    return {
-        "clips": clips,
-        "audio": audio,
-        "text_events": text_events
-    }
-
-
-def serialize_to_slideshow(base_config: BaseVideoConfig, raw_dict: dict) -> dict:
-    """
-    Chuyển đổi cấu trúc cha chuẩn sang cấu hình chuẩn của Slideshow Worker.
-    """
-    # Trích xuất intro/outro
-    input_json = raw_dict.get("input_json", {}) if isinstance(raw_dict.get("input_json"), dict) else {}
-    intro = input_json.get("intro_text") or raw_dict.get("intro_text") or "Giới thiệu sản phẩm mới"
-    outro = input_json.get("outro_text") or raw_dict.get("outro_text") or "Mua ngay tại giỏ hàng bên dưới!"
-
-    # Map segments to products
-    products = []
-    for idx, seg in enumerate(base_config.segments):
-        img_url = seg.image_or_video
-        if not img_url or not str(img_url).startswith("http"):
-            img_url = f"https://images.unsplash.com/photo-{1523275335684 + idx * 100}-37898b6baf30?w=500"
-
-        products.append({
-            "image": img_url,
-            "text": seg.text,
-            "hook": seg.hook_title or "Khám phá ngay"
-        })
-
-    return {
-        "input_json": {
-            "intro_text": intro,
-            "outro_text": outro,
-            "products": products
-        }
-    }
-
-
-def serialize_to_translify(base_config: BaseVideoConfig) -> dict:
-    """
-    Chuyển đổi cấu trúc cha chuẩn sang cấu hình chuẩn của Translify Worker.
-    """
-    video_url = base_config.clips[0] if base_config.clips else "https://assets.mixkit.co/videos/preview/mixkit-holding-a-smartphone-with-a-green-screen-41775-large.mp4"
-    voice = base_config.voice_name or "vi-VN-NamMinhNeural"
-    return {
-        "video": video_url,
-        "voice_name": voice
-    }
-
-
-# ── 5. Unified Top-Level Entrypoint ───────────────────────────────────────────
-
-def heal_and_map_config(
+def heal_video_composition(
     worker_type: str,
     raw_dict: dict,
     script_content: str,
     title: str
 ) -> dict:
     """
-    Top-level API cho toàn bộ hệ thống Healers.
-    Đảm bảo map 100% dữ liệu từ bất kỳ cấu hình LLM thô nào sang cấu trúc của worker đích.
+    Đảm bảo 100% dữ liệu luôn hợp lệ theo chuẩn VideoComposition.
+    Áp dụng tương thích ngược (Backward Compatibility) và chữa lỗi phòng thủ.
     """
     if not isinstance(raw_dict, dict):
         raw_dict = {}
 
-    # Bước 1: Tách câu và lọc sạch metadata làm lớp dự phòng
     sentences = extract_clean_sentences(script_content, title)
 
-    # Bước 2: Map cấu hình thô về cấu trúc cha chuẩn (Base Config)
-    base_config = parse_to_base_config(raw_dict, sentences)
+    # ── A. Tương thích ngược: Đọc và nâng cấp từ các schema cũ ──────────────────
+    scenes_list = []
+    
+    # 1. Trường hợp đã là cấu trúc mới (chứa scenes)
+    if "scenes" in raw_dict and isinstance(raw_dict["scenes"], list) and len(raw_dict["scenes"]) > 0:
+        scenes_list = raw_dict["scenes"]
+    
+    # 2. Trường hợp là review (timeline_script)
+    elif "timeline_script" in raw_dict and isinstance(raw_dict["timeline_script"], list):
+        v_folders = raw_dict.get("assets", {}).get("video_folders", {}) if isinstance(raw_dict.get("assets"), dict) else {}
+        for idx, seg in enumerate(raw_dict["timeline_script"]):
+            if not isinstance(seg, dict):
+                continue
+            t_range = seg.get("time_range", [idx * 5, (idx + 1) * 5])
+            scenes_list.append({
+                "scene_id": seg.get("segment", f"segment_{idx+1}"),
+                "clip_url": v_folders.get(seg.get("video_source", "1"), ""),
+                "text_overlay": seg.get("text_overlay", ""),
+                "narration": sentences[idx % len(sentences)],
+                "duration": float(t_range[1]) - float(t_range[0]),
+                "pacing": seg.get("pacing", {"min_clip_duration": 0.8, "max_clip_duration": 1.5}),
+                "effects": seg.get("visual_effects", []),
+                "highlight_words": seg.get("highlight_words", [])
+            })
+            
+    # 3. Trường hợp là unbox_viral (text_events)
+    elif "text_events" in raw_dict and isinstance(raw_dict["text_events"], list):
+        clips = raw_dict.get("clips", [])
+        bgm = raw_dict.get("audio", "")
+        for idx, ev in enumerate(raw_dict["text_events"]):
+            if not isinstance(ev, dict):
+                continue
+            scenes_list.append({
+                "scene_id": f"scene_{idx+1}",
+                "clip_url": clips[idx % len(clips)] if clips else "",
+                "text_overlay": ev.get("text", ""),
+                "narration": sentences[idx % len(sentences)],
+                "duration": 4.0,
+                "effects": ["camera_shake"] if ev.get("effect") == "hook" else []
+            })
+            
+    # 4. Trường hợp là slideshow (products)
+    elif "input_json" in raw_dict and isinstance(raw_dict["input_json"], dict) and "products" in raw_dict["input_json"]:
+        products = raw_dict["input_json"]["products"]
+        for idx, p in enumerate(products):
+            if not isinstance(p, dict):
+                continue
+            scenes_list.append({
+                "scene_id": f"product_{idx+1}",
+                "clip_url": p.get("image", ""),
+                "text_overlay": p.get("text", ""),
+                "narration": p.get("text", ""),
+                "duration": 5.0,
+                "effects": []
+            })
 
-    # Bước 3: Serialize cấu trúc cha chuẩn về cấu hình của worker đích
-    if worker_type == "review":
-        return serialize_to_review(base_config, sentences)
-    elif worker_type == "unbox_viral":
-        return serialize_to_unbox_viral(base_config)
-    elif worker_type == "slideshow":
-        return serialize_to_slideshow(base_config, raw_dict)
-    elif worker_type == "translify":
-        return serialize_to_translify(base_config)
+    # ── B. Fallback hoàn toàn nếu không trích xuất được phân cảnh nào ──────────
+    if not scenes_list:
+        for idx, sen in enumerate(sentences[:4]):
+            scenes_list.append({
+                "scene_id": f"0{idx+1}_hook" if idx == 0 else f"0{idx+1}_body",
+                "clip_url": "https://assets.mixkit.co/videos/preview/mixkit-unpacking-a-gift-box-41584-large.mp4",
+                "text_overlay": sen,
+                "narration": sen,
+                "duration": 5.0,
+                "effects": ["camera_shake"] if idx == 0 else []
+            })
 
-    return raw_dict
+    # ── C. Chuẩn hóa và chèn các giá trị mặc định phòng thủ cho từng phân cảnh ──
+    final_scenes = []
+    for idx, sc in enumerate(scenes_list):
+        if not isinstance(sc, dict):
+            continue
+            
+        s_id = sc.get("scene_id") or (f"0{idx+1}_hook" if idx == 0 else f"0{idx+1}_body")
+        c_url = sc.get("clip_url") or "https://assets.mixkit.co/videos/preview/mixkit-unpacking-a-gift-box-41584-large.mp4"
+        text = sc.get("text_overlay") or sentences[idx % len(sentences)]
+        narr = sc.get("narration") or text
+        dur = max(float(sc.get("duration", 5.0)), 1.0)
+        
+        # Pacing
+        pacing = sc.get("pacing")
+        if not isinstance(pacing, dict):
+            pacing = {"min_clip_duration": 0.8, "max_clip_duration": 1.5}
+            
+        # Effects
+        effects = sc.get("effects") or []
+        if isinstance(effects, str):
+            effects = [effects]
+        if idx == 0 and "camera_shake" not in effects:
+            effects.append("camera_shake")
+            
+        # Highlight words
+        highlight = sc.get("highlight_words") or []
+        if not highlight and text:
+            words = text.split()
+            highlight = words[:2] if len(words) >= 2 else [text]
+
+        final_scenes.append({
+            "scene_id": s_id,
+            "clip_url": c_url,
+            "text_overlay": text,
+            "narration": narr,
+            "duration": dur,
+            "pacing": pacing,
+            "effects": effects,
+            "highlight_words": highlight
+        })
+
+    # ── D. Hoàn thiện đối tượng VideoComposition ─────────────────────────────────
+    bgm = raw_dict.get("bgm_path") or raw_dict.get("audio")
+    if not bgm or not isinstance(bgm, str):
+        bgm = "https://www.soundhelix.com/examples/mp3/SoundHelix-Song-2.mp3"
+        
+    voice = raw_dict.get("voice_name") or "vi-VN-NamMinhNeural"
+    dur_total = sum(s["duration"] for s in final_scenes)
+
+    return {
+        "suggested_duration": float(raw_dict.get("suggested_duration", dur_total)),
+        "aspect_ratio": str(raw_dict.get("aspect_ratio", "9:16")),
+        "bgm_path": bgm,
+        "voice_name": voice,
+        "scenes": final_scenes
+    }

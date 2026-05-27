@@ -289,19 +289,29 @@ def process_leader_job_impl(job_id: int):
 
     except Exception as e:
         logger.error(f"Error in process_leader_job_impl (LangGraph): {str(e)}", exc_info=True)
-        job.status = "FAILED"
-        job.error_message = f"Leader Agent Error: {str(e)}"
-        job.completed_at = datetime.now(timezone.utc)
-        db.commit()
+        try:
+            db.rollback()
+        except Exception as rb_ex:
+            logger.error(f"Failed to rollback after error: {rb_ex}")
 
         try:
-            db_log = JobLog(
-                job_id=job.id,
-                log_level="ERROR",
-                message=f"Leader Agent failed: {str(e)}",
-            )
-            db.add(db_log)
+            job.status = "FAILED"
+            job.error_message = f"Leader Agent Error: {str(e)}"
+            job.completed_at = datetime.now(timezone.utc)
             db.commit()
+        except Exception as update_ex:
+            logger.error(f"Failed to save FAILED status to DB: {update_ex}")
+
+        try:
+            # Open a fresh session to write the JobLog, just in case the main session is completely unusable
+            with SessionLocal() as log_db:
+                db_log = JobLog(
+                    job_id=job_id,
+                    log_level="ERROR",
+                    message=f"Leader Agent failed: {str(e)}",
+                )
+                log_db.add(db_log)
+                log_db.commit()
         except Exception as log_ex:
             logger.error(f"Failed to log error to DB: {log_ex}")
 

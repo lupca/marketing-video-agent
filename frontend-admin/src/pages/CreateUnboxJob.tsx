@@ -72,9 +72,15 @@ export default function CreateUnboxJob() {
           setTmcpContext(cfg.metadata.tmcp_context)
         }
 
-        // Pre-fill clips as asset references (s3_url only, no File object)
-        if (cfg.clips && Array.isArray(cfg.clips)) {
-          const clonedClips: UploadedFile[] = cfg.clips.map((url: string) => ({
+        // Pre-fill clips as asset references
+        let clipUrls: string[] = []
+        if (cfg.scenes && Array.isArray(cfg.scenes)) {
+          clipUrls = cfg.scenes.map((s: any) => s.clip_url).filter(Boolean)
+        } else if (cfg.clips && Array.isArray(cfg.clips)) {
+          clipUrls = cfg.clips
+        }
+        if (clipUrls.length > 0) {
+          const clonedClips: UploadedFile[] = clipUrls.map((url: string) => ({
             file: undefined,
             id: null,
             s3_url: url,
@@ -86,8 +92,8 @@ export default function CreateUnboxJob() {
         }
 
         // Pre-fill audio
-        if (cfg.audio) {
-          const audioUrl = cfg.audio as string
+        const audioUrl = cfg.bgm_path || cfg.audio
+        if (audioUrl) {
           setAudio({
             file: undefined,
             id: null,
@@ -99,7 +105,21 @@ export default function CreateUnboxJob() {
         }
 
         // Pre-fill text events
-        if (cfg.text_events && Array.isArray(cfg.text_events)) {
+        if (cfg.scenes && Array.isArray(cfg.scenes)) {
+          let accumulatedTime = 0.0
+          const mappedEvents: TextEvent[] = cfg.scenes.map((s: any, idx: number) => {
+            const effects = s.effects || []
+            const effectType = (effects.includes("camera_shake") || idx === 0) ? "hook" : "feature"
+            const ev = {
+              time: accumulatedTime,
+              text: s.text_overlay || s.narration || "",
+              effect: effectType as "hook" | "feature"
+            }
+            accumulatedTime += parseFloat(s.duration || 5.0)
+            return ev
+          })
+          setTextEvents(mappedEvents)
+        } else if (cfg.text_events && Array.isArray(cfg.text_events)) {
           setTextEvents(cfg.text_events)
         }
       } catch (err) {
@@ -155,6 +175,18 @@ export default function CreateUnboxJob() {
       }
 
       setUploadStatus("Committing job...")
+      const scenes = clipUrls.map((url, idx) => {
+        const ev = textEvents[idx % textEvents.length] || { text: "", effect: "feature" }
+        return {
+          scene_id: `scene_${idx + 1}`,
+          clip_url: url,
+          text_overlay: ev.text,
+          narration: ev.text,
+          duration: 4.0,
+          effects: ev.effect === "hook" ? ["camera_shake"] : []
+        }
+      })
+
       const payload = {
         job_type: "unbox",
         priority,
@@ -163,7 +195,9 @@ export default function CreateUnboxJob() {
         config_data: {
           clips: clipUrls,
           audio: audioUrl,
+          bgm_path: audioUrl,
           text_events: textEvents,
+          scenes: scenes,
           metadata: {
             project_id: targetProjectId,
             ...(tmcpContext ? { tmcp_context: tmcpContext } : {})
@@ -288,6 +322,18 @@ export default function CreateUnboxJob() {
       }
 
       setUploadStatus("Saving draft...")
+      const scenes = clipUrls.map((url, idx) => {
+        const ev = textEvents[idx % textEvents.length] || { text: "", effect: "feature" }
+        return {
+          scene_id: `scene_${idx + 1}`,
+          clip_url: url,
+          text_overlay: ev.text,
+          narration: ev.text,
+          duration: 4.0,
+          effects: ev.effect === "hook" ? ["camera_shake"] : []
+        }
+      })
+
       const payload = {
         project_id: targetProjectId || null,
         priority,
@@ -296,7 +342,9 @@ export default function CreateUnboxJob() {
         config_data: {
           clips: clipUrls,
           audio: audioUrl,
+          bgm_path: audioUrl,
           text_events: textEvents,
+          scenes: scenes,
           metadata: {
             project_id: targetProjectId || undefined,
             ...(tmcpContext ? { tmcp_context: tmcpContext } : {})
@@ -365,6 +413,18 @@ export default function CreateUnboxJob() {
       window.history.replaceState({}, '', url.toString())
 
       if (cloneJobId) {
+        const scenes = clipUrls.map((url, idx) => {
+          const ev = textEvents[idx % textEvents.length] || { text: "", effect: "feature" }
+          return {
+            scene_id: `scene_${idx + 1}`,
+            clip_url: url,
+            text_overlay: ev.text,
+            narration: ev.text,
+            duration: 4.0,
+            effects: ev.effect === "hook" ? ["camera_shake"] : []
+          }
+        })
+
         const unboxDraftPayload = {
           project_id: targetProjectId,
           priority,
@@ -373,7 +433,9 @@ export default function CreateUnboxJob() {
           config_data: {
             clips: clipUrls,
             audio: audioUrl,
+            bgm_path: audioUrl,
             text_events: textEvents,
+            scenes: scenes,
             metadata: {
               project_id: targetProjectId,
               ...(tmcpContext ? { tmcp_context: tmcpContext } : {})

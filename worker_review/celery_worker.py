@@ -13,6 +13,7 @@ from shared_core.worker_base import create_celery_app, execute_video_task
 from shared_core.minio_utils import (
     download_file_from_minio, is_minio_path, get_object_name,
     get_minio_client, get_bucket_name,
+    is_downloadable_path, download_file_or_s3
 )
 from shared_core.gpu_utils import ensure_h264_mp4
 
@@ -26,10 +27,9 @@ celery_app = create_celery_app("worker_review", worker_type="review")
 # ── Asset Download Helpers (review-specific) ─────────────────────────────────
 
 def _download_s3(s3_url: str, local_path: str) -> str:
-    """Download an s3:// URL to a local file path."""
-    obj_name = get_object_name(s3_url)
+    """Download an s3:// or HTTP URL to a local file path."""
     os.makedirs(os.path.dirname(local_path), exist_ok=True)
-    download_file_from_minio(obj_name, local_path)
+    download_file_or_s3(s3_url, local_path)
     
     # Normalize if it's a video file to prevent AV1/VP9 OpenCV decoding issues
     ext = os.path.splitext(local_path)[1].lower()
@@ -92,40 +92,84 @@ def prepare_working_directory(config_data: Dict[str, Any], work_dir: str) -> Dic
     # Deep copy to avoid mutating the original
     config = json.loads(json.dumps(config_data))
 
-    assets = config.get("assets", {})
-    audio = assets.get("audio", {})
+    # Support unified Scene-Centric Schema
+    if "scenes" in config:
+        # Download bgm
+        bgm_url = config.get("bgm_path") or config.get("audio", "")
+        if bgm_url and is_downloadable_path(bgm_url):
+            local_bgm = os.path.join(raw_dir, "bgm.mp3")
+            _download_s3(bgm_url, local_bgm)
+            config["bgm_path"] = "raw/bgm.mp3"
+            if "audio" in config:
+                config["audio"] = "raw/bgm.mp3"
 
-    # 1. Download audio files
-    if audio.get("voiceover_path") and is_minio_path(audio["voiceover_path"]):
-        local = os.path.join(raw_dir, "voice.mp3")
-        _download_s3(audio["voiceover_path"], local)
-        audio["voiceover_path"] = "raw/voice.mp3"
+        # Download scenes video clips
+        for idx, s in enumerate(config.get("scenes", []), start=1):
+            clip_url = s.get("clip_url", "")
+            if not clip_url:
+                continue
 
-    if audio.get("voiceover_script") and is_minio_path(audio["voiceover_script"]):
-        local = os.path.join(raw_dir, "voice.txt")
-        _download_s3(audio["voiceover_script"], local)
-        audio["voiceover_script"] = "raw/voice.txt"
+            local_segment_dir = os.path.join(raw_dir, str(idx))
+            os.makedirs(local_segment_dir, exist_ok=True)
 
-    if audio.get("bgm_path") and is_minio_path(audio["bgm_path"]):
-        local = os.path.join(raw_dir, "bgm.mp3")
-        _download_s3(audio["bgm_path"], local)
-        audio["bgm_path"] = "raw/bgm.mp3"
+            if is_minio_path(clip_url):
+                # If it is a directory path or single file
+                is_dir = not any(clip_url.lower().endswith(ext) for ext in [".mp4", ".mov", ".avi", ".webm", ".mkv"])
+                if is_dir:
+                    _download_s3_folder(clip_url, local_segment_dir)
+                else:
+                    filename = os.path.basename(get_object_name(clip_url))
+                    local_file = os.path.join(local_segment_dir, filename)
+                    _download_s3(clip_url, local_file)
+            elif is_downloadable_path(clip_url):
+                # Remote HTTP/HTTPS URL
+                filename = os.path.basename(clip_url.split("?")[0]) or "video.mp4"
+                if not any(filename.lower().endswith(ext) for ext in [".mp4", ".mov", ".avi", ".webm", ".mkv"]):
+                    filename = "video.mp4"
+                local_file = os.path.join(local_segment_dir, filename)
+                _download_s3(clip_url, local_file)
+            else:
+                # Fallback to direct path or already local segment folder
+                local_segment_dir = clip_url
 
-    # 2. Download video segment folders
-    video_folders = assets.get("video_folders", {})
-    new_video_folders = {}
+            s["clip_url"] = f"raw/{idx}/"
 
-    for idx, (folder_key, folder_path) in enumerate(video_folders.items(), start=1):
-        local_segment_dir = os.path.join(raw_dir, str(idx))
+    # Support legacy schema
+    else:
+        assets = config.get("assets", {})
+        audio = assets.get("audio", {})
 
-        if is_minio_path(folder_path):
-            _download_s3_folder(folder_path, local_segment_dir)
-        else:
-            local_segment_dir = folder_path
+        # 1. Download audio files
+        if audio.get("voiceover_path") and is_minio_path(audio["voiceover_path"]):
+            local = os.path.join(raw_dir, "voice.mp3")
+            _download_s3(audio["voiceover_path"], local)
+            audio["voiceover_path"] = "raw/voice.mp3"
 
-        new_video_folders[folder_key] = f"raw/{idx}/"
+        if audio.get("voiceover_script") and is_minio_path(audio["voiceover_script"]):
+            local = os.path.join(raw_dir, "voice.txt")
+            _download_s3(audio["voiceover_script"], local)
+            audio["voiceover_script"] = "raw/voice.txt"
 
-    assets["video_folders"] = new_video_folders
+        if audio.get("bgm_path") and is_minio_path(audio["bgm_path"]):
+            local = os.path.join(raw_dir, "bgm.mp3")
+            _download_s3(audio["bgm_path"], local)
+            audio["bgm_path"] = "raw/bgm.mp3"
+
+        # 2. Download video segment folders
+        video_folders = assets.get("video_folders", {})
+        new_video_folders = {}
+
+        for idx, (folder_key, folder_path) in enumerate(video_folders.items(), start=1):
+            local_segment_dir = os.path.join(raw_dir, str(idx))
+
+            if is_minio_path(folder_path):
+                _download_s3_folder(folder_path, local_segment_dir)
+            else:
+                local_segment_dir = folder_path
+
+            new_video_folders[folder_key] = f"raw/{idx}/"
+
+        assets["video_folders"] = new_video_folders
 
     return config
 

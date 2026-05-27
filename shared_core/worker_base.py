@@ -20,7 +20,7 @@ if system_ffmpeg:
     os.environ["IMAGEIO_FFMPEG_EXE"] = system_ffmpeg
 
 from celery import Celery
-from celery.signals import worker_ready, worker_shutting_down
+from celery.signals import worker_ready, worker_shutting_down, worker_process_init
 
 from shared_core.config import get_settings
 from shared_core.database import SessionLocal
@@ -183,6 +183,17 @@ def stop_heartbeat(**kwargs):
         db.close()
     except Exception as e:
         logger.error(f"Failed to set offline status for {WORKER_ID}: {e}")
+
+
+@worker_process_init.connect
+def dispose_db_pool(**kwargs):
+    logger.info("Celery child process initialized. Disposing database pool to prevent socket sharing...")
+    try:
+        from shared_core.database import engine
+        engine.dispose()
+        logger.info("Database pool disposed successfully in Celery child process.")
+    except Exception as e:
+        logger.error(f"Failed to dispose database pool: {e}")
 
 
 # ── DB Helpers ────────────────────────────────────────────────────────────────

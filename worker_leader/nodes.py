@@ -218,35 +218,24 @@ def pacing_validator_node(state: LeaderAgentState) -> Dict[str, Any]:
     """Python node to validate pacing. Populates pacing_errors if any."""
     logger.info("Node: pacing_validator_node")
     draft_variants = state.get("draft_variants", {})
-    worker_type = state["worker_type"]
-    
-    # We validate 'viral_optimized' variant
     viral_optimized = draft_variants.get("viral_optimized", {})
     
-    # Extract timeline list based on worker type
-    timeline = []
-    if worker_type == "review":
-        timeline = viral_optimized.get("timeline_script", [])
-    elif worker_type == "unbox_viral":
-        timeline = viral_optimized.get("text_events", [])
-    
     errors = []
-    for i, scene in enumerate(timeline):
-        scene_str = json.dumps(scene)
-        res = validate_video_pacing(scene_str)
-        if "error" in res.lower() or "vượt quá" in res.lower():
-            errors.append(f"Cảnh {i+1}: {res}")
+    res = validate_video_pacing(json.dumps(viral_optimized))
+    if "vượt quá" in res.lower() or "lỗi" in res.lower():
+        errors = res.split("\n")
             
     save_node_log(
         job_id=state["job_id"],
         node_name="validator",
         step="validate",
-        input_data={"timeline": timeline},
+        input_data={"viral_optimized": viral_optimized},
         output_data={"pacing_errors": errors},
-        llm_reasoning=f"Kiểm thử nhịp độ chữ hoàn tất cho worker '{worker_type}'. Phát hiện {len(errors)} cảnh quá nhanh."
+        llm_reasoning=f"Kiểm thử nhịp độ chữ hoàn tất. Phát hiện {len(errors)} cảnh quá nhanh."
     )
             
     return {"pacing_errors": errors}
+
 
 def healing_node(state: LeaderAgentState) -> Dict[str, Any]:
     """Python node to apply defensive healing to JSON structures."""

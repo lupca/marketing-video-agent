@@ -107,8 +107,17 @@ def make_unbox_viral(
 
     # ── Resolve inputs ──────────────────────────────────────────────────
 
-    # Video(s) - support both single and list
-    if config.get("video"):
+    # Scenes and Composition Support
+    scenes = config.get("scenes", [])
+    
+    # Video(s) - support scenes.clip_url, video, and clips
+    if scenes:
+        video_paths = []
+        for s in scenes:
+            c_url = s.get("clip_url")
+            if c_url:
+                video_paths.append(Path(c_url).resolve())
+    elif config.get("video"):
         if isinstance(config["video"], list):
             video_paths = [Path(v).resolve() for v in config["video"]]
         else:
@@ -124,8 +133,10 @@ def make_unbox_viral(
         if not vp.exists():
             raise FileNotFoundError(f"Video not found: {vp}")
 
-    if config.get("audio"):
-        audio_path = Path(config["audio"]).resolve()
+    # Audio - support bgm_path and audio
+    audio_val = config.get("bgm_path") or config.get("audio")
+    if audio_val:
+        audio_path = Path(audio_val).resolve()
     else:
         mp3s = list(input_dir.glob("*.mp3"))
         audio_path = mp3s[0] if mp3s else None
@@ -133,7 +144,21 @@ def make_unbox_viral(
     if not audio_path or not audio_path.exists():
         raise FileNotFoundError(f"Audio file not found: {audio_path}")
 
-    raw_text_events = config.get("text_events", [])
+    # Text Events - support scenes mapping and text_events
+    if scenes:
+        raw_text_events = []
+        accumulated_time = 0.0
+        for idx, s in enumerate(scenes):
+            effects = s.get("effects") or []
+            effect_type = "hook" if "hook" in str(effects).lower() or idx == 0 else "feature"
+            raw_text_events.append({
+                "time": accumulated_time,
+                "text": s.get("text_overlay", ""),
+                "effect": effect_type
+            })
+            accumulated_time += float(s.get("duration", 5.0))
+    else:
+        raw_text_events = config.get("text_events", [])
 
     # Use first video as primary (for single unbox video workflow)
     primary_video = video_paths[0]

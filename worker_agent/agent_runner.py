@@ -458,27 +458,14 @@ HEALERS_REGISTRY = {
 }
 
 
+from shared_core.video_schemas import heal_video_composition
+
 def heal_draft_parameters(worker_type: str, draft_params: Dict[str, Any], script_content: str, title: str) -> Dict[str, Any]:
     """
-    Hậu xử lý và chuẩn hóa draft_parameters để đảm bảo tính toàn vẹn dữ liệu 100%.
-    Nếu LLM bị lỗi hoặc sinh thiếu trường/sai định dạng, hàm này sẽ tự động sửa lỗi
-    và map kịch bản thô vào cấu trúc chuẩn để React UI không bao giờ hiển thị form trống.
+    Hậu xử lý và chuẩn hóa draft_parameters sử dụng cấu trúc phân cảnh đồng nhất.
     """
-    if not isinstance(draft_params, dict):
-        draft_params = {}
+    return heal_video_composition(worker_type, draft_params, script_content, title)
 
-    sentences = _extract_sentences_from_script(script_content, title)
-    
-    healer = HEALERS_REGISTRY.get(worker_type)
-    if healer:
-        if worker_type == "slideshow":
-            return healer(draft_params, sentences, title)
-        elif worker_type in ("review", "unbox_viral"):
-            return healer(draft_params, sentences)
-        else:
-            return healer(draft_params)
-            
-    return draft_params
 
 
 

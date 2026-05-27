@@ -164,6 +164,11 @@ def is_minio_path(path: str) -> bool:
     return isinstance(path, str) and path.startswith("s3://")
 
 
+def is_downloadable_path(path: str) -> bool:
+    """Check if a path is downloadable (either s3:// or http:// or https://)."""
+    return isinstance(path, str) and (path.startswith("s3://") or path.startswith("http://") or path.startswith("https://"))
+
+
 def get_object_name(s3_path: str) -> str:
     """Extract object name from an s3:// URI."""
     bucket = get_bucket_name()
@@ -171,3 +176,39 @@ def get_object_name(s3_path: str) -> str:
     if s3_path.startswith(prefix):
         return s3_path[len(prefix):]
     return s3_path
+
+
+def download_file_or_s3(url_or_s3_path: str, local_path: str) -> str:
+    """
+    Tải tài nguyên từ MinIO s3:// hoặc qua HTTP/HTTPS về đường dẫn cục bộ.
+    """
+    import os
+    import requests
+    
+    os.makedirs(os.path.dirname(local_path), exist_ok=True)
+    
+    if is_minio_path(url_or_s3_path):
+        obj_name = get_object_name(url_or_s3_path)
+        download_file_from_minio(obj_name, local_path)
+        logger.info(f"Downloaded from MinIO: {url_or_s3_path} -> {local_path}")
+        return local_path
+        
+    elif isinstance(url_or_s3_path, str) and (url_or_s3_path.startswith("http://") or url_or_s3_path.startswith("https://")):
+        logger.info(f"Downloading remote HTTP asset: {url_or_s3_path} -> {local_path}")
+        response = requests.get(url_or_s3_path, stream=True, timeout=60)
+        response.raise_for_status()
+        with open(local_path, 'wb') as f:
+            for chunk in response.iter_content(chunk_size=8192):
+                if chunk:
+                    f.write(chunk)
+        logger.info(f"Successfully downloaded HTTP asset: {local_path}")
+        return local_path
+        
+    else:
+        # Nếu đã tồn tại dưới dạng tệp cục bộ
+        if isinstance(url_or_s3_path, str) and os.path.exists(url_or_s3_path):
+            import shutil
+            shutil.copy2(url_or_s3_path, local_path)
+            logger.info(f"Copied local file: {url_or_s3_path} -> {local_path}")
+            return local_path
+        return url_or_s3_path

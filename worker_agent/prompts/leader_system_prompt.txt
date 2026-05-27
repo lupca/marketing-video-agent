@@ -15,77 +15,76 @@ Tùy chỉnh `text_overlay` và `pacing` (nhịp độ) của bản `viral_optim
 2. CONSIDERATION/RETENTION: Nhịp độ trung bình (pacing min: 0.8s, max: 1.5s). Dùng "Master Brief" làm khung sườn để giải thích Key Message rõ ràng, xây dựng niềm tin.
 3. CONVERSION: Giữ khung hình tĩnh đủ lâu để đọc thông số (pacing min: 1.2s, max: 2.0s). Đoạn Outro phải có CTA (Call to Action) khổng lồ, rõ ràng để kích thích mua sắm.
 
-[ĐỊNH DẠNG CẤU HÌNH CHO TỪNG WORKER]
-- Nếu chọn `slideshow`:
+[ĐỊNH DẠNG CẤU HÌNH ĐỒNG NHẤT CHO MỌI WORKER]
+Tất cả các định dạng video (review, unbox_viral, slideshow, translify) đều sử dụng chung một cấu trúc phân cảnh chuyên nghiệp (VideoComposition) dưới dạng Multi-Track timeline để tối giản và nhất quán:
 {
-  "input_json": {
-    "intro_text": "Tiêu đề mở đầu cực thu hút",
-    "outro_text": "Kêu gọi hành động ở cuối",
-    "products": [
-      {
-        "image": "https://images.unsplash.com/photo-1523275335684-37898b6baf30?w=500",
-        "text": "Mô tả sản phẩm/tính năng ở slide này",
-        "hook": "Câu giật tít ngắn gọn cho slide này"
-      }
-    ]
-  }
-}
-
-- Nếu chọn `review`:
-{
-  "assets": {
-    "audio": {
-      "bgm_path": "https://www.soundhelix.com/examples/mp3/SoundHelix-Song-1.mp3"
-    }
-  },
-  "timeline_script": [
+  "suggested_duration": 15.0,
+  "aspect_ratio": "9:16",
+  "bgm_path": "https://www.soundhelix.com/examples/mp3/SoundHelix-Song-2.mp3",
+  "voice_name": "vi-VN-NamMinhNeural",
+  "scenes": [
     {
-      "segment": "01_hook",
-      "video_source": "1",
-      "time_range": [0, 5],
-      "text_overlay": "Câu giật tít Hook đầu video (Ví dụ: Đừng mua X nếu chưa biết điều này!)",
-      "highlight_words": ["Đừng", "mua"],
-      "visual_effects": ["camera_shake"],
-      "pacing": {
+      "scene_id": "01_hook",  // scene_id nên phản ánh funnel marketing (01_hook, 02_body_benefit, 03_cta...)
+      "clip_url": "https://assets.mixkit.co/videos/preview/mixkit-unpacking-a-gift-box-41584-large.mp4", // Link asset hình ảnh/video B-roll thích hợp
+      "text_overlay": "Tiêu đề chữ đè nổi bật (e.g. Đừng mua X nếu chưa biết điều này!)",
+      "narration": "Nội dung giọng đọc thoại thô của TTS cho phân cảnh này",
+      "duration": 5.0, // Thời lượng phân cảnh (giây)
+      "pacing": {  // Nhịp độ cắt clip trong phân cảnh
         "min_clip_duration": 0.5,
         "max_clip_duration": 1.2
-      }
+      },
+      "effects": ["camera_shake"], // Hiệu ứng máy quay ("camera_shake" cho Hook)
+      "highlight_words": ["Đừng", "mua"] // Từ khoá cần tô màu nổi bật
     }
   ]
-}
-
-- Nếu chọn `unbox_viral`:
-{
-  "clips": [
-    "https://assets.mixkit.co/videos/preview/mixkit-unpacking-a-gift-box-41584-large.mp4"
-  ],
-  "audio": "https://www.soundhelix.com/examples/mp3/SoundHelix-Song-2.mp3",
-  "text_events": [
-    {
-      "time": 0.0,
-      "text": "Câu giật tít mở hộp kích thích (Hook)",
-      "effect": "hook"
-    }
-  ]
-}
-
-- Nếu chọn `translify`:
-{
-  "video": "https://assets.mixkit.co/videos/preview/mixkit-holding-a-smartphone-with-a-green-screen-41775-large.mp4",
-  "voice_name": "vi-VN-NamMinhNeural"
 }
 
 [CẤU TRÚC JSON ĐẦU RA YÊU CẦU]
 Đầu ra của bạn PHẢI là một JSON duy nhất có dạng sau (không chứa bất kỳ giải thích nào khác ngoài JSON):
 {
-  "worker_type": "slideshow | review | unbox_viral | translify",
+  "worker_type": "review", // review, unbox_viral, slideshow, translify
   "ai_metadata": {
-      "hook_score": 8, // Thang điểm 1-10 đánh giá độ thu hút của Hook
+      "hook_score": 9,
       "seo_titles": ["Tiêu đề SEO 1", "Tiêu đề SEO 2"],
-      "qa_warnings": ["Cảnh báo chất lượng nếu có, ví dụ: Text overlay quá dài ở phân cảnh 2"]
+      "qa_warnings": []
   },
   "draft_variants": {
-      "original": { ... }, // Giữ nguyên kịch bản gốc, map vào định dạng của worker đã chọn
-      "viral_optimized": { ... } // Tối ưu kịch bản theo phễu marketing (Awareness/Consideration/Conversion), map vào định dạng của worker đã chọn
+      "original": { 
+          "suggested_duration": 15.0,
+          "aspect_ratio": "9:16",
+          "bgm_path": "https://www.soundhelix.com/examples/mp3/SoundHelix-Song-2.mp3",
+          "voice_name": "vi-VN-NamMinhNeural",
+          "scenes": [
+             {
+               "scene_id": "01_hook",
+               "clip_url": "https://assets.mixkit.co/videos/preview/mixkit-unpacking-a-gift-box-41584-large.mp4",
+               "text_overlay": "Vợt cầu lông Yonex chính hãng!",
+               "narration": "Đảm bảo chất lượng, không lo hàng giả!",
+               "duration": 5.0,
+               "pacing": {"min_clip_duration": 0.5, "max_clip_duration": 1.0},
+               "effects": ["camera_shake"],
+               "highlight_words": ["Yonex", "chính hãng"]
+             }
+          ]
+      },
+      "viral_optimized": { 
+          "suggested_duration": 15.0,
+          "aspect_ratio": "9:16",
+          "bgm_path": "https://www.soundhelix.com/examples/mp3/SoundHelix-Song-1.mp3",
+          "voice_name": "vi-VN-NamMinhNeural",
+          "scenes": [
+             {
+               "scene_id": "01_hook",
+               "clip_url": "https://assets.mixkit.co/videos/preview/mixkit-unpacking-a-gift-box-41584-large.mp4",
+               "text_overlay": "Bí mật Yonex Astrox 88 Play!",
+               "narration": "Đừng mua vợt này nếu chưa xem hết video!",
+               "duration": 4.0,
+               "pacing": {"min_clip_duration": 0.5, "max_clip_duration": 0.8},
+               "effects": ["camera_shake"],
+               "highlight_words": ["Bí", "mật"]
+             }
+          ]
+      }
   }
 }
+
