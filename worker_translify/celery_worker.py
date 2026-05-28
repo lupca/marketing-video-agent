@@ -214,23 +214,24 @@ def analyze_video(self, job_id: int, config_data: Dict[str, Any]):
         # Resolve user_id
         # Resolve user_id and project_name
         user_id = None
+        if job.project and job.project.user_id:
+            user_id = job.project.user_id
+            
         project_name = ""
-        if job.project:
-            if job.project.user_id:
-                user_id = job.project.user_id
-            if job.project.name:
-                project_name = job.project.name
-                
-        if not project_name:
-            from shared_core.models import JobAsset, Asset
-            try:
-                job_asset = db.query(JobAsset).filter(JobAsset.job_id == job_id).first()
-                if job_asset:
-                    asset = db.query(Asset).filter(Asset.id == job_asset.asset_id, Asset.asset_type == "video").first()
-                    if asset and asset.display_name:
-                        project_name = asset.display_name
-            except Exception as e:
-                logger.error(f"Failed to resolve asset display name: {e}")
+        # 1. Prioritize primary video asset's display name from the DB (captures user renaming on UI)
+        from shared_core.models import JobAsset, Asset
+        try:
+            job_asset = db.query(JobAsset).filter(JobAsset.job_id == job_id).first()
+            if job_asset:
+                asset = db.query(Asset).filter(Asset.id == job_asset.asset_id, Asset.asset_type == "video").first()
+                if asset and asset.display_name:
+                    project_name = asset.display_name
+        except Exception as e:
+            logger.error(f"Failed to resolve asset display name: {e}")
+            
+        # 2. Fallback to project name
+        if not project_name and job.project and job.project.name:
+            project_name = job.project.name
         if not user_id:
             from shared_core.models import User
             user = db.query(User).first()
